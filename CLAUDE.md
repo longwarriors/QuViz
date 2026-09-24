@@ -13,6 +13,6 @@
 - 端到端测试（Playwright fullstack/visual）只用于关键用户流程和前后端连接；改到 UI 呈现才跑 visual，视觉基线只在确认是有意变化时更新（`npm run test:visual:update`）。
 - 开发中只跑受影响的测试，不在每次编辑后跑全套或端到端。
 - 提交前：改 Python 跑 `uv run pytest --cov=quviz`（覆盖率门槛 85%）；改 `web/` 跑 `npm run test` 和 `npm run typecheck`；触及接口或渲染再跑 `npm run test:fullstack` / `npm run test:visual`。
-- CI（`.github/workflows/ci.yml`）会跑以上全部；本地不必全跑，但不能靠 CI 代替本地对改动部分的验证。
+- 本项目不依赖 CI，提交前本地验证即最终验证。
 - 测试不能 skip，xfail 意外通过即失败（见 `tests/conftest.py`、`xfail_strict`）；不要为过门禁而绕开这两条策略。
 - 报告实际跑了什么、结果如何、哪些没验证。
