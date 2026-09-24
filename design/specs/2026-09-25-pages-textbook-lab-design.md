@@ -6,6 +6,11 @@
 - 位置说明：本文件放在仓库根 `design/specs/` 而不是 `docs/`，因为 `tests/test_mkdocs_system.py` 要求
   `docs/**/*.md` 全部进入 MkDocs 导航。
 
+> **2026-09-25 修订说明**：实施契约 `design/plans/2026-09-25-contracts.md`（含其“Amendments”一节）优先于本文件的
+> 实现细节。已知差异：数据目录为 `data/`（无 `v1/`）；文件名为 `sha256(body)[:24]`；manifest 无 `generated_by`；
+> `requests.json` 为请求字符串列表；导出遇 404 同样中止；叠加态目录新增服务端探测的 `default_representation`
+> （修复 2s+2p_z 默认 422）；“每章至少一张交互图”适用于第 0–11 章，附录除外。
+
 ## 1. 意图与成功标准
 
 ### 用户原话
