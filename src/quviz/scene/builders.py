@@ -224,6 +224,7 @@ def orbital_metadata(
     basis_kind = BasisKind(basis)
     validate_quantum_numbers(n, l, m)
     _validate_slice_detail(representation, slice_detail)
+    state = QuantumStateSpec(n=n, l=l, m=m, z=z, a_mu=a_mu, basis=basis_kind)
     # One branch per representation. A default that silently reuses another
     # asset's wording makes the Scene Contract describe a picture that is not
     # on screen, which is worse than having no description at all.
@@ -252,8 +253,17 @@ def orbital_metadata(
             color_semantics = "wavefunction sign encoded as phase 0 or pi"
         else:
             color_semantics = "principal wavefunction phase in [-pi, pi]"
+    # Every eigenstate asset carries its own P(r), so a detail panel never has
+    # to fetch a second payload to chart the state it is already showing.
+    profile = radial_profile(n, l, z=state.z, a_mu=state.a_mu)
+    notes = list(warnings or [])
+    if profile is None:
+        notes.append(
+            f"radial_profile omitted: the a_mu/Z length scale {state.a_mu / state.z:.6g} bohr "
+            "cannot carry P(r) in float64 without overflow or underflow"
+        )
     return OrbitalMetadata(
-        state=QuantumStateSpec(n=n, l=l, m=m, z=z, a_mu=a_mu, basis=basis_kind),
+        state=state,
         label=orbital_label(n, l, m, basis=basis_kind),
         energy_hartree=hydrogenic_energy_hartree(n, z=z, reduced_mass_ratio=1.0 / a_mu),
         observable=observable,
@@ -268,7 +278,8 @@ def orbital_metadata(
             "scipy-sph-harm-y",
             "solara-hydrogen-derivation",
         ],
-        warnings=warnings or [],
+        warnings=notes,
+        radial_profile=profile,
     )
 
 
@@ -305,7 +316,7 @@ def radial_extent_for_mass(
 RADIAL_PROFILE_POINTS = 256
 _RADIAL_PROFILE_MASS = 0.999
 _RADIAL_PROFILE_REFINEMENT_POINTS = 2_049
-_RADIAL_PROFILE_DENSITY_DIGITS = 9
+_RADIAL_PROFILE_SIGNIFICANT_DIGITS = 9
 _RADIAL_PROFILE_SCALE_TOLERANCE = 1e-6
 _RADIAL_PROFILE_MINIMUM_LEVELS = 5
 _RADIAL_PROFILE_LEVELS_ABOVE_STATE = 2
@@ -371,6 +382,22 @@ def radial_profile(n: int, l: int, *, z: float, a_mu: float = 1.0) -> RadialProf
     ``<r>`` is the analytic ``(a_mu / 2Z)[3n^2 - l(l + 1)]``; the energy ladder
     uses the same reduced-mass convention as :func:`orbital_metadata`.
 
+    ``radial_density`` and ``most_probable_r_bohr`` are both published at 9
+    significant digits. Both are derived from evaluating ``R_nl`` on a fine
+    grid (``most_probable_r_bohr`` through the parabola fit below), a
+    transcendental chain whose last bit is not guaranteed to agree across libm
+    implementations; rounding both is what keeps a byte-compared golden
+    fixture (``tests/fixtures/slice_golden.json``) stable when it is rebuilt
+    on another platform -- rounding density alone is not enough, because
+    every eigenstate's metadata, including its ``most_probable_r_bohr``,
+    reaches that same fixture. ``r_bohr`` needs no separate rounding here: it
+    is already rounded to six decimals in :func:`_dimensionless_radial_profile`
+    before this function multiplies it by ``scale``. ``expectation_r_bohr``
+    needs none either -- it never evaluates ``R_nl``, only the closed form
+    above. ``nodes_bohr`` is intentionally left at full precision, a project
+    decision rather than a claim that its ``roots_genlaguerre`` lineage is
+    libm-independent.
+
     ``None`` means the rescaled numbers themselves leave float64 (for example
     ``Z = 1e-310``): the caller must say so rather than publish a profile whose
     density underflowed or whose radii overflowed.
@@ -402,8 +429,15 @@ def radial_profile(n: int, l: int, *, z: float, a_mu: float = 1.0) -> RadialProf
     ):
         return None
     published_density = [
-        float(format(float(value), f".{_RADIAL_PROFILE_DENSITY_DIGITS}g")) for value in density
+        float(format(float(value), f".{_RADIAL_PROFILE_SIGNIFICANT_DIGITS}g")) for value in density
     ]
+    # Same rounding as radial_density, and for the same reason: the parabola
+    # fit in _dimensionless_radial_profile evaluates R_nl, so an unrounded
+    # value here could differ from another libm in its last bit and break
+    # byte identity with tests/fixtures/slice_golden.json.
+    published_most_probable = float(
+        format(most_probable, f".{_RADIAL_PROFILE_SIGNIFICANT_DIGITS}g")
+    )
     # Values close to the float64 maximum can overflow the running sum. The
     # tolerance check below then fails and yields the documented None.
     with np.errstate(over="ignore", invalid="ignore"):
@@ -416,7 +450,7 @@ def radial_profile(n: int, l: int, *, z: float, a_mu: float = 1.0) -> RadialProf
         radial_density=published_density,
         nodes_bohr=nodes.tolist(),
         expectation_r_bohr=expectation,
-        most_probable_r_bohr=most_probable,
+        most_probable_r_bohr=published_most_probable,
         energy_levels_hartree=[
             hydrogenic_energy_hartree(k, z=z, reduced_mass_ratio=reduced_mass_ratio)
             for k in range(1, level_count + 1)

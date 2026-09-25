@@ -14,16 +14,31 @@ from typing import Any
 
 import numpy as np
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from quviz.api.app import create_app
+from quviz.conventions import (
+    BasisKind,
+    ObservableKind,
+    PrincipalPlane,
+    RepresentationKind,
+    SliceObservable,
+)
 from quviz.physics.finite_box import _component_radial_tail
 from quviz.physics.hydrogenic import (
     hydrogenic_energy_hartree,
     radial_node_radii,
     radial_wavefunction,
 )
-from quviz.scene.builders import RADIAL_PROFILE_POINTS, radial_profile
+from quviz.scene.builders import (
+    RADIAL_PROFILE_POINTS,
+    build_isosurface,
+    orbital_metadata,
+    radial_profile,
+)
 from quviz.scene.models import RadialProfile
+from quviz.scene.slices import build_slice
 
 STATES_N_LE_4 = [(n, l) for n in range(1, 5) for l in range(n)]
 
@@ -192,3 +207,83 @@ def test_radial_profile_model_rejects_malformed_profiles(
 ) -> None:
     with pytest.raises(ValidationError, match=message):
         RadialProfile.model_validate({**VALID_PROFILE, **change})
+
+
+client = TestClient(create_app(mount_frontend=False))
+
+
+def test_metadata_route_publishes_the_profile_of_the_requested_state() -> None:
+    response = client.get(
+        "/api/orbitals/metadata", params={"n": 3, "l": 1, "m": 0, "z": 2, "basis": "real"}
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    profile = payload["radial_profile"]
+    assert len(profile["r_bohr"]) == len(profile["radial_density"]) == 256
+    assert profile["nodes_bohr"] == pytest.approx([3.0], rel=1e-12)  # 6 a / Z with Z = 2
+    assert profile["expectation_r_bohr"] == pytest.approx(6.25, rel=1e-15)
+    assert profile["energy_levels_hartree"][2] == payload["energy_hartree"]
+    assert len(response.content) < 12_000
+
+
+def test_every_eigenstate_payload_carries_the_profile_of_its_own_state() -> None:
+    surface = build_isosurface(1, 0, 0, resolution=49, probability_mass=0.8)
+    assert surface.metadata.radial_profile == radial_profile(1, 0, z=1.0)
+
+    section = build_slice(
+        2,
+        1,
+        0,
+        a_mu=0.5,
+        plane=PrincipalPlane.XZ,
+        observable=SliceObservable.PROBABILITY_DENSITY,
+        resolution=65,
+    )
+    assert section.metadata.radial_profile is not None
+    assert section.metadata.radial_profile.most_probable_r_bohr == pytest.approx(2.0, rel=1e-8)
+
+    flow = client.get(
+        "/api/orbitals/current-field",
+        params={"n": 2, "l": 1, "m": 1, "basis": "complex", "seed_count": 4},
+    )
+    assert flow.status_code == 200
+    assert flow.json()["metadata"]["radial_profile"]["nodes_bohr"] == []
+
+
+def test_an_unrepresentable_scale_publishes_null_and_says_why() -> None:
+    response = client.get("/api/orbitals/metadata", params={"n": 1, "l": 0, "m": 0, "z": 1e-310})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["radial_profile"] is None
+    assert any(warning.startswith("radial_profile omitted") for warning in payload["warnings"])
+
+
+def test_caller_warnings_are_copied_not_mutated() -> None:
+    notes = ["caller note"]
+    metadata = orbital_metadata(
+        1,
+        0,
+        0,
+        z=1e-310,
+        basis=BasisKind.REAL,
+        observable=ObservableKind.PROBABILITY_DENSITY,
+        representation=RepresentationKind.POINT_CLOUD,
+        warnings=notes,
+    )
+    assert notes == ["caller note"]
+    assert metadata.warnings[0] == "caller note"
+    assert len(metadata.warnings) == 2
+
+
+@pytest.mark.parametrize(("n", "l"), STATES_N_LE_4)
+def test_most_probable_radius_is_rounded_to_nine_significant_digits_like_the_density(
+    n: int, l: int
+) -> None:
+    # most_probable_r_bohr is refined by a parabola fit through P(r) samples,
+    # a transcendental chain that can round differently on another libm; a
+    # fixed-precision value, like radial_density already publishes, is what
+    # keeps a byte-compared golden fixture (tests/fixtures/slice_golden.json)
+    # stable across platforms. Regression for the pre-fix behaviour, where
+    # this field was serialised at full float64 precision.
+    value = _profile(n, l).most_probable_r_bohr
+    assert value == float(format(value, ".9g"))

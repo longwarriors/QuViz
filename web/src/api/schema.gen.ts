@@ -378,6 +378,8 @@ export interface components {
              */
             normalization: string;
             observable: components["schemas"]["ObservableKind"];
+            /** @description Radial distribution P(r) of this eigenstate, computed from the analytic R_nl with the same Z and a_mu; null only when those scales cannot represent it in float64, in which case a warning says so. */
+            radial_profile?: components["schemas"]["RadialProfile"] | null;
             /** References */
             references: string[];
             representation: components["schemas"]["RepresentationKind"];
@@ -420,6 +422,47 @@ export interface components {
              * @default 1
              */
             z: number;
+        };
+        /**
+         * RadialProfile
+         * @description Radial probability distribution ``P(r) = r^2 |R_nl(r)|^2`` of one eigenstate.
+         *
+         *     Computed in Python from the analytic hydrogenic radial function with the
+         *     same ``Z`` and ``a_mu`` as the metadata it is attached to; the browser only
+         *     draws it. ``radial_density`` integrates to one over ``[0, inf)``; the
+         *     sampled range stops once at least 99.9 % of that mass is inside.
+         */
+        RadialProfile: {
+            /**
+             * Energy Levels Hartree
+             * @description E_k = -(Z^2 / a_mu) / (2 k^2) in hartree for k = 1 .. max(n + 2, 5), the same reduced-mass convention as energy_hartree.
+             */
+            energy_levels_hartree: number[];
+            /**
+             * Expectation R Bohr
+             * @description <r> = (a_mu / (2 Z)) [3 n^2 - l (l + 1)] in bohr, analytic.
+             */
+            expectation_r_bohr: number;
+            /**
+             * Most Probable R Bohr
+             * @description Radius of the global maximum of P(r) in bohr, grid-refined, 9 significant digits.
+             */
+            most_probable_r_bohr: number;
+            /**
+             * Nodes Bohr
+             * @description The n - l - 1 radial node radii in bohr (Laguerre roots), ascending.
+             */
+            nodes_bohr: number[];
+            /**
+             * R Bohr
+             * @description Ascending radii in bohr, r_bohr[0] == 0; the last radius encloses at least 99.9% of the radial probability. Denser near the nucleus (quadratic spacing).
+             */
+            r_bohr: number[];
+            /**
+             * Radial Density
+             * @description P(r) = r^2 |R_nl(r)|^2 in bohr^-1 at each radius, 9 significant digits.
+             */
+            radial_density: number[];
         };
         /**
          * RepresentationKind

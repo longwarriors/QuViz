@@ -16,7 +16,7 @@ FastAPI 自动生成 OpenAPI 文档 [@fastapi]。逐端点的查询参数、默�
 
 机械参数表见 [HTTP schema](http-schema.md#get-apiorbitalsmetadata)。
 
-返回 Scene metadata，不生成大数组。
+返回 Scene metadata，不生成大数组。其中 `radial_profile` 是该本征态的径向分布：`r_bohr` 为 256 个递增半径（从 $r=0$ 起，靠近原子核处更密，末点外的径向概率不超过 $10^{-3}$），`radial_density` 为 $P(r)=r^2|R_{n\ell}(r)|^2$（单位 bohr⁻¹，9 位有效数字），`nodes_bohr` 为 $n-\ell-1$ 个 Laguerre 根径向节点，`expectation_r_bohr` 为解析值 $\langle r\rangle=\tfrac{a_\mu}{2Z}[3n^2-\ell(\ell+1)]$，`most_probable_r_bohr` 为 $P(r)$ 全局极大（网格内细化，9 位有效数字），`energy_levels_hartree` 为 $k=1,\dots,\max(n+2,5)$ 的 $E_k$，与 `energy_hartree` 同一约化质量约定。它在 $Z=a_\mu=1$ 下计算一次，再按 $a_\mu/Z$ 精确缩放；`radial_density` 与 `most_probable_r_bohr` 都来自对 $R_{n\ell}$ 的求值，缩放后各自舍入到 9 位有效数字，使这份 payload 在另一平台的 libm 下重建时逐字节一致——`expectation_r_bohr` 走纯解析闭式、不求值 $R_{n\ell}$，`nodes_bohr` 仍保留完整精度，两者都不需要这一舍入。缩放后的数字超出 float64 时为 `null`，并在 `warnings` 中说明。同一块也随等值面、流线与切片 payload 的本征态 metadata 一起下发。
 
 ## `GET /api/orbitals/point-cloud`
 

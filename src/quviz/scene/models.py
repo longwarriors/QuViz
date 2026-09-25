@@ -180,7 +180,10 @@ class RadialProfile(BaseModel):
         gt=0.0, description="<r> = (a_mu / (2 Z)) [3 n^2 - l (l + 1)] in bohr, analytic."
     )
     most_probable_r_bohr: float = Field(
-        gt=0.0, description="Radius of the global maximum of P(r) in bohr, grid-refined."
+        gt=0.0,
+        description=(
+            "Radius of the global maximum of P(r) in bohr, grid-refined, 9 significant digits."
+        ),
     )
     energy_levels_hartree: list[float] = Field(
         min_length=1,
@@ -243,6 +246,14 @@ class OrbitalMetadata(BaseModel):
     color_semantics: str
     references: list[str]
     warnings: list[str] = Field(default_factory=list)
+    radial_profile: RadialProfile | None = Field(
+        default=None,
+        description=(
+            "Radial distribution P(r) of this eigenstate, computed from the analytic R_nl with "
+            "the same Z and a_mu; null only when those scales cannot represent it in float64, "
+            "in which case a warning says so."
+        ),
+    )
 
 
 class IsosurfacePayload(BaseModel):
