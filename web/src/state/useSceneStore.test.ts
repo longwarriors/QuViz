@@ -14,6 +14,14 @@ beforeEach(() => {
   useSceneStore.setState(INITIAL, true)
 })
 
+describe('presentation defaults', () => {
+  it('starts with Bloom off, so data colours reach the screen as the legend prints them', () => {
+    // Spec §5: slices went through Bloom 0.12 (and a Vignette) while
+    // SliceField.test proved only the texture bytes against the legend.
+    expect(INITIAL.bloom).toBe(0)
+  })
+})
+
 const read = () => useSceneStore.getState()
 
 describe('representation availability', () => {

@@ -29,12 +29,15 @@
  */
 import type { BoundsProps, OrbitControlsProps } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
+import { Bloom, EffectComposer } from '@react-three/postprocessing'
 import ReactThreeTestRenderer, { act } from '@react-three/test-renderer'
 import {
   act as reactAct,
+  Children,
   createElement,
   Fragment,
   type ReactElement,
+  type ReactNode,
   useLayoutEffect,
 } from 'react'
 import * as THREE from 'three'
@@ -67,6 +70,7 @@ import {
   aimCamera,
   cameraViewOf,
   OrbitalCanvas,
+  presentationChainActive,
   RendererSettings,
   SceneContent,
   SceneRoot,
@@ -856,7 +860,7 @@ describe('RendererSettings', () => {
 
 describe('SceneRoot', () => {
   it('restores and clears the default framebuffer when a post-processed frame leaves', async () => {
-    useSceneStore.setState({ mode: 'eigenstate', representation: 'slice' })
+    useSceneStore.setState({ mode: 'eigenstate', representation: 'slice', bloom: 0.3 })
     vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
       const url = String(input)
       return Promise.resolve(jsonResponse(url.includes('/slice') ? slice() : isosurface()))
@@ -1284,6 +1288,10 @@ describe('OrbitalCanvas', () => {
     return (scene.props as { asset: SceneAsset | null }).asset
   }
 
+  /** The post chain, found by element type -- robust to other canvas children. */
+  const composerOf = (props: Record<string, unknown>): ReactElement | undefined =>
+    childrenOf(props).find((child) => child.type === EffectComposer)
+
   it('asks for the renderer the scene needs, and says so explicitly', async () => {
     useSceneStore.setState({ representation: 'isosurface' })
     answerWith(isosurface())
@@ -1333,14 +1341,46 @@ describe('OrbitalCanvas', () => {
     answerWith(superpositionCurrent())
     const { props, unmount } = await mountShell()
 
-    const children = childrenOf(props)
-    expect(children).toHaveLength(2)
-    const composer = children[1]
-    expect((composer.props as { ref?: unknown }).ref).toEqual(expect.any(Function))
-    const effects = (composer.props as { children: ReactElement[] }).children
+    const composer = composerOf(props)
+    expect(composer).toBeDefined()
+    expect((composer?.props as { ref?: unknown }).ref).toEqual(expect.any(Function))
+    const effects = Children.toArray(
+      (composer?.props as { children: ReactNode }).children,
+    ) as ReactElement[]
+    // Bloom and nothing else: the Vignette darkened data pixels that the
+    // legend claims are exact (spec §5).
+    expect(effects).toHaveLength(1)
+    expect(effects[0].type).toBe(Bloom)
     expect((effects[0].props as { intensity: number }).intensity).toBe(0.42)
 
     await unmount()
+  })
+
+  it('mounts no post chain at all while Bloom is 0, even for a slice', async () => {
+    useSceneStore.setState({ mode: 'eigenstate', representation: 'slice', bloom: 0 })
+    answerWith(sliceBody('xz', false))
+    const { props, unmount } = await mountShell()
+
+    expect(assetOf(props)?.kind).toBe('slice')
+    expect(composerOf(props)).toBeUndefined()
+
+    await unmount()
+  })
+
+  it.each([
+    [0, 'slice', false],
+    [0.3, 'slice', true],
+    [0.3, 'point_cloud', false],
+    [0.3, 'streamlines', true],
+  ] as const)('bloom %s over %s -> post chain %s', (bloom, kind, expected) => {
+    const asset: SceneAsset =
+      kind === 'slice'
+        ? { kind: 'slice', data: slice() }
+        : kind === 'point_cloud'
+          ? { kind: 'point_cloud', data: pointCloud() }
+          : { kind: 'streamlines', data: currentField() }
+    expect(presentationChainActive(asset, bloom)).toBe(expected)
+    expect(presentationChainActive(null, bloom)).toBe(false)
   })
 
   it.each([
@@ -1361,6 +1401,7 @@ describe('OrbitalCanvas', () => {
     useSceneStore.setState({
       mode: 'superposition',
       representation: 'streamlines',
+      bloom: 0.3,
       superpositionStreamlineSeedCountMax: 40,
     })
     requestedUrls = []
@@ -1377,7 +1418,7 @@ describe('OrbitalCanvas', () => {
 
     const { props: firstFrame, unmount } = await mountShell()
     expect(assetOf(firstFrame)?.kind).toBe('superposition_streamlines')
-    expect(childrenOf(firstFrame)).toHaveLength(2)
+    expect(composerOf(firstFrame)).toBeDefined()
 
     const transitionStart = canvasProps.history.length
     await reactAct(async () => {
@@ -1393,9 +1434,9 @@ describe('OrbitalCanvas', () => {
       (props) => assetOf(props)?.kind === 'superposition_streamlines',
     )
     expect(oldFrameCommit).toBeDefined()
-    expect(childrenOf(oldFrameCommit as Record<string, unknown>)).toHaveLength(2)
+    expect(composerOf(oldFrameCommit as Record<string, unknown>)).toBeDefined()
     expect(assetOf(canvasProps.current as Record<string, unknown>)).toBeNull()
-    expect(childrenOf(canvasProps.current as Record<string, unknown>)).toHaveLength(1)
+    expect(composerOf(canvasProps.current as Record<string, unknown>)).toBeUndefined()
     expect(resolveIsosurface).toBeDefined()
 
     await reactAct(async () => {
@@ -1405,7 +1446,7 @@ describe('OrbitalCanvas', () => {
 
     const scientificFrame = canvasProps.current as Record<string, unknown>
     expect(assetOf(scientificFrame)?.kind).toBe('superposition_isosurface')
-    expect(childrenOf(scientificFrame)).toHaveLength(1)
+    expect(composerOf(scientificFrame)).toBeUndefined()
 
     await unmount()
   })

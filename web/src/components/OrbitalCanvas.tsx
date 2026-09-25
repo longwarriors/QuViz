@@ -1,6 +1,6 @@
 import { Bounds, OrbitControls, useBounds } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
-import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing'
+import { Bloom, EffectComposer } from '@react-three/postprocessing'
 import { type ReactNode, useEffect, useLayoutEffect, useState } from 'react'
 import type { EffectComposer as EffectComposerImpl } from 'postprocessing'
 import * as THREE from 'three'
@@ -376,7 +376,7 @@ function SceneView({ state, asset, fitKey }: SceneViewProps) {
   const extent = sceneExtentBohr(asset)
   const reducedMotion = usePrefersReducedMotion()
   const renderer = useThree(({ gl }) => gl)
-  const presentationEffectsActive = usesPresentationEffects(asset)
+  const presentationEffectsActive = presentationChainActive(asset, state.bloom)
 
   return (
     <>
@@ -464,6 +464,18 @@ export function usesPresentationEffects(asset: SceneAsset | null): boolean {
 }
 
 /**
+ * Whether the post chain is mounted for the frame on screen.
+ *
+ * Bloom is the only presentation effect left and it defaults to 0; a Bloom of
+ * 0 mounts nothing, so by default slice and streamline pixels come straight
+ * from their unlit, un-tone-mapped materials -- the colours the legend's
+ * byte-checked stops name. The Vignette is gone for the same reason.
+ */
+export function presentationChainActive(asset: SceneAsset | null, bloom: number): boolean {
+  return bloom > 0 && usesPresentationEffects(asset)
+}
+
+/**
  * The WebGL surface, and nothing else.
  *
  * Every decision this component used to make -- what to fetch, what to keep on
@@ -475,8 +487,8 @@ export function usesPresentationEffects(asset: SceneAsset | null): boolean {
 export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
   const model = useSceneModel(onStatus)
   // Point clouds and isosurfaces use the adjacent phase legend as a data key.
-  // A full-frame bloom/vignette pass runs after material fog/tone-mapping
-  // flags and would therefore recolour even an explicitly unlit data layer.
+  // A full-frame bloom pass runs after material fog/tone-mapping flags and
+  // would therefore recolour even an explicitly unlit data layer.
   // Keep that presentation chain off those two representations. Slice pixels
   // retain their separately baselined pipeline; streamlines retain the legacy
   // speed presentation until each receives the same representation-level
@@ -485,7 +497,7 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
   // representation. During a cross-kind request the store leads the screen;
   // consulting it here would briefly recolour the old scientific frame (or
   // remove effects from the old presentation frame) before the response lands.
-  const showPresentationEffects = usesPresentationEffects(model.asset)
+  const showPresentationEffects = presentationChainActive(model.asset, model.state.bloom)
   // react-three/postprocessing creates this imperative composer in useMemo but
   // does not dispose it when its conditional component leaves. Own that gap at
   // the exposed ref boundary. The callback defers by one microtask so React's
@@ -511,8 +523,8 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
     >
       <SceneView {...model} />
       {showPresentationEffects ? (
-        /* Bloom and vignette read the rendered buffers back, so unlike
-           everything above them they cannot exist without a real renderer. */
+        /* Bloom reads the rendered buffer back, so it cannot exist without a
+           real renderer; it is mounted only while the viewer has turned it up. */
         <EffectComposer ref={composerRef} multisampling={0}>
           <Bloom
             intensity={model.state.bloom}
@@ -520,7 +532,6 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
             luminanceSmoothing={0.46}
             mipmapBlur
           />
-          <Vignette eskil={false} offset={0.18} darkness={0.76} />
         </EffectComposer>
       ) : null}
     </Canvas>

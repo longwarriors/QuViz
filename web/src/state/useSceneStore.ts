@@ -326,7 +326,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
   seedCount: 48,
   pointSize: 2.8,
   opacity: 1.0,
-  bloom: 0.12,
+  bloom: 0,
   exposure: 0.9,
   fogStrength: 0.18,
   autoRotate: false,
