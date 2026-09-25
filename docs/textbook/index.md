@@ -28,6 +28,8 @@
 | 9 | [叠加态与时间演化](09-superposition-time.md) | 什么样的叠加态会动，动的频率是多少？ |
 | 10 | [从密度到实验图样](10-experiment.md) | 实验到底“看见”了什么？ |
 | 11 | [对称性与杂化](11-symmetry-hybridization.md) | 杂化轨道是新的量子态，还是换了一组基？ |
+| 附录 A | [常见误区](appendix-a-misconceptions.md) | 各章误区的集中索引 |
+| 附录 B | [符号与单位](appendix-b-notation-units.md) | 原子单位、坐标约定与深链接语法 |
 
 ## 与站点其他部分的关系 {#other-parts}
 

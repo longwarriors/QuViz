@@ -9,7 +9,8 @@ server superposition presets on their playback frames. A figure outside it
 would show every reader "未预计算", so each ``data-lab`` is checked here in two
 ways: against the lab's deep-link grammar (key order
 ``embed,mode,n,l,m,z,basis,preset,t,rep,plane,obs``,
-``web/src/state/urlState.ts``) and against the catalogue content.
+``web/src/state/urlState.ts``) and against the catalogue content. Deep links a
+page quotes as inline code for the reader to copy get the same check.
 
 ``CHAPTERS`` is the registry the textbook tasks fill in. It records the exact
 level-2 section ids and figure deep links of each page, so a chapter cannot
@@ -302,6 +303,30 @@ CHAPTERS: dict[str, Chapter] = {
         figures=(
             "mode=eigenstate&n=2&l=1&m=0&basis=real&rep=isosurface",
             "mode=superposition&preset=2s-2pz&t=0&rep=slice&plane=xz&obs=wavefunction_real",
+        ),
+    ),
+    "appendix-a-misconceptions.md": Chapter(
+        sections=(
+            "density-vs-radial",
+            "nodes-and-kinetic-energy",
+            "nodes-are-not-planes",
+            "m-is-not-a-direction",
+            "cloud-is-not-a-trajectory",
+            "isosurface-is-not-a-boundary",
+            "colour-is-not-charge",
+            "stationary-is-not-still",
+            "superposition-is-not-hopping",
+            "detector-image-is-not-density",
+            "hybrids-are-not-observables",
+        ),
+        figures=(
+            "mode=eigenstate&n=2&l=0&m=0&basis=real&rep=slice&plane=xz&obs=probability_density",
+        ),
+    ),
+    "appendix-b-notation-units.md": Chapter(
+        sections=("atomic-units", "coordinates", "symbols", "representations", "deep-links"),
+        figures=(
+            "mode=superposition&preset=1s-2pz&t=8.4&rep=slice&plane=xz&obs=probability_density",
         ),
     ),
 }
@@ -658,6 +683,27 @@ def test_textbook_index_links_every_chapter_in_order() -> None:
     positions = [index.find(f"]({name})") for name in CHAPTERS]
     assert all(position >= 0 for position in positions), dict(zip(CHAPTERS, positions, strict=True))
     assert positions == sorted(positions)
+
+
+def test_quoted_deep_links_are_catalogue_states_in_the_lab_key_order() -> None:
+    """Deep links quoted as inline code (chapter 0, appendix B) must open a
+    precomputed state too, and appendix B must spell the lab's key order."""
+
+    quoted = {
+        path.name: re.findall(r"`#(mode=[^`]*)`", path.read_text(encoding="utf-8"))
+        for path in sorted(TEXTBOOK.glob("*.md"))
+    }
+    problems = [
+        f"{name}: {link}: {problem}"
+        for name, links in quoted.items()
+        for link in links
+        for problem in deep_link_problems(link)
+    ]
+    assert problems == [], "\n".join(problems)
+    appendix = "appendix-b-notation-units.md"
+    assert len(quoted[appendix]) == 2
+    order = f"`{', '.join(DEEP_LINK_KEY_ORDER)}`"
+    assert order in (TEXTBOOK / appendix).read_text(encoding="utf-8")
 
 
 def _catalogue_resolution(n: int) -> int:
