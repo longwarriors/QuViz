@@ -82,7 +82,8 @@
 
 - ✅ 可归因于请求的 `ValueError`、具名 `ScientificComputationError`、`FloatingPointError` 与 `OverflowError` 在全部七类科学资产 builder 路径上转成保留原因的 422；普通 `RuntimeError` 家族不再 blanket catch。唯一的第三方边界例外是 `skimage.measure.marching_cubes` 自身抛出的**精确** `RuntimeError`：builder 就地包装为 `ScientificComputationError`，所以极小但合法的 `1s, Z=1e-20` float32 等值面塌缩返回带原因的 422；该调用点注入 `RecursionError`，以及路由注入 `RecursionError`/`AssertionError` 的负控制仍为 500 — `tests/test_api.py`；
 - ✅ float64 极值采用“普通输入保留原算术，只有直接中间量接近边界或已经溢出/下溢才转入 100 位十进制复算”的门禁：径向归一化在 `float.__pow__` 舍入边界不再泄漏裸 `(34, 'Result too large')`，径向自变量在 `Z=a_mu=1e308` 时先安全约去共同尺度而不静默归零，密度 floor 与径向节点在最大有限值及最小次正规数边界按精确二进制输入正确舍入，NumPy 标量进入兜底也不会泄漏类型错误；最终结果确实不可表示才抛含参数语境的 `ValueError` 并由 HTTP 保留为可读 422；普通切片 golden 仍逐字节不变 — `tests/test_hydrogenic.py`、`tests/test_api.py`、`tests/test_slice_contract.py`；
-- ✅ 两类 slice 只保留私有 builder LRU，public builder 返回 deep copy，HTTP route 不再重复缓存大 payload；相同路由调用仍逐次经过 public builder，且调用方变异不能污染下一次结果 — `tests/test_api.py`、`tests/test_slice_builders.py`。
+- ✅ 两类 slice 只保留私有 builder LRU，public builder 返回 deep copy，HTTP route 不再重复缓存大 payload；相同路由调用仍逐次经过 public builder，且调用方变异不能污染下一次结果 — `tests/test_api.py`、`tests/test_slice_builders.py`；
+- ✅ 静态目录导出逐字节等于实时服务：进程内 ASGI 回放与 FastAPI `TestClient` 对点云（含 `X-QuViz-*` 头）、等值面、两种 422 与百分号编码的叠加态切片逐字节相同；响应体按 SHA-256 前 24 位去重命名，`manifest.json` 条目按键排序、`version` 为排序后 `(key, file, status)` 三元组摘要，单进程与进程池输出逐字节相同；5xx、404 或传输异常中止且不留下 manifest — `tests/test_export_asgi.py`、`tests/test_export_static_site.py`、`tests/test_cli.py`。
 
 ## 前端
 
