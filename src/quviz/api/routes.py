@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from math import tau
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
@@ -346,6 +347,11 @@ _SLICE_WORK_LIMIT = 1_500_000
 _CURRENT_FIELD_PATH_SAMPLE_LIMIT = 100_000
 _CURRENT_FIELD_WORK_LIMIT = 2_000_000
 _MAXIMUM_SUPERPOSITION_CURRENT_SEEDS = 40
+#: Route defaults of the superposition isosurface. The catalogue probe uses the
+#: same two numbers, so the published default representation is a statement
+#: about the request a client sends before touching any control.
+_DEFAULT_ISOSURFACE_RESOLUTION = 65
+_DEFAULT_ISOSURFACE_PROBABILITY_MASS = 0.90
 
 
 def _enforce_request_workload(
@@ -448,6 +454,15 @@ class SuperpositionCatalogEntry(BaseModel):
             "guards for this preset in either basis at the route-default arc_step; "
             "independent of Z and a_mu because the extent and default arc step scale "
             "together."
+        ),
+    )
+    default_representation: Literal["isosurface", "slice"] = Field(
+        description=(
+            "Representation a client opens this preset with: 'isosurface' when the route-default "
+            "superposition isosurface request (resolution 65, probability_mass 0.90, time 0, "
+            "Z = 1, a_mu = 1) builds in both bases, otherwise 'slice', which "
+            "slice_resolution_floor always admits. Derived by running that request through the "
+            "route's own workload guard and builder, not by a duplicated rule."
         ),
     )
 
@@ -568,6 +583,7 @@ def _superposition_catalog_entry(
             _superposition_current_seed_count_max(complex_state),
             _superposition_current_seed_count_max(real_state),
         ),
+        "default_representation": _superposition_default_representation(terms),
     }
 
 
@@ -619,31 +635,15 @@ def _cached_superposition_isosurface(
     )
 
 
-@router.get("/superposition/isosurface")
-def superposition_isosurface(
-    terms: str = Query(
-        _DEFAULT_SUPERPOSITION_TERMS,
-        min_length=1,
-        max_length=_MAXIMUM_TERM_SPEC_LENGTH,
-        description=_TERM_SPEC_HELP,
-    ),
-    time: float = Query(0.0, ge=-1_000.0, le=1_000.0),
-    basis: BasisKind = BasisKind.COMPLEX,
-    z: float = Query(1.0, gt=0.0, le=20.0),
-    a_mu: float = Query(1.0, gt=0.0, le=20.0),
-    resolution: int = Query(65, ge=49, le=81),
-    probability_mass: float = Query(0.90, ge=0.50, le=0.99),
+def _superposition_isosurface_payload(
+    state: SuperpositionState,
+    *,
+    time: float,
+    resolution: int,
+    probability_mass: float,
 ) -> SuperpositionIsosurfacePayload:
-    r"""The :math:`|\Psi(t)|^2` level set of a superposition at one instant."""
+    """Workload guard plus cached builder, shared by the route and the catalogue probe."""
 
-    state = _parse_superposition(
-        terms,
-        basis,
-        z=z,
-        a_mu=a_mu,
-        maximum_n=_MAXIMUM_ISOSURFACE_N,
-        operation="superposition isosurface",
-    )
     try:
         work_estimate = estimate_superposition_isosurface_workload(
             state,
@@ -663,15 +663,79 @@ def superposition_isosurface(
             unit="term-voxel evaluations",
         )
         return _isolated_cached_payload(
-            _cached_superposition_isosurface(
-                state,
-                time,
-                resolution,
-                probability_mass,
-            )
+            _cached_superposition_isosurface(state, time, resolution, probability_mass)
         )
     except _SCIENTIFIC_REQUEST_ERRORS as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@lru_cache(maxsize=16)
+def _superposition_default_representation(terms: str) -> Literal["isosurface", "slice"]:
+    """Open a preset on its isosurface only if the route-default request for it builds.
+
+    The probe is the request a client sends before touching any control: the
+    route-default ``resolution`` and ``probability_mass`` at ``time=0`` with
+    ``Z = a_mu = 1``, through the same workload guard and cached builder as the
+    route. It runs complex, then real; the first refusal publishes ``"slice"``,
+    which the preset's ``slice_resolution_floor`` always admits. ``"isosurface"``
+    is therefore published only when both bases build -- the safe intersection,
+    like ``streamline_seed_count_max``. Catalogue terms are fixed, so the
+    answer is cached per process; the first catalogue request pays a few
+    seconds for it, most of it one refused 2s + 2p_z build.
+
+    Only ``t = 0`` is probed. Today's presets are either stationary or free of
+    excited-s components, and only an excited-s component triggers the
+    general topology gate; a future oscillating preset with an excited-s term
+    would need its playback frames probed as well.
+    """
+
+    for basis in (BasisKind.COMPLEX, BasisKind.REAL):
+        try:
+            state = _parse_superposition(
+                terms,
+                basis,
+                maximum_n=_MAXIMUM_ISOSURFACE_N,
+                operation="superposition catalogue isosurface probe",
+            )
+            _superposition_isosurface_payload(
+                state,
+                time=0.0,
+                resolution=_DEFAULT_ISOSURFACE_RESOLUTION,
+                probability_mass=_DEFAULT_ISOSURFACE_PROBABILITY_MASS,
+            )
+        except HTTPException:
+            return "slice"
+    return "isosurface"
+
+
+@router.get("/superposition/isosurface")
+def superposition_isosurface(
+    terms: str = Query(
+        _DEFAULT_SUPERPOSITION_TERMS,
+        min_length=1,
+        max_length=_MAXIMUM_TERM_SPEC_LENGTH,
+        description=_TERM_SPEC_HELP,
+    ),
+    time: float = Query(0.0, ge=-1_000.0, le=1_000.0),
+    basis: BasisKind = BasisKind.COMPLEX,
+    z: float = Query(1.0, gt=0.0, le=20.0),
+    a_mu: float = Query(1.0, gt=0.0, le=20.0),
+    resolution: int = Query(_DEFAULT_ISOSURFACE_RESOLUTION, ge=49, le=81),
+    probability_mass: float = Query(_DEFAULT_ISOSURFACE_PROBABILITY_MASS, ge=0.50, le=0.99),
+) -> SuperpositionIsosurfacePayload:
+    r"""The :math:`|\Psi(t)|^2` level set of a superposition at one instant."""
+
+    state = _parse_superposition(
+        terms,
+        basis,
+        z=z,
+        a_mu=a_mu,
+        maximum_n=_MAXIMUM_ISOSURFACE_N,
+        operation="superposition isosurface",
+    )
+    return _superposition_isosurface_payload(
+        state, time=time, resolution=resolution, probability_mass=probability_mass
+    )
 
 
 @lru_cache(maxsize=2)

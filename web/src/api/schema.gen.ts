@@ -542,6 +542,12 @@ export interface components {
          * @description One client-ready preset, including its builder-derived capabilities.
          */
         SuperpositionCatalogEntry: {
+            /**
+             * Default Representation
+             * @description Representation a client opens this preset with: 'isosurface' when the route-default superposition isosurface request (resolution 65, probability_mass 0.90, time 0, Z = 1, a_mu = 1) builds in both bases, otherwise 'slice', which slice_resolution_floor always admits. Derived by running that request through the route's own workload guard and builder, not by a duplicated rule.
+             * @enum {string}
+             */
+            default_representation: "isosurface" | "slice";
             /** Id */
             id: string;
             /** Label */

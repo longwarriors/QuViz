@@ -514,6 +514,7 @@ describe('fetchSuperpositionCatalog', () => {
       note: '',
       slice_resolution_floor: 65,
       streamline_seed_count_max: 24,
+      default_representation: 'isosurface',
     },
   ]
 
@@ -558,6 +559,34 @@ describe('fetchSuperpositionCatalog', () => {
 
       await expect(fetchSuperpositionCatalog()).rejects.toThrow(
         /streamline_seed_count_max must be an integer in 1\.\.40/,
+      )
+    },
+  )
+
+  it.each(['isosurface', 'slice'] as const)(
+    'carries the published default representation %s through unchanged',
+    async (default_representation) => {
+      routeFetch({
+        '/api/superposition/catalog': () =>
+          jsonResponse([{ ...presets[0], default_representation }]),
+      })
+
+      const [preset] = await fetchSuperpositionCatalog()
+
+      expect(preset.default_representation).toBe(default_representation)
+    },
+  )
+
+  it.each([undefined, 'point_cloud', 'streamlines', 'SLICE', 1])(
+    'rejects a catalogue default representation outside the generated enum: %s',
+    async (default_representation) => {
+      routeFetch({
+        '/api/superposition/catalog': () =>
+          jsonResponse([{ ...presets[0], default_representation }]),
+      })
+
+      await expect(fetchSuperpositionCatalog()).rejects.toThrow(
+        /default_representation must be "isosurface" or "slice"/,
       )
     },
   )

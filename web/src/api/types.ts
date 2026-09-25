@@ -178,6 +178,12 @@ export interface SuperpositionCurrentPayload
 export type SuperpositionPreset = components['schemas']['SuperpositionCatalogEntry']
 
 /**
+ * What a catalogue preset opens on, as the server probed it: `'slice'` when the
+ * route-default isosurface request for that preset is refused (today 2s + 2p_z).
+ */
+export type SuperpositionDefaultRepresentation = SuperpositionPreset['default_representation']
+
+/**
  * One entry returned by `/api/orbitals/catalog`.
  *
  * Current catalogues carry `z` explicitly. Keep it optional at the client

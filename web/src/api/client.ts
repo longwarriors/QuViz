@@ -18,6 +18,7 @@ import type {
   SliceObservable,
   SlicePayload,
   SuperpositionCurrentPayload,
+  SuperpositionDefaultRepresentation,
   SuperpositionIsosurfacePayload,
   SuperpositionPreset,
   SuperpositionSlicePayload,
@@ -107,6 +108,13 @@ function parseOrbitalPreset(value: unknown, index: number): OrbitalPreset {
   return z === undefined ? preset : { ...preset, z }
 }
 
+/** The generated enum of SuperpositionCatalogEntry.default_representation. */
+function isSuperpositionDefaultRepresentation(
+  value: unknown,
+): value is SuperpositionDefaultRepresentation {
+  return value === 'isosurface' || value === 'slice'
+}
+
 function parseSuperpositionPreset(value: unknown, index: number): SuperpositionPreset {
   const location = `superposition catalog[${index}]`
   if (!isRecord(value)) throw new Error(`${location} must be an object`)
@@ -119,6 +127,7 @@ function parseSuperpositionPreset(value: unknown, index: number): SuperpositionP
     note,
     slice_resolution_floor,
     streamline_seed_count_max,
+    default_representation,
   } = value
   if (typeof id !== 'string' || !id.trim()) throw new Error(`${location}.id must be a string`)
   if (typeof label !== 'string' || !label.trim()) {
@@ -154,6 +163,9 @@ function parseSuperpositionPreset(value: unknown, index: number): SuperpositionP
         `${MINIMUM_SUPERPOSITION_STREAMLINE_SEEDS}..${MAXIMUM_SUPERPOSITION_STREAMLINE_SEEDS}`,
     )
   }
+  if (!isSuperpositionDefaultRepresentation(default_representation)) {
+    throw new Error(`${location}.default_representation must be "isosurface" or "slice"`)
+  }
 
   return {
     id,
@@ -163,6 +175,7 @@ function parseSuperpositionPreset(value: unknown, index: number): SuperpositionP
     note,
     slice_resolution_floor,
     streamline_seed_count_max,
+    default_representation,
   }
 }
 

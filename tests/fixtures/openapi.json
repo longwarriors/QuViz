@@ -653,6 +653,15 @@
       "SuperpositionCatalogEntry": {
         "description": "One client-ready preset, including its builder-derived capabilities.",
         "properties": {
+          "default_representation": {
+            "description": "Representation a client opens this preset with: 'isosurface' when the route-default superposition isosurface request (resolution 65, probability_mass 0.90, time 0, Z = 1, a_mu = 1) builds in both bases, otherwise 'slice', which slice_resolution_floor always admits. Derived by running that request through the route's own workload guard and builder, not by a duplicated rule.",
+            "enum": [
+              "isosurface",
+              "slice"
+            ],
+            "title": "Default Representation",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -695,7 +704,8 @@
           "period_au",
           "note",
           "slice_resolution_floor",
-          "streamline_seed_count_max"
+          "streamline_seed_count_max",
+          "default_representation"
         ],
         "title": "SuperpositionCatalogEntry",
         "type": "object"
