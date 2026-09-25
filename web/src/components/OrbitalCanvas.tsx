@@ -24,6 +24,7 @@ import { OrbitalSurface } from '../scene/OrbitalSurface'
 import { SceneReady } from '../scene/SceneReady'
 import { SliceField } from '../scene/SliceField'
 import { useSceneStore } from '../state/useSceneStore'
+import { AxisGizmo } from './AxisGizmo'
 import { SCENE_CANVAS_ID } from './sceneCapture'
 import { selectSceneRequestInputs } from './sceneRequest'
 import {
@@ -522,6 +523,9 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
       }}
     >
       <SceneView {...model} />
+      {/* Same flag as the composer below: the gizmo's Hud renders the scene
+          itself only while no composer does (see gizmoRenderPriority). */}
+      <AxisGizmo presentationChain={showPresentationEffects} />
       {showPresentationEffects ? (
         /* Bloom reads the rendered buffer back, so it cannot exist without a
            real renderer; it is mounted only while the viewer has turned it up. */

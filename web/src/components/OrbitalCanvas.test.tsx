@@ -66,6 +66,7 @@ import { fogRangeFor, SCENE_BACKGROUND } from '../scene/fog'
 import { SCENE_READY_ATTRIBUTE } from '../scene/SceneReady'
 import { useSceneStore } from '../state/useSceneStore'
 import { mount } from '../test/mount'
+import { AxisGizmo } from './AxisGizmo'
 import {
   aimCamera,
   cameraViewOf,
@@ -1414,6 +1415,29 @@ describe('OrbitalCanvas', () => {
 
     await unmount()
   })
+
+  it.each([
+    [0.42, true],
+    [0, false],
+  ] as const)(
+    'draws the axis triad inside the one scene canvas (bloom %s -> post chain %s)',
+    async (bloom, chain) => {
+      useSceneStore.setState({
+        mode: 'superposition',
+        bloom,
+        representation: 'streamlines',
+        superpositionStreamlineSeedCountMax: 40,
+      })
+      answerWith(superpositionCurrent())
+      const { props, unmount } = await mountShell()
+
+      const gizmo = childrenOf(props).find((child) => child.type === AxisGizmo)
+      expect(gizmo).toBeDefined()
+      expect((gizmo?.props as { presentationChain: boolean }).presentationChain).toBe(chain)
+
+      await unmount()
+    },
+  )
 
   it.each([
     [0, 'slice', false],
