@@ -3,16 +3,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { SceneStatus } from './api/types'
 import { ControlPanel } from './components/ControlPanel'
+import { ErrorBoundary, LabFailure } from './components/ErrorBoundary'
 import { Header } from './components/Header'
 import { Inspector } from './components/Inspector'
 import { Legend } from './components/Legend'
 import { LoadingOverlay } from './components/LoadingOverlay'
 import { OrbitalCanvas } from './components/OrbitalCanvas'
-import { representationLabel } from './components/sceneStatus'
+import { StatusChip } from './components/StatusChip'
 import { TimePill } from './components/TimePill'
-
-/** A clock reading, always with its unit and always to the same precision. */
-const timeText = (timeAu: number): string => `t=${timeAu.toFixed(1)} a.u.`
+import { WebGLGate } from './components/WebGLGate'
 
 /** The breakpoint where the permanent analysis rail becomes an overlay. */
 const COMPACT_WORKSPACE_QUERY = '(max-width: 1180px)'
@@ -44,65 +43,6 @@ function useCompactWorkspace(): boolean {
   }, [])
 
   return compact
-}
-
-/**
- * What the status bar says, as one place rather than a nested ternary inside
- * the footer.
- *
- * The five cases are ordered by how much they invalidate: an error and a
- * standing refusal both mean the numbers elsewhere on screen are not about a
- * current frame, `loading` means there is no frame at all, and `refreshing`
- * means there IS one but it is the previous one. Only the last case may say
- * the asset is ready, because only there is the asset on screen the one that
- * was asked for.
- */
-function statusLine(status: SceneStatus): { kind: string; text: string } {
-  if (status.error !== undefined) {
-    return { kind: 'error', text: `场景错误 · ${status.error}` }
-  }
-  if (status.unavailable !== undefined) {
-    return {
-      kind: 'unavailable',
-      text: `${representationLabel(status.unavailable.kind)}暂不可用 · ${status.unavailable.reason}`,
-    }
-  }
-  if (status.loading) {
-    return { kind: 'loading', text: '正在计算' }
-  }
-  if (status.refreshing === true) {
-    // Both times, always. Reporting only the requested one labels the frame on
-    // screen with a moment it does not show; reporting only the rendered one
-    // hides that a newer moment is on its way. The rendered time can be absent
-    // (a frame that arrived before the clock existed), and saying so is better
-    // than printing a number we do not have.
-    const showing =
-      status.renderedTimeAu !== undefined
-        ? `正在显示 ${timeText(status.renderedTimeAu)}`
-        : '正在显示上一帧'
-    const computing =
-      status.timeAu !== undefined ? `正在计算 ${timeText(status.timeAu)}` : '正在计算下一帧'
-    return { kind: 'refreshing', text: `${showing} · ${computing}` }
-  }
-  return { kind: 'ready', text: '科学资产已就绪' }
-}
-
-/**
- * The footer line. Exported so its five cases can be driven directly: reaching
- * them through the whole shell would need a canvas, and the branch that matters
- * most (`refreshing`) only ever occurs mid-flight.
- */
-export function StatusBar({ status }: { status: SceneStatus }) {
-  const { kind, text } = statusLine(status)
-  return (
-    <footer className="statusbar">
-      <span data-status={kind}>
-        <i className={kind === 'ready' ? 'status-dot' : `status-dot ${kind}`} /> {text}
-      </span>
-      <span>QVPC/1 · Float32 · WebGL 2</span>
-      <span>QuViz 0.1.0</span>
-    </footer>
-  )
 }
 
 export default function App() {
@@ -186,7 +126,15 @@ export default function App() {
             <h1>氢样量子态</h1>
             <p>拖动旋转 · 滚轮缩放 · 色彩表示 arg ψ，不表示电荷</p>
           </div>
-          <OrbitalCanvas onStatus={handleStatus} />
+          <ErrorBoundary
+            fallback={(error, reset) => (
+              <LabFailure title="三维场景无法显示" error={error} onRetry={reset} />
+            )}
+          >
+            <WebGLGate>
+              <OrbitalCanvas onStatus={handleStatus} />
+            </WebGLGate>
+          </ErrorBoundary>
           <Legend status={status} />
           <TimePill status={status} />
           <button
@@ -262,7 +210,7 @@ export default function App() {
           <span>详情</span>
         </button>
       </nav>
-      <StatusBar status={status} />
+      <StatusChip status={status} />
     </div>
   )
 }

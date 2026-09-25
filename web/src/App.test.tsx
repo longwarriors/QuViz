@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
-import { act, createElement, useEffect } from 'react'
+import { act, createElement, type ReactNode, useEffect } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import App, { StatusBar } from './App'
+import App from './App'
 import type { SceneStatus } from './api/types'
 import { mount, type MountedTree } from './test/mount'
 
@@ -13,8 +13,11 @@ import { mount, type MountedTree } from './test/mount'
  */
 const reported = vi.hoisted(() => ({ current: { loading: true } as SceneStatus }))
 
+/** Armed, the mocked canvas throws while rendering, as a failed shader compile would. */
+const sceneCrash = vi.hoisted(() => ({ armed: false }))
+
 // The real canvas wants WebGL. What this file measures is the SHELL: what the
-// status bar says about a status, and which of the two overlays that status
+// status chip says about a status, and which of the two overlays that status
 // produces -- so the canvas is reduced to the one thing App uses it for, a
 // source of `SceneStatus` values.
 vi.mock('./components/OrbitalCanvas', () => ({
@@ -22,6 +25,7 @@ vi.mock('./components/OrbitalCanvas', () => ({
     useEffect(() => {
       onStatus(reported.current)
     }, [onStatus])
+    if (sceneCrash.armed) throw new Error('shader failed to compile')
     return null
   },
 }))
@@ -86,19 +90,13 @@ vi.mock('./state/catalogs', () => ({
   ensureCatalogsLoaded: () => undefined,
 }))
 
+vi.mock('./components/WebGLGate', () => ({
+  WebGLGate: ({ children }: { children: ReactNode }) => children,
+}))
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
-
-async function statusBar(status: SceneStatus): Promise<MountedTree> {
-  return mount(createElement(StatusBar, { status }))
-}
-
-function line(tree: MountedTree): HTMLElement {
-  const node = tree.container.querySelector<HTMLElement>('[data-status]')
-  if (node === null) throw new Error('the status bar reports no status at all')
-  return node
-}
 
 async function shell(status: SceneStatus): Promise<MountedTree> {
   reported.current = status
@@ -161,98 +159,6 @@ function stubCompactWorkspace(matches: boolean): CompactWorkspaceStub {
     },
   }
 }
-
-describe('StatusBar says which frame the numbers describe', () => {
-  it('names the rendered time AND the in-flight time while refreshing', async () => {
-    const tree = await statusBar({
-      loading: false,
-      refreshing: true,
-      renderedTimeAu: 3.6,
-      timeAu: 9.0,
-      triangleCount: 4096,
-    })
-    try {
-      expect(line(tree).dataset.status).toBe('refreshing')
-      expect(line(tree).textContent).toContain('正在显示 t=3.6 a.u.')
-      expect(line(tree).textContent).toContain('正在计算 t=9.0 a.u.')
-      // The unqualified ready text would present the OLD frame's diagnostics
-      // as the current ones.
-      expect(line(tree).textContent).not.toContain('科学资产已就绪')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('still says a stale frame is stale when it does not know the frame time', async () => {
-    const tree = await statusBar({ loading: false, refreshing: true, timeAu: 9 })
-    try {
-      expect(line(tree).dataset.status).toBe('refreshing')
-      expect(line(tree).textContent).toContain('正在计算 t=9.0 a.u.')
-      expect(line(tree).textContent).not.toContain('科学资产已就绪')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('names the frame on screen even when the requested time is missing', async () => {
-    const tree = await statusBar({ loading: false, refreshing: true, renderedTimeAu: 3.6 })
-    try {
-      expect(line(tree).dataset.status).toBe('refreshing')
-      expect(line(tree).textContent).toContain('正在显示 t=3.6 a.u.')
-      expect(line(tree).textContent).toContain('正在计算下一帧')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('reports a standing refusal with its kind and its reason, not as an error', async () => {
-    const reason = 'No route samples a time-dependent state as a point cloud.'
-    const tree = await statusBar({
-      loading: false,
-      unavailable: { kind: 'point_cloud', reason },
-    })
-    try {
-      expect(line(tree).dataset.status).toBe('unavailable')
-      expect(line(tree).textContent).toContain('电子云暂不可用')
-      expect(line(tree).textContent).not.toContain('point_cloud 暂不可用')
-      expect(line(tree).textContent).toContain(reason)
-      expect(line(tree).textContent).not.toContain('场景错误')
-      expect(line(tree).textContent).not.toContain('科学资产已就绪')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('reports an error with the message, not just the word', async () => {
-    const tree = await statusBar({ loading: false, error: 'HTTP 422 from /api/orbitals/isosurface' })
-    try {
-      expect(line(tree).dataset.status).toBe('error')
-      expect(line(tree).textContent).toContain('HTTP 422 from /api/orbitals/isosurface')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('says computing while there is nothing on screen', async () => {
-    const tree = await statusBar({ loading: true })
-    try {
-      expect(line(tree).dataset.status).toBe('loading')
-      expect(line(tree).textContent).toContain('正在计算')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('says the asset is ready only when it is the current one', async () => {
-    const tree = await statusBar({ loading: false, renderedTimeAu: 12, pointCount: 28000 })
-    try {
-      expect(line(tree).dataset.status).toBe('ready')
-      expect(line(tree).textContent).toContain('科学资产已就绪')
-    } finally {
-      await tree.unmount()
-    }
-  })
-})
 
 describe('App wires the canvas status to the shell', () => {
   it('routes the arrived stationary or superposition label into the compact header', async () => {
@@ -461,6 +367,33 @@ describe('App wires the canvas status to the shell', () => {
       expect(text).toContain('正在计算 t=9.0 a.u.')
     } finally {
       await tree.unmount()
+    }
+  })
+
+  it('replaces only a crashed scene with a readable failure, and retries it', async () => {
+    // React reports the caught render error on console.error; keep the run quiet.
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    sceneCrash.armed = true
+    const tree = await shell({ loading: false })
+    try {
+      const alert = tree.container.querySelector('[role="alert"]')
+      expect(alert?.textContent).toContain('三维场景无法显示')
+      expect(alert?.textContent).toContain('shader failed to compile')
+      // The boundary wraps the scene alone: the controls and the status chip survive.
+      expect(tree.container.querySelector('[data-mock-controls]')).not.toBeNull()
+      expect(tree.container.querySelector('[data-status]')).not.toBeNull()
+
+      sceneCrash.armed = false
+      const retry = Array.from(alert?.querySelectorAll('button') ?? []).find(
+        (button) => button.textContent === '重试',
+      )
+      if (retry === undefined) throw new Error('the scene failure offers no retry')
+      await press(retry)
+      expect(tree.container.querySelector('[role="alert"]')).toBeNull()
+    } finally {
+      sceneCrash.armed = false
+      await tree.unmount()
+      quiet.mockRestore()
     }
   })
 
