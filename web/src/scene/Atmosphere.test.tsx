@@ -200,7 +200,8 @@ describe('Atmosphere', () => {
     const renderer = await render(false)
 
     // Ambient plus one neutral key light. The starfield and the violet/cyan
-    // fills are gone: every data material is unlit, so they only ever added
+    // fills are gone: no data material takes the scene's lights (the
+    // isosurface carries its own neutral headlight), so they only ever added
     // saturated colour that was not data (spec §4.4, "画布内").
     expect(typesIn(renderer)).toEqual(['AmbientLight', 'DirectionalLight'])
     const key = renderer.scene.children[1].instance as THREE.DirectionalLight

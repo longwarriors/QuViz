@@ -294,7 +294,9 @@ export function Legend({ status, bloom = 0, defaultExpanded = true }: LegendProp
         {representation === 'point_cloud'
           ? '位置从 |ψ|²d³r 采样；每个 marker 具有相同视觉权重。'
           : representation === 'isosurface'
-            ? '几何是 |ψ|² level set；颜色承载 phase。'
+            ? // The surface is shaded by its own neutral headlight
+              // (OrbitalSurface): hue is the key, lightness is not.
+              '几何是 |ψ|² level set；色相承载 phase，明暗只表示曲面朝向（光照），不表示数值。'
             : '等待资产元数据。'}
       </p>
     </LegendFrame>

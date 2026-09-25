@@ -11,7 +11,7 @@
 - 雾、Bloom 和 opacity 控件只出现在实际消费它们的展示层；相位点云/等值面刻意绕过会改写数据色的雾与全帧后处理，因此这些 representation 不显示 Bloom。Exposure 在后处理接管 tone mapping 的真实挂载路径完成验证前不向用户暴露；
 - 新资产到达后按轨道方向重新选择观察轴并 fit camera；
 - Inspector 从服务端 metadata 显示标签、能量、单位、几何/颜色语义和引用；
-- 等值面默认不透明、使用未照明 `MeshBasicMaterial` 和已校正绕向的 front faces；Phase 0 没有 Fresnel 映射，避免光照、视角或透明排序制造假结构。
+- 等值面默认不透明、已校正绕向，正反两面按各自朝向着色：一个小 `ShaderMaterial` 自带一盏跟随视角的中性白光，每个像素取相位色乘以 $a+(1-a)\max(0,\mathbf n\cdot\mathbf l)$（$a=0.45$），因此色相就是相位、明暗只表示曲面朝向，完全迎光处恰为图例色；它不接收场景灯光、雾与 tone mapping，也没有 Fresnel 映射，避免光照、视角或透明排序制造假结构。
 
 PR-8B/8C 又加了 $\psi$/相位平面切片：后端返回行主序标量场与右手 $(u,v,n)$ 标架，前端把它上传成一张 `DataTexture` 贴在一块按同一标架旋转的 quad 上（`src/scene/SliceField.tsx`）。
 

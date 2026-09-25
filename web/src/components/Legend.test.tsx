@@ -172,6 +172,24 @@ describe('Legend names what is actually on screen', () => {
     expect(markup).toContain('level set')
   })
 
+  it.each([
+    ['an eigenstate', { loading: false, metadata: eigenstateMetadata('isosurface', 'real') }],
+    ['a complex eigenstate', { loading: false, metadata: eigenstateMetadata('isosurface', 'complex') }],
+    ['a superposition', { loading: false, superposition: superpositionMetadata('isosurface') }],
+  ] as const)('says an isosurface of %s is shaded: hue is phase, lightness only orientation', (_kind, status) => {
+    const markup = render(status)
+    expect(markup).toContain(
+      '几何是 |ψ|² level set；色相承载 phase，明暗只表示曲面朝向（光照），不表示数值。',
+    )
+    // The old sentence let a reader take every shade for a different value.
+    expect(markup).not.toContain('颜色承载 phase。')
+  })
+
+  it('keeps the point-cloud key free of any lighting sentence: its markers are unlit', () => {
+    const markup = render({ loading: false, metadata: eigenstateMetadata('point_cloud', 'complex') })
+    expect(markup).not.toContain('明暗')
+  })
+
   it('waits for metadata rather than naming a representation it has not been told', () => {
     expect(render({ loading: true })).toContain('等待资产元数据。')
   })

@@ -6,7 +6,9 @@
  * `@react-three/test-renderer` with nothing mocked, so the attribute counts and
  * colours below are read off the `THREE.BufferGeometry` the component created.
  * Nothing here claims the surface LOOKS right -- there is no GPU in this
- * process and no frame is drawn; shading and silhouette are PR-8C's business.
+ * process and no frame is drawn. What the shading does to a colour is pinned
+ * instead through `isosurfaceShade`, the CPU statement of the formula, and
+ * the shader source is held to that formula word for word.
  *
  * Harness facts from the spike that this file depends on: specs cannot use JSX
  * (vitest.config.ts declares no React plugin, so esbuild uses the classic
@@ -23,7 +25,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { SurfaceGeometry } from '../api/types'
 import { phaseToLinearRgb, phaseToRgb } from './color'
-import { OrbitalSurface } from './OrbitalSurface'
+import {
+  ISOSURFACE_AMBIENT,
+  ISOSURFACE_LIGHT_DIRECTION,
+  isosurfaceShade,
+  OrbitalSurface,
+} from './OrbitalSurface'
 
 /* ------------------------------------------------------------- act scope */
 
@@ -114,8 +121,8 @@ describe('OrbitalSurface', () => {
 
     expect(group.type).toBe('Group')
     expect(mesh.type).toBe('Mesh')
-    // A phase surface neither receives a decorative lighting term nor casts a
-    // second, unlabeled silhouette onto the grid.
+    // Shading is the material's own headlight; the surface neither receives a
+    // shadow nor casts a second, unlabeled silhouette onto the grid.
     expect(mesh.castShadow).toBe(false)
     expect(mesh.receiveShadow).toBe(false)
 
@@ -128,9 +135,8 @@ describe('OrbitalSurface', () => {
 
     expect(attributeOf(geometry, 'position').count).toBe(data.vertices.length)
     expect(attributeOf(geometry, 'normal').count).toBe(data.normals.length)
-    // Indexed, not expanded: 4 triangles addressing 4 shared vertices. Keep
-    // the API's normals with those vertices even though the deliberately unlit
-    // data-colour material does not consume them.
+    // Indexed, not expanded: 4 triangles addressing 4 shared vertices. The
+    // API's normals stay with those vertices: the headlight shades by them.
     expect(geometry.getIndex()?.count).toBe(data.faces.length * 3)
 
     const position = attributeOf(geometry, 'position')
@@ -164,15 +170,98 @@ describe('OrbitalSurface', () => {
     await renderer.unmount()
   })
 
-  it('uses an unlit material immune to lights, normals, shadows, fog and tone mapping', async () => {
+  it('shades with one neutral headlight of its own: no scene light, fog or tone mapping reaches it', async () => {
     const { renderer, mesh } = await render(surface())
-    const material = mesh.material as THREE.MeshBasicMaterial
+    const material = mesh.material as THREE.ShaderMaterial
 
-    expect(material.type).toBe('MeshBasicMaterial')
+    // The phase colour still comes from the per-vertex attribute checked above.
     expect(material.vertexColors).toBe(true)
     expect(material.fog).toBe(false)
     expect(material.toneMapped).toBe(false)
-    expect(material.side).toBe(THREE.FrontSide)
+    // The scene's lights never reach the surface, so no light added to the
+    // scene later -- coloured or not -- can tint a phase.
+    expect(material.lights).toBe(false)
+    // Its one light has a direction and a strength and nothing else: there is
+    // no colour-valued uniform a hue could come from.
+    expect(Object.keys(material.uniforms).sort()).toEqual(['ambient', 'lightDirection', 'opacity'])
+    expect(material.uniforms.ambient.value).toBe(ISOSURFACE_AMBIENT)
+    const light = material.uniforms.lightDirection.value as THREE.Vector3
+    expect(light.length()).toBeCloseTo(1, 12)
+    // View space: +z points at the viewer, so a face turned to the camera is lit.
+    expect(light.z).toBeGreaterThan(0.5)
+    expect([light.x, light.y, light.z]).toEqual([...ISOSURFACE_LIGHT_DIRECTION])
+
+    // The shader applies exactly `isosurfaceShade`, as ONE scalar per fragment.
+    expect(material.fragmentShader).toContain(
+      'float shade = ambient + (1.0 - ambient) * max(dot(normal, lightDirection), 0.0);',
+    )
+    expect(material.fragmentShader).toContain('gl_FragColor = vec4(vColor * shade, opacity);')
+    const included = [...material.fragmentShader.matchAll(/#include\s*<([^>]+)>/g)].map((match) => match[1])
+    // Only the renderer's output encoding; fog and tone mapping would recolour data.
+    expect(included).toEqual(['colorspace_fragment'])
+    expect(material.vertexShader).not.toContain('#include')
+
+    await renderer.unmount()
+  })
+
+  it('lets shading only darken, so a fully lit vertex shows exactly the legend colour', async () => {
+    const data = surface()
+    const { renderer, geometry } = await render(data)
+    const color = attributeOf(geometry, 'color')
+
+    // A documented ambient floor in the ruled range: dark sides stay readable.
+    expect(ISOSURFACE_AMBIENT).toBeGreaterThanOrEqual(0.45)
+    expect(ISOSURFACE_AMBIENT).toBeLessThanOrEqual(0.6)
+    expect(isosurfaceShade(1)).toBe(1)
+    expect(isosurfaceShade(0)).toBe(ISOSURFACE_AMBIENT)
+    expect(isosurfaceShade(-1)).toBe(ISOSURFACE_AMBIENT)
+    let previous = -Infinity
+    for (let cosine = -1; cosine <= 1.0000001; cosine += 0.125) {
+      const shade = isosurfaceShade(cosine)
+      expect(shade).toBeGreaterThanOrEqual(previous)
+      expect(shade).toBeLessThanOrEqual(1)
+      previous = shade
+    }
+
+    data.phase.forEach((phase, index) => {
+      const linear = [color.getX(index), color.getY(index), color.getZ(index)]
+      // Fully lit: the colour the canvas shows after the output encoding is the
+      // legend's sRGB colour for this phase.
+      const lit = new THREE.Color()
+        .setRGB(linear[0] * isosurfaceShade(1), linear[1] * isosurfaceShade(1), linear[2] * isosurfaceShade(1))
+        .getRGB({ r: 0, g: 0, b: 0 }, THREE.SRGBColorSpace)
+      // To the byte the legend's CSS prints (the attribute is Float32, so the
+      // round trip carries ~1e-6 of single-precision error, far below a byte).
+      const byte = (channel: number): number => Math.round(channel * 255)
+      const [r, g, b] = phaseToRgb(phase)
+      expect([byte(lit.r), byte(lit.g), byte(lit.b)]).toEqual([byte(r), byte(g), byte(b)])
+      expect(lit.r).toBeCloseTo(r, 4)
+      expect(lit.g).toBeCloseTo(g, 4)
+      expect(lit.b).toBeCloseTo(b, 4)
+      // In shadow: every channel scaled by one factor, so the chromaticity --
+      // the hue the legend names -- is the lit one.
+      const dark = linear.map((channel) => channel * isosurfaceShade(-1))
+      const largest = linear.indexOf(Math.max(...linear))
+      linear.forEach((channel, component) => {
+        expect(dark[component] / dark[largest]).toBeCloseTo(channel / linear[largest], 12)
+      })
+    })
+
+    await renderer.unmount()
+  })
+
+  it('lights both faces, each by the normal of the side facing the viewer', async () => {
+    const { renderer, mesh } = await render(surface())
+    const material = mesh.material as THREE.ShaderMaterial
+
+    // A clipped or translucent surface shows its inside; it must not go black.
+    expect(material.side).toBe(THREE.DoubleSide)
+    expect(material.fragmentShader).toContain(
+      'vec3 normal = normalize(vViewNormal) * (gl_FrontFacing ? 1.0 : -1.0);',
+    )
+    // Normals go to view space, the space the headlight is given in.
+    expect(material.vertexShader).toContain('vViewNormal = normalMatrix * normal;')
+    expect(material.vertexShader).toContain('vColor = color;')
 
     await renderer.unmount()
   })
@@ -191,16 +280,17 @@ describe('OrbitalSurface', () => {
     const opaque = await render(surface(), 1)
     const opaqueMaterial = opaque.mesh.material as THREE.Material
     expect(opaqueMaterial.transparent).toBe(false)
-    expect((opaqueMaterial as THREE.MeshBasicMaterial).depthWrite).toBe(true)
+    expect(opaqueMaterial.depthWrite).toBe(true)
     await opaque.renderer.unmount()
 
     const glassy = await render(surface(), 0.5)
     const glassyMaterial = glassy.mesh.material as THREE.Material
     expect(glassyMaterial.transparent).toBe(true)
     expect(glassyMaterial.opacity).toBe(0.5)
+    expect((glassyMaterial as THREE.ShaderMaterial).uniforms.opacity.value).toBe(0.5)
     // A translucent lobe that wrote depth would occlude the lobe behind it and
     // hide half the orbital.
-    expect((glassyMaterial as THREE.MeshBasicMaterial).depthWrite).toBe(false)
+    expect(glassyMaterial.depthWrite).toBe(false)
     await glassy.renderer.unmount()
   })
 
@@ -238,7 +328,10 @@ describe('OrbitalSurface', () => {
     expect(dispose).not.toHaveBeenCalled()
     const meshNode = renderer.scene.children[0].children[0]
     expect((meshNode.instance as THREE.Mesh).geometry).toBe(geometry)
-    expect(((meshNode.instance as THREE.Mesh).material as THREE.Material).opacity).toBe(0.4)
+    const material = (meshNode.instance as THREE.Mesh).material as THREE.ShaderMaterial
+    expect(material.opacity).toBe(0.4)
+    // The shader reads its own uniform, not Material.opacity: it must follow too.
+    expect(material.uniforms.opacity.value).toBe(0.4)
 
     await renderer.unmount()
   })

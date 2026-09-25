@@ -18,8 +18,10 @@ const GRID_FADE_EXTENTS = 4
 /**
  * Lights and the ground grid -- and nothing decorative.
  *
- * Every data material (points, isosurface, slice, streamlines) is unlit, so
- * the lights change no data pixel; they stay neutral for anything lit later.
+ * No data material takes these lights: points, slices and streamlines are
+ * unlit, and the isosurface shades itself with its own neutral headlight
+ * (`OrbitalSurface`, `lights: false`), so the lights change no data pixel; they
+ * stay neutral for anything lit later.
  * The grid lies in the world xy plane (z is up, spec D8) just below the
  * object, scaled to what is on screen.
  *
