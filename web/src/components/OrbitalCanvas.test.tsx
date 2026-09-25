@@ -62,7 +62,7 @@ import {
   cameraDirectionForPlane,
   cameraUpForPlane,
 } from '../scene/camera'
-import { fogRangeFor } from '../scene/fog'
+import { fogRangeFor, SCENE_BACKGROUND } from '../scene/fog'
 import { SCENE_READY_ATTRIBUTE } from '../scene/SceneReady'
 import { useSceneStore } from '../state/useSceneStore'
 import { mount } from '../test/mount'
@@ -825,6 +825,17 @@ describe('RendererSettings', () => {
       createElement(RendererSettings, { exposure, fogStrength, extent }),
     )
 
+  it('paints the neutral scene background and fogs towards it', async () => {
+    const renderer = await mountSettings(1, 0.4, 20)
+    const scene = sceneOf(renderer)
+
+    expect((scene.background as THREE.Color).getHexString()).toBe(SCENE_BACKGROUND.slice(1))
+    expect((scene.fog as THREE.Fog).color.getHexString()).toBe(SCENE_BACKGROUND.slice(1))
+
+    await renderer.unmount()
+    expect(scene.background).toBeNull()
+  })
+
   it('takes its fog distances from the shared fog module', async () => {
     const renderer = await mountSettings(1, 0.4, 20)
     const fog = sceneOf(renderer).fog as THREE.Fog
@@ -991,7 +1002,7 @@ describe('SceneRoot', () => {
         ((object as THREE.Mesh).geometry as THREE.BufferGeometry | undefined)?.type ===
         'PlaneGeometry',
     )
-    expect(grid?.position.y).toBeCloseTo(-1.05 * extent, 6)
+    expect(grid?.position.z).toBeCloseTo(-1.05 * extent, 6)
 
     await renderer.unmount()
   })

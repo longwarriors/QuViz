@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { fogRangeFor } from './fog'
+import { fogRangeFor, SCENE_BACKGROUND } from './fog'
 
 describe('fogRangeFor', () => {
   it('asks for no fog at all at zero strength or below', () => {
@@ -48,5 +48,11 @@ describe('fogRangeFor', () => {
     if (weak === null || strong === null) throw new Error('unreachable')
     expect(weak.near).toBeGreaterThan(strong.near)
     expect(weak.far).toBeGreaterThan(strong.far)
+  })
+})
+
+describe('SCENE_BACKGROUND', () => {
+  it('is the neutral dark the page uses, so fog recedes into the page', () => {
+    expect(SCENE_BACKGROUND).toBe('#0e0f11')
   })
 })

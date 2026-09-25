@@ -82,6 +82,11 @@ describe('lab.css design tokens', () => {
     // rule (which necessarily contains the phrase) cannot trip the check.
     expect(labCss()).not.toMatch(/visibility:\s*visible/)
   })
+
+  it('paints the page with the scene background, so the canvas has no seam', async () => {
+    const { SCENE_BACKGROUND } = await import('./scene/fog')
+    expect(declaredTokens(read('./lab.css')).get('--qv-bg')).toBe(SCENE_BACKGROUND)
+  })
 })
 
 describe('self-hosted Google Sans Flex', () => {

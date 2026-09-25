@@ -18,7 +18,7 @@ import {
 } from '../scene/camera'
 import { CurrentStreamlines } from '../scene/CurrentStreamlines'
 import { ElectronCloud } from '../scene/ElectronCloud'
-import { fogRangeFor } from '../scene/fog'
+import { fogRangeFor, SCENE_BACKGROUND } from '../scene/fog'
 import { OrbitalSurface } from '../scene/OrbitalSurface'
 import { SceneReady } from '../scene/SceneReady'
 import { SliceField } from '../scene/SliceField'
@@ -74,9 +74,6 @@ function RendererClearBoundary({
 
   return null
 }
-
-/** The colour depth fades into: the page's own background, so fog reads as distance. */
-const FOG_COLOR = '#050a13'
 
 /**
  * Closest the camera is ever placed to the nucleus when it is re-aimed.
@@ -284,7 +281,7 @@ export function FitOnAssetChange({
   return children
 }
 
-/** Tone mapping and depth fog, both scaled to the scene actually on screen. */
+/** Tone mapping, the scene background and depth fog, scaled to the scene actually on screen. */
 export function RendererSettings({
   exposure,
   fogStrength,
@@ -301,6 +298,15 @@ export function RendererSettings({
   }, [exposure, gl])
 
   useEffect(() => {
+    // Opaque and neutral: a saved PNG and the visual baselines no longer
+    // depend on whatever the page paints behind a transparent canvas.
+    scene.background = new THREE.Color(SCENE_BACKGROUND)
+    return () => {
+      scene.background = null
+    }
+  }, [scene])
+
+  useEffect(() => {
     const range = fogRangeFor(extent, fogStrength)
     if (range === null) {
       // "No fog" and "fog you cannot reach" are different statements; the
@@ -309,7 +315,7 @@ export function RendererSettings({
       scene.fog = null
       return undefined
     }
-    scene.fog = new THREE.Fog(FOG_COLOR, range.near, range.far)
+    scene.fog = new THREE.Fog(SCENE_BACKGROUND, range.near, range.far)
     return () => {
       scene.fog = null
     }

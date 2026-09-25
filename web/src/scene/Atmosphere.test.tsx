@@ -87,19 +87,15 @@ function everyGeometry(renderer: Renderer): THREE.BufferGeometry[] {
 /* ------------------------------------------------------------------ specs */
 
 describe('Atmosphere', () => {
-  it('lights the scene from four sources and hangs a starfield behind it', async () => {
+  it('lights neutrally and hangs no decoration in the data frame', async () => {
     const renderer = await render(false)
 
-    // Ambient plus a key light plus two coloured fills: a single light leaves
-    // the unlit side of a lobe pure black, which reads as absent geometry
-    // rather than as an unlit surface.
-    expect(typesIn(renderer)).toEqual([
-      'AmbientLight',
-      'DirectionalLight',
-      'PointLight',
-      'PointLight',
-      'Points',
-    ])
+    // Ambient plus one neutral key light. The starfield and the violet/cyan
+    // fills are gone: every data material is unlit, so they only ever added
+    // saturated colour that was not data (spec §4.4, "画布内").
+    expect(typesIn(renderer)).toEqual(['AmbientLight', 'DirectionalLight'])
+    const key = renderer.scene.children[1].instance as THREE.DirectionalLight
+    expect(key.color.getHexString()).toBe('ffffff')
 
     await renderer.unmount()
   })
@@ -114,16 +110,17 @@ describe('Atmosphere', () => {
     await including.unmount()
   })
 
-  it('scales and drops the grid with the extent of what is on screen', async () => {
+  it('lays the grid in the xy plane, below the object along z', async () => {
     const renderer = await render(true, 20)
-    const grid = renderer.scene.children.find((child) => child.instance.type === 'Mesh')
-    const mesh = grid?.instance as THREE.Mesh
+    const mesh = renderer.scene.children.find((child) => child.instance.type === 'Mesh')
+      ?.instance as THREE.Mesh
     const parameters = (mesh.geometry as THREE.PlaneGeometry).parameters
 
-    // The grid is a floor: it sits just below the object rather than through
-    // it, at a distance proportional to the object's own size, because a
-    // 1s orbital and a 6h orbital differ by two orders of magnitude in extent.
-    expect(mesh.position.y).toBeCloseTo(-1.05 * 20, 6)
+    // z is up (spec D8), so the floor is a z = const plane. drei's Grid draws
+    // in its local xz plane; a +90° turn about x lays it in world xy.
+    expect(mesh.position.z).toBeCloseTo(-1.05 * 20, 6)
+    expect(mesh.position.y).toBe(0)
+    expect(mesh.rotation.x).toBeCloseTo(Math.PI / 2, 12)
     expect(parameters.width).toBeCloseTo(2.4 * 20, 6)
     expect(parameters.height).toBeCloseTo(2.4 * 20, 6)
 
@@ -131,17 +128,13 @@ describe('Atmosphere', () => {
   })
 
   it('keeps the grid off the camera and out of the far distance at the extremes', async () => {
-    // A tiny scene: the floor is held at a minimum so it does not close in
-    // around the camera's own orbit distance.
     const tiny = await render(true, 0.5)
     const tinyMesh = tiny.scene.children.find((child) => child.instance.type === 'Mesh')
       ?.instance as THREE.Mesh
-    expect(tinyMesh.position.y).toBeCloseTo(-1.05 * 4, 6)
+    expect(tinyMesh.position.z).toBeCloseTo(-1.05 * 4, 6)
     expect((tinyMesh.geometry as THREE.PlaneGeometry).parameters.width).toBeCloseTo(2.4 * 4, 6)
     await tiny.unmount()
 
-    // A huge scene: the plane is capped, because past this size the grid is
-    // beyond the fog anyway and the extra quad is fill cost for nothing.
     const huge = await render(true, 400)
     const hugeMesh = huge.scene.children.find((child) => child.instance.type === 'Mesh')
       ?.instance as THREE.Mesh
@@ -151,29 +144,22 @@ describe('Atmosphere', () => {
   })
 
   it('stands in for an unmeasured scene until the first asset arrives', async () => {
-    // `extent` is undefined between a scene change and its first payload.
     const renderer = await render(true)
     const mesh = renderer.scene.children.find((child) => child.instance.type === 'Mesh')
       ?.instance as THREE.Mesh
-    expect(mesh.position.y).toBeCloseTo(-1.05 * 8, 6)
+    expect(mesh.position.z).toBeCloseTo(-1.05 * 8, 6)
     await renderer.unmount()
   })
 
   it('leaves no undisposed geometry behind when it is unmounted', async () => {
     const renderer = await render(true, 20)
     const geometries = everyGeometry(renderer)
-    // The starfield's points and the grid's plane: if this ever reads 0 the
-    // audit below is vacuous.
-    expect(geometries.length).toBeGreaterThanOrEqual(2)
+    // The grid's plane: if this ever reads 0 the audit below is vacuous.
+    expect(geometries.length).toBeGreaterThanOrEqual(1)
     const disposals = geometries.map((geometry) => vi.spyOn(geometry, 'dispose'))
 
     await renderer.unmount()
 
-    // Atmosphere builds no geometry of its own, so it owns no dispose call --
-    // what it owes is that everything it MOUNTS is torn down. Both of its
-    // children hand their buffers to the reconciler as JSX children, which is
-    // what makes that automatic; a child that took ownership another way (or
-    // opted out with `dispose={null}`) would leak a buffer per scene change.
     disposals.forEach((dispose) => expect(dispose).toHaveBeenCalled())
   })
 })

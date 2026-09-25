@@ -36,3 +36,13 @@ export function fogRangeFor(extent: number | undefined, fogStrength: number): Fo
     far: scale * (8.0 - 4.0 * fogStrength),
   }
 }
+
+/**
+ * The scene's own background, and the colour depth fog recedes into.
+ *
+ * Neutral and identical to the page's --qv-bg (styleContract.test.ts), so the
+ * full-bleed canvas has no seam against the page, and the slice neutral
+ * #383838 keeps its "readable surface, quieter than the poles" contrast
+ * (1.635:1, sliceColor.test.ts).
+ */
+export const SCENE_BACKGROUND = '#0e0f11'
