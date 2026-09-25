@@ -44,6 +44,8 @@
   --qv-panel-w: 320px;
   --qv-detail-w: 360px;
   --qv-bottom-band: 128px;
+  --qv-legend-bottom: 24px;
+  --qv-legend-max-h: 200px;
   --qv-drawer-h: 56dvh;
   font-family: var(--qv-font);
   font-variant-numeric: tabular-nums;
@@ -647,7 +649,10 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
   display: flex;
   flex-direction: column;
   width: var(--qv-detail-w);
-  max-height: calc(100dvh - var(--qv-header-h) - var(--qv-edge) - 56px - var(--qv-bottom-band));
+  /* Under the search pill (the 56px), over the legend: the room the legend can
+     take (its bottom offset and its cap) plus a 12px gap stays free, and the
+     body scrolls instead. */
+  max-height: calc(100dvh - var(--qv-header-h) - var(--qv-edge) - 56px - var(--qv-legend-bottom) - var(--qv-legend-max-h) - 12px);
   border-radius: var(--qv-radius-panel);
   overflow: hidden;
 }
@@ -762,7 +767,7 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
 .legend {
   position: fixed;
   right: var(--qv-edge);
-  bottom: 24px;
+  bottom: var(--qv-legend-bottom);
   z-index: 10;
   width: 280px;
   padding: 10px 12px 12px 14px;
@@ -798,6 +803,14 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
    the full page height. */
 @media (min-width: 821px) {
   .qv-app[data-embed="true"] .legend { right: 12px; bottom: 12px; width: 240px; }
+}
+/* On desktop the legend sits under the detail panel, which reserves exactly
+   this much for it (.inspector-panel's max-height): the tallest keys measured
+   194px (streamlines) and 191px (slices) at 280px wide; anything taller -- the
+   Bloom warning, or narrower widths -- scrolls inside the pill instead of
+   growing into the panel. */
+@media (min-width: 821px) {
+  .legend { max-height: var(--qv-legend-max-h); overflow-y: auto; scrollbar-width: thin; }
 }
 
 /* ---- Loading overlay ---- */

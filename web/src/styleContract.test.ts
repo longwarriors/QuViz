@@ -205,6 +205,83 @@ describe('the phone bottom row does not collide', () => {
   })
 })
 
+/** The raw value of `property` in the rules of `css` whose whole selector is `selector`, first one that sets it. */
+function declaration(css: string, selector: string, property: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  for (const rule of css.matchAll(new RegExp(`(?:^|[{}])\\s*${escaped}\\s*\\{([^}]*)\\}`, 'g'))) {
+    const value = new RegExp(`(?:^|[;\\s])${property}:\\s*([^;]+);`).exec(rule[1])?.[1]
+    if (value !== undefined) return value.trim()
+  }
+  throw new Error(`${selector} sets no ${property}`)
+}
+
+/**
+ * A length as the browser would compute it at a viewport height: `Npx`,
+ * `Ndvh`, a `var(--qv-*)` token from :root, or a `calc()` of those joined by
+ * `+` and `-` -- the only shapes lab.css uses for the rules pinned below.
+ */
+function lengthAt(value: string, viewportHeight: number, tokens: Map<string, string>): number {
+  const text = value.trim()
+  const calc = /^calc\((.*)\)$/.exec(text)
+  if (calc !== null) {
+    const parts = calc[1].trim().split(/\s+([+-])\s+/)
+    let total = lengthAt(parts[0], viewportHeight, tokens)
+    for (let index = 1; index < parts.length; index += 2) {
+      const term = lengthAt(parts[index + 1], viewportHeight, tokens)
+      total += parts[index] === '+' ? term : -term
+    }
+    return total
+  }
+  const token = /^var\((--qv-[a-z0-9-]+)\)$/.exec(text)
+  if (token !== null) {
+    const resolved = tokens.get(token[1])
+    if (resolved === undefined) throw new Error(`${token[1]} is not declared on :root`)
+    return lengthAt(resolved, viewportHeight, tokens)
+  }
+  const unit = /^(\d+(?:\.\d+)?)(px|dvh)$/.exec(text)
+  if (unit === null) throw new Error(`cannot evaluate ${text}`)
+  return unit[2] === 'px' ? Number(unit[1]) : (Number(unit[1]) / 100) * viewportHeight
+}
+
+describe('the detail panel leaves room for the legend pill', () => {
+  // Measured in the built lab at 1600x900 and 1280x800 (280px-wide pill): the
+  // tallest expanded legends are the streamline key (194px) and the slice keys
+  // (191px). The detail panel at its max-height reached 771px (900) and 672px
+  // (800), 10-90px into them.
+  const TALLEST_MEASURED_LEGEND = 194
+  const GAP = 12
+
+  it.each([
+    [1600, 900],
+    [1280, 800],
+  ])('at %ix%i the panel ends above the tallest the legend can grow, and scrolls instead', (_width, height) => {
+    const css = labCss()
+    const tokens = declaredTokens(css)
+    const desktop = mediaBlocks(css, '@media (min-width: 821px)')
+
+    const panelTop = lengthAt(declaration(css, '.inspector-panel', 'top'), height, tokens)
+    const panelMax = lengthAt(declaration(css, '.inspector-panel', 'max-height'), height, tokens)
+    const legendBottom = lengthAt(declaration(css, '.legend', 'bottom'), height, tokens)
+    const legendMax = lengthAt(declaration(desktop, '.legend', 'max-height'), height, tokens)
+
+    // The legend cannot grow past its cap: it scrolls inside the pill instead.
+    expect(declaration(desktop, '.legend', 'overflow-y')).toBe('auto')
+    expect(legendMax).toBeGreaterThanOrEqual(TALLEST_MEASURED_LEGEND)
+    // The panel's bottom stays a gap above the highest the legend's top can reach.
+    expect(panelTop + panelMax + GAP).toBeLessThanOrEqual(height - legendBottom - legendMax)
+    // And its top stays below the search pill it hangs under.
+    const searchBottom =
+      lengthAt(declaration(css, '.qv-search', 'top'), height, tokens) +
+      lengthAt(declaration(css, '.qv-search-pill', 'height'), height, tokens)
+    expect(panelTop).toBeGreaterThanOrEqual(searchBottom + 8)
+    // What does not fit scrolls inside the panel rather than spilling out.
+    expect(declaration(css, '.inspector-panel', 'overflow')).toBe('hidden')
+    expect(declaration(css, '.inspector-body', 'overflow-y')).toBe('auto')
+    // Still a usable panel at the smaller size.
+    expect(panelMax).toBeGreaterThanOrEqual(400)
+  })
+})
+
 describe('self-hosted Google Sans Flex', () => {
   const FONT_DIRECTORY = new URL('../public/fonts/', import.meta.url)
 
