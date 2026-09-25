@@ -1,0 +1,23 @@
+{
+  "$comment": "Build-time tools run by vite-node (tools/static-requests.ts). A separate project rather than a widening of tsconfig.app.json: tools/ runs in node, reads the file system and must never be bundled into the SPA. It imports the coverage-gated enumeration logic from src/ and holds only the file-system wrapper itself. Referenced from tsconfig.json so `npm run typecheck` (tsc -b) type-checks it.",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tools.tsbuildinfo",
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"]
+  },
+  "include": ["tools/**/*.ts"]
+}
