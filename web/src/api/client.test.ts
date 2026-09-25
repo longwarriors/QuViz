@@ -29,9 +29,11 @@ import {
   fetchSuperpositionCurrentField,
   fetchSuperpositionIsosurface,
   fetchSuperpositionSlice,
+  lastSuperpositionCatalog,
   parseOrbitalCatalog,
   parsePointCloud,
   parseSuperpositionCatalog,
+  rememberSuperpositionCatalog,
 } from './client'
 import { parsePointCloud as parsePointCloudFromQvpc } from './qvpc'
 import { SliceContractError } from './sliceContract'
@@ -1078,5 +1080,26 @@ describe('catalogue parsers and the metadata fetcher', () => {
 
   it('names the orbital metadata fetcher both ways', () => {
     expect(fetchMetadata).toBe(fetchOrbitalMetadata)
+  })
+})
+
+describe('the remembered superposition catalogue', () => {
+  afterEach(() => {
+    rememberSuperpositionCatalog(null)
+  })
+
+  it('is what the last successful fetch parsed; a failed fetch leaves it alone', async () => {
+    rememberSuperpositionCatalog(null)
+    routeFetch({ '/api/superposition/catalog': () => errorResponse('catalog offline', 500) })
+    await expect(fetchSuperpositionCatalog()).rejects.toThrow('catalog offline')
+    expect(lastSuperpositionCatalog()).toBeNull()
+
+    routeFetch({ '/api/superposition/catalog': () => jsonResponse(SUPERPOSITION_CATALOG_FIXTURE) })
+    const fetched = await fetchSuperpositionCatalog()
+    expect(lastSuperpositionCatalog()).toEqual(fetched)
+
+    routeFetch({ '/api/superposition/catalog': () => jsonResponse([{ id: 'bad' }]) })
+    await expect(fetchSuperpositionCatalog()).rejects.toThrow('superposition catalog[0]')
+    expect(lastSuperpositionCatalog()).toEqual(fetched)
   })
 })

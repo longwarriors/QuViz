@@ -72,22 +72,25 @@ export interface StaticManifest {
 
 const SPEC_FORMAT = 'quviz-static-spec/1'
 const MANIFEST_FORMAT = 'quviz-static/1'
-const BASES: readonly BasisKind[] = ['real', 'complex']
-const REPRESENTATIONS: readonly RepresentationKind[] = [
+/** The bases a spec may list; the deep-link parser (src/state/urlState.ts) accepts the same. */
+export const BASES: readonly BasisKind[] = ['real', 'complex']
+/** The representations a spec may list; the deep-link parser accepts the same. */
+export const REPRESENTATIONS: readonly RepresentationKind[] = [
   'point_cloud',
   'isosurface',
   'slice',
   'streamlines',
 ]
 /** The store's n ceiling (useSceneStore.ts normalizeOrbital clamps n to 1..8). */
-const MAX_N = 8
+export const MAX_N = 8
 const SAMPLES = CAPABILITY_ROUTE_CONSTRAINTS.pointCloud.parameters.samples.uiBound
 const SEED = CAPABILITY_ROUTE_CONSTRAINTS.pointCloud.parameters.seed.uiBound
 const MASS = CAPABILITY_ROUTE_CONSTRAINTS.eigenstateIsosurface.parameters.probabilityMass.uiBound
 const SEED_COUNT_MAX = CAPABILITY_ROUTE_CONSTRAINTS.eigenstateCurrent.parameters.seedCount.uiBound.max
 const RESOLUTION_MIN = CAPABILITY_ROUTE_CONSTRAINTS.eigenstateIsosurface.parameters.resolution.uiBound.min
 
-const PRESET_ID = /^[a-z0-9][a-z0-9-]*$/
+/** A superposition preset id, in the manifest's spec and in a `#preset=` deep link alike. */
+export const PRESET_ID = /^[a-z0-9][a-z0-9-]*$/
 const VERSION = /^[0-9a-f]{16}$/
 const FILE_NAME = /^files\/[0-9a-f]{24}\.(?:json|bin)$/
 const REQUEST_KEY = /^\/api\/[a-z-]+\/[a-z-]+(?:\?\S*)?$/

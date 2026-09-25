@@ -257,6 +257,26 @@ export async function fetchCatalog(signal?: AbortSignal): Promise<OrbitalPreset[
   return parseOrbitalCatalog(await response.json())
 }
 
+/** The last superposition catalogue this page parsed successfully, or null before the first. */
+let knownSuperpositionCatalog: readonly SuperpositionPreset[] | null = null
+
+/**
+ * The superposition catalogue already on hand, without a request.
+ *
+ * The URL-state binding needs it to spell a preset id into the hash. Fetching
+ * the catalogue again for that would put a second /api/superposition/catalog
+ * request on every page load, which the visual gate's exact request ledger
+ * (web/e2e/slice.spec.ts:559-562) would rightly reject.
+ */
+export function lastSuperpositionCatalog(): readonly SuperpositionPreset[] | null {
+  return knownSuperpositionCatalog
+}
+
+/** Replace the remembered catalogue: the fetcher does after every successful parse; specs reset it. */
+export function rememberSuperpositionCatalog(catalog: readonly SuperpositionPreset[] | null): void {
+  knownSuperpositionCatalog = catalog
+}
+
 /** Validate a superposition catalogue at the wire boundary. The enumerator reuses it. */
 export function parseSuperpositionCatalog(payload: unknown): SuperpositionPreset[] {
   if (!Array.isArray(payload)) throw new Error('superposition catalog must be an array')
@@ -270,7 +290,9 @@ export async function fetchSuperpositionCatalog(
   if (!response.ok) {
     throw await responseError(response)
   }
-  return parseSuperpositionCatalog(await response.json())
+  const presets = parseSuperpositionCatalog(await response.json())
+  rememberSuperpositionCatalog(presets)
+  return presets
 }
 
 /**

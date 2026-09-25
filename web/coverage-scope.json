@@ -33,6 +33,7 @@
     "src/scene/shaders/orbitalPoints.ts",
     "src/scene/sliceColor.ts",
     "src/scene/sliceTexture.ts",
+    "src/state/urlState.ts",
     "src/state/useSceneStore.ts",
     "src/test/mount.tsx"
   ],
@@ -71,6 +72,7 @@
     "src/scene/shaders/orbitalPoints.ts",
     "src/scene/sliceColor.ts",
     "src/scene/sliceTexture.ts",
+    "src/state/urlState.ts",
     "src/state/useSceneStore.ts",
     "src/test/mount.tsx"
   ],
