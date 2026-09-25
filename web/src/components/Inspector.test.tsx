@@ -7,6 +7,11 @@ import type { OrbitalMetadata, SceneStatus, SuperpositionMetadata } from '../api
 import { mount } from '../test/mount'
 import { Inspector } from './Inspector'
 
+vi.mock('./charts/ChartsPanel', async () => {
+  const { createElement: element } = await import('react')
+  return { ChartsPanel: () => element('p', { 'data-mock-charts': '' }, 'charts') }
+})
+
 function eigenstateMetadata(energyHartree: number): OrbitalMetadata {
   return {
     state: { n: 2, l: 1, m: 0, z: 1, a_mu: 1, basis: 'complex' },
@@ -301,7 +306,7 @@ describe('Inspector reports every measured diagnostic', () => {
     const busy = render({ loading: true })
 
     expect(idle).toContain('<h2>暂无资产</h2>')
-    expect(idle).toContain('等待已验证 metadata')
+    expect(idle).toContain('等待已验证的元数据')
     expect(idle).toContain('<span class="energy-pill">—</span>')
     expect(idle).not.toContain('NaN')
     expect(busy).toContain('<h2>计算中…</h2>')
@@ -447,27 +452,27 @@ describe('Inspector disclosure', () => {
       const panels = Array.from(
         tree.container.querySelectorAll<HTMLElement>('[role="tabpanel"]'),
       )
-      expect(tabs.map((tab) => tab.textContent)).toEqual(['概览', '场景契约', '引用'])
-      expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1])
-      expect(panels).toHaveLength(3)
+      expect(tabs.map((tab) => tab.textContent)).toEqual(['概览', '图表', '场景契约', '引用'])
+      expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1])
+      expect(panels).toHaveLength(4)
       for (const [index, tab] of tabs.entries()) {
         expect(tab.getAttribute('aria-controls')).toBe(panels[index].id)
         expect(panels[index].getAttribute('aria-labelledby')).toBe(tab.id)
       }
 
-      await interact(() => tabs[1].click())
+      await interact(() => tabs[2].click())
       expect(tree.container.querySelector('.contract-panel')?.hasAttribute('hidden')).toBe(false)
 
-      tabs[1].focus()
+      tabs[2].focus()
       await interact(() => {
-        tabs[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+        tabs[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
       })
-      expect(document.activeElement).toBe(tabs[2])
-      expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, -1, 0])
+      expect(document.activeElement).toBe(tabs[3])
+      expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, -1, -1, 0])
       expect(tree.container.querySelector('.references-panel')?.hasAttribute('hidden')).toBe(false)
 
       await interact(() => {
-        tabs[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+        tabs[3].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
       })
       expect(document.activeElement).toBe(tabs[0])
       expect(tree.container.querySelector('.overview-panel')?.hasAttribute('hidden')).toBe(false)
@@ -475,12 +480,12 @@ describe('Inspector disclosure', () => {
       await interact(() => {
         tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
       })
-      expect(document.activeElement).toBe(tabs[2])
+      expect(document.activeElement).toBe(tabs[3])
 
       await interact(() => {
-        tabs[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
+        tabs[3].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
       })
-      expect(document.activeElement).toBe(tabs[2])
+      expect(document.activeElement).toBe(tabs[3])
 
       await interact(() => tree.container.querySelector<HTMLButtonElement>('.inspector-close')?.click())
       expect(onClose).toHaveBeenCalledOnce()
@@ -519,6 +524,29 @@ describe('Inspector disclosure', () => {
     } finally {
       await tree.unmount()
     }
+  })
+
+  it('mounts the charts only while their tab is open, so a closed tab asks nothing', async () => {
+    const tree = await mount(createElement(Inspector, { status: eigenstateStatus(-0.125) }))
+    try {
+      const tabs = Array.from(tree.container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+      expect(tree.container.querySelector('[data-mock-charts]')).toBeNull()
+      await interact(() => tabs[1].click())
+      expect(tree.container.querySelector('.charts-panel')?.hasAttribute('hidden')).toBe(false)
+      expect(tree.container.querySelector('[data-mock-charts]')).not.toBeNull()
+      await interact(() => tabs[0].click())
+      expect(tree.container.querySelector('[data-mock-charts]')).toBeNull()
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('floats as chrome with the arrived label and energy in its title row', () => {
+    const markup = render(eigenstateStatus(-0.125))
+    expect(markup).toContain('data-chrome=""')
+    expect(markup).toContain('<h2>test eigenstate</h2>')
+    expect(markup).toContain('<span class="energy-pill">-0.125000 Ha</span>')
+    expect(markup).toContain('ψ(2, 1, 0) · complex basis')
   })
 
   it('treats a requested mobile sheet as visible even when the permanent rail is closed', async () => {
