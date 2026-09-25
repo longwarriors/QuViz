@@ -173,7 +173,11 @@ const SUPER = 'mode=superposition&preset=1s-2pz&t=8.4&rep=slice&plane=xz&obs=pro
   assert.equal(first.querySelectorAll('.quviz-figure__stage').length, 1)
 
   // After an instant navigation the location changes but the site root does not.
-  window.location.href = 'https://example.test/repo/learn/concepts/model-map/'
+  // This target sits at a different depth (the textbook root itself) than the
+  // original https://example.test/repo/learn/textbook/01-wavefunction/, so a
+  // script that re-resolved __config.base per call (instead of once, at first
+  // load) would compute a different, wrong root here.
+  window.location.href = 'https://example.test/repo/learn/'
   const late = article.appendChild(new (first.constructor)('figure'))
   late.className = 'quviz-figure'
   late.setAttribute('data-lab', EIGEN)
