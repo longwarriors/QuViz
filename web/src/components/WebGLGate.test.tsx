@@ -24,9 +24,14 @@ describe('detectWebGL', () => {
     expect(loseContext).toHaveBeenCalledOnce()
   })
 
-  it('falls back to WebGL1, with or without the lose-context extension', () => {
+  it('rejects a WebGL1-only canvas: the renderer it guards creates only WebGL2', () => {
+    // three r163+ (this build pins 0.185.1) asks for 'webgl2' alone and throws
+    // 'Error creating WebGL context.' otherwise, so passing a WebGL1-only
+    // device would trade this message for a scene crash that 重试 cannot fix.
     const context = { getExtension: () => null }
-    expect(detectWebGL(() => fakeCanvas((kind) => (kind === 'webgl' ? context : null)))).toBe(true)
+    expect(detectWebGL(() => fakeCanvas((kind) => (kind === 'webgl' ? context : null)))).toBe(false)
+    // A WebGL2 context without the lose-context extension still passes.
+    expect(detectWebGL(() => fakeCanvas((kind) => (kind === 'webgl2' ? context : null)))).toBe(true)
   })
 
   it('reports no WebGL when neither context exists or the probe throws', () => {

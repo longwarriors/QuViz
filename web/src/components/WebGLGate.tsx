@@ -3,16 +3,18 @@ import { useState, type ReactNode } from 'react'
 import { runtimeMode } from '../api/runtimeMode'
 
 /**
- * Can this browser create a WebGL context at all? Probed on a DETACHED canvas
- * (the document keeps exactly one canvas, the scene's), and the probe context
- * is released at once so it does not count against the browser's context cap.
+ * Can this browser create the WebGL2 context the scene needs? WebGL1 does not
+ * count: three's WebGLRenderer (r163+) asks for 'webgl2' only and throws
+ * otherwise. Probed on a DETACHED canvas (the document keeps exactly one
+ * canvas, the scene's), and the probe context is released at once so it does
+ * not count against the browser's context cap.
  */
 export function detectWebGL(
   create: () => HTMLCanvasElement = () => document.createElement('canvas'),
 ): boolean {
   try {
     const canvas = create()
-    const context = canvas.getContext('webgl2') ?? canvas.getContext('webgl')
+    const context = canvas.getContext('webgl2')
     if (context === null) return false
     context.getExtension('WEBGL_lose_context')?.loseContext()
     return true
