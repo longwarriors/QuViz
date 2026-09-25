@@ -25,13 +25,16 @@ ISOSURFACE = (
     "/api/orbitals/isosurface?n=1&l=0&m=0&z=1&basis=real&resolution=49&probability_mass=0.8"
 )
 REFUSED = "/api/orbitals/metadata?n=2&l=1&m=2&z=1&basis=real"
+VALIDATION_REFUSED = "/api/orbitals/metadata?n=0&l=0&m=0&z=1&basis=real"
 ENCODED_SUPERPOSITION = (
     "/api/superposition/slice?terms=1%2C0%2C0%2C0.7071067811865476%3B2%2C1%2C0%2C0.7071067811865476"
     "&time=3.6&basis=complex&z=1&a_mu=1&resolution=65&plane=xz&observable=phase"
 )
 
 
-@pytest.mark.parametrize("target", [POINT_CLOUD, ISOSURFACE, REFUSED, ENCODED_SUPERPOSITION])
+@pytest.mark.parametrize(
+    "target", [POINT_CLOUD, ISOSURFACE, REFUSED, VALIDATION_REFUSED, ENCODED_SUPERPOSITION]
+)
 def test_replay_is_byte_identical_to_the_test_client(target: str) -> None:
     ours = replay.get(target)
     theirs = live.get(target)
