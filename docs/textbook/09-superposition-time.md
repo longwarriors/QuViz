@@ -36,14 +36,7 @@ $$
 实验室正是这样计算叠加态的：给每一项乘上它的解析相位因子，再把各项相加。其中没有数值的时间步进，所以也没有随时间累积的误差。
 能量取[第 2 章](02-hydrogen-levels.md#energy-levels)的能级公式；教材版实验室取 $Z=1$、$a_\mu=1$，所以 $E_n=-1/(2n^2)$ Ha。
 
-实验室提供四个叠加态预设，每个都是两个本征态的等权叠加，两项的系数都是 $1/\sqrt2$：
-
-| 预设 | 两项 | 能量差 | 周期 |
-|---|---|---|---|
-| $1s+2p_z$ | $\psi_{100}$ 与 $\psi_{210}$ | $\tfrac38$ Ha | $16\pi/3\approx16.755\,\hbar/E_h$ |
-| $1s+3d_{z^2}$ | $\psi_{100}$ 与 $\psi_{320}$ | $\tfrac49$ Ha | $9\pi/2\approx14.137\,\hbar/E_h$ |
-| $2s+2p_z$ | $\psi_{200}$ 与 $\psi_{210}$ | 0 | 不振荡 |
-| 2p(+1) + 2p(−1) | $\psi_{211}$ 与 $\psi_{21,-1}$ | 0 | 不振荡 |
+实验室的四个叠加态预设 $1s+2p_z$、$1s+3d_{z^2}$、$2s+2p_z$ 与 2p(+1) + 2p(−1) 都是两个本征态的等权叠加，两项的系数都是 $1/\sqrt2$。
 
 ## 干涉项与拍频 {#interference}
 
@@ -72,13 +65,8 @@ $$
 ## 1s + 2p_z：Bohr 振荡 {#bohr-oscillation}
 
 预设 $1s+2p_z$ 是 $(\psi_{1s}+\psi_{2p_z})/\sqrt2$。两项的能量差是 $\hbar\omega=E_2-E_1=\tfrac38$ Ha，所以
-
-$$
-T=\frac{2\pi}{\omega}=\frac{16\pi}{3}\approx16.755\,\hbar/E_h\approx0.405\ \text{fs}
-$$
-
-$\hbar\omega\approx10.20$ eV 正是 $2p\to1s$ 跃迁发出的 Lyman α 光子的能量（[第 2 章](02-hydrogen-levels.md#exercises)思考题 2.2）：
-密度振荡的频率就是这条谱线的频率。
+$T=2\pi/\omega=16\pi/3\approx16.755\,\hbar/E_h\approx0.405$ fs。$\hbar\omega\approx10.20$ eV 正是 $2p\to1s$ 跃迁发出的 Lyman α 光子的能量
+（[第 2 章](02-hydrogen-levels.md#exercises)思考题 2.2）：密度振荡的频率就是这条谱线的频率。
 
 两个系数都是实数 $1/\sqrt2$，代入上一节的公式，偶极随时间余弦振荡：
 
@@ -128,10 +116,7 @@ $R_{10}$ 与 $R_{32}$ 在 $r>0$ 处都是正的，所以它的符号只由角向
 半个周期后符号反转，锥内减弱、锥外增强，分布沿 $z$ 轴收缩、在 $xy$ 平面附近鼓起。这种一伸一缩就是四极「呼吸」。
 
 呼吸的幅度并不大。$3d_{z^2}$ 自身的两瓣始终让整体分布沿 $z$ 轴拉长，四极矩只在一个正值上下起伏：
-
-$$
-\langle3z^2-r^2\rangle=\left(36+\frac{243}{64\sqrt6}\cos\omega t\right)a_0^2\approx\left(36+1.55\cos\omega t\right)a_0^2
-$$
+$\langle3z^2-r^2\rangle=\bigl(36+\tfrac{243}{64\sqrt6}\cos\omega t\bigr)\,a_0^2\approx(36+1.55\cos\omega t)\,a_0^2$。
 
 变化集中在离核约 1–5 $a_0$ 的一圈，也就是 $1s$ 与 $3d_{z^2}$ 两项都不小的地方；更靠近核处由 $1s$ 主导，更远处由 $3d_{z^2}$ 的两瓣主导，
 几乎不随时间变化。局部的相对变化可以很大，例如 $z$ 轴上离核 $3.5\,a_0$ 处，$t=7$ 时的密度只有 $t=0$ 时的约 1.5 %；
@@ -145,27 +130,17 @@ $$
 ## 能量简并的负对照 {#degenerate-controls}
 
 预设 $2s+2p_z$ 是 $(\psi_{2s}+\psi_{2p_z})/\sqrt2$。两项的 $n$ 相同，$E_{2s}=E_{2p}=E_2$，所以
-
-$$
-\Psi(\mathbf r,t)=e^{-iE_2t/\hbar}\,\Psi(\mathbf r,0)
-$$
-
-整个波函数只多出一个全局相位。密度 $\lvert\Psi\rvert^2$ 在任何时刻都与 $t=0$ 时相同；概率流也处处为零，因为 $\Psi(\mathbf r,0)$ 是实函数，
-乘上全局相位后仍然没有流（第 8 章）。
+$\Psi(\mathbf r,t)=e^{-iE_2t/\hbar}\,\Psi(\mathbf r,0)$：整个波函数只多出一个全局相位。密度 $\lvert\Psi\rvert^2$ 在任何时刻都与 $t=0$ 时相同；
+概率流也处处为零，因为 $\Psi(\mathbf r,0)$ 是实函数，乘上全局相位后仍然没有流（第 8 章）。
 
 这个密度并不对称。$2s$ 在 $r=2a_0$ 处有[径向节点](03-radial-nodes.md#radial-nodes)，节点以外 $\psi_{2s}<0$，与 $\psi_{2p_z}$ 在 $z<0$ 一侧的负瓣相长；
-节点以内虽然偏向 $+z$，却只占 5.27 % 的概率。结果是 7/8 的概率在 $z<0$ 一侧，偶极是
-
-$$
-\langle z\rangle=\langle200\lvert z\rvert210\rangle=-3a_0
-$$
-
+节点以内虽然偏向 $+z$，却只占 5.27 % 的概率。结果是 7/8 的概率在 $z<0$ 一侧，偶极 $\langle z\rangle=\langle200\lvert z\rvert210\rangle=-3a_0$，
 在任何时刻都是这个值。一个偏向一侧、却一动不动的密度说明，「偏」与「动」是两回事：运动只来自能量差。
 
 全局相位也并非看不见。$\Psi(\mathbf r,0)$ 是实函数，所以 $\operatorname{Re}\Psi=\cos(E_2t/\hbar)\,\Psi(\mathbf r,0)$，
 $\operatorname{Im}\Psi=-\sin(E_2t/\hbar)\,\Psi(\mathbf r,0)$。如果在不同时刻画实部、虚部或相位切片，它们会随全局相位转动，
-正如[第 7 章](07-phase-slices.md#global-phase)所说；密度却始终不动。任何让这个密度动起来的画面都是程序错误（bug）。
-密度既然不变，教材版实验室就只为两个简并预设存了 $t=0$ 一帧，时间胶囊也不提供播放（见下一节）。
+正如[第 7 章](07-phase-slices.md#global-phase)所说；密度却始终不动。任何让这个密度动起来的画面都是程序错误（bug），
+所以实验室不播放简并预设（见下一节）。
 
 另一个简并预设 2p(+1) + 2p(−1) 在[第 4 章](04-real-complex.md#basis-change)出现过：$(\psi_{21,+1}+\psi_{21,-1})/\sqrt2=-i\,\psi_{2p_y}$。
 两项同属 $n=2$，所以它同样只随时间多出全局相位，密度就是静止的 $2p_y$ 两瓣。两个分量单独看都绕 $z$ 轴环流、方向相反（第 8 章），
