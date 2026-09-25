@@ -181,6 +181,7 @@ export function Legend({ status }: { status: SceneStatus }) {
             {status.maxSpeed !== undefined ? `${status.maxSpeed.toPrecision(3)} a.u.` : 'max'}
           </span>
         </div>
+        <p>色带横轴为 √(|j|/ρ ÷ max)：中点对应 max 的 1/4；颜色在两端色之间按线性光插值。</p>
         <p>
           <strong>j</strong>/ρ 的 streamlines 按弧长等距采样；颜色表示速率，不表示 phase。
           这些是概率流线，不是电子轨迹。

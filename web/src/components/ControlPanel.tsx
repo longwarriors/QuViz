@@ -908,9 +908,6 @@ export function ControlPanel({
         {store.representation !== 'slice' ? (
           <DisplayRow control="opacity" label="透明度" value={Math.round(store.opacity * 100)} min={25} max={100} step={1} suffix="%" onChange={(value) => store.setOpacity(value / 100)} />
         ) : null}
-        {store.representation === 'streamlines' ? (
-          <DisplayRow control="fog" label="雾强度" value={Math.round(store.fogStrength * 100)} min={0} max={70} step={2} suffix="%" onChange={(value) => store.setFogStrength(value / 100)} />
-        ) : null}
         {store.representation === 'slice' || store.representation === 'streamlines' ? (
           <DisplayRow control="bloom" label="Bloom" value={Math.round(store.bloom * 100)} min={0} max={50} step={1} suffix="%" onChange={(value) => store.setBloom(value / 100)} />
         ) : null}

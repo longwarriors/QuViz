@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 
 import type { StreamlineGeometry } from '../api/types'
+import { speedRampCoordinate, speedRampLinearRgb } from './speedColor'
 
 interface CurrentStreamlinesProps {
   /**
@@ -33,9 +34,6 @@ export function CurrentStreamlines({ data, opacity }: CurrentStreamlinesProps) {
   const geometry = useMemo(() => {
     const positions: number[] = []
     const colors: number[] = []
-    const slow = new THREE.Color('#2b6cff')
-    const fast = new THREE.Color('#ff4d6d')
-    const scale = data.max_speed > 0 ? data.max_speed : 1
 
     data.lines.forEach((line, lineIndex) => {
       const speeds = data.speed[lineIndex]
@@ -43,9 +41,9 @@ export function CurrentStreamlines({ data, opacity }: CurrentStreamlinesProps) {
         // LineSegments: every drawn segment needs both endpoints.
         positions.push(...line[index], ...line[index + 1])
         for (const offset of [0, 1]) {
-          const normalized = Math.min(1, Math.max(0, (speeds[index + offset] ?? 0) / scale))
-          const color = slow.clone().lerp(fast, Math.sqrt(normalized))
-          colors.push(color.r, color.g, color.b)
+          colors.push(
+            ...speedRampLinearRgb(speedRampCoordinate(speeds[index + offset], data.max_speed)),
+          )
         }
       }
     })
@@ -66,7 +64,15 @@ export function CurrentStreamlines({ data, opacity }: CurrentStreamlinesProps) {
 
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial vertexColors transparent={opacity < 0.999} opacity={opacity} />
+      {/* Speed is data: the legend beside it is byte-checked against this
+          un-tone-mapped, unfogged colour (speedColor.test.ts). */}
+      <lineBasicMaterial
+        vertexColors
+        transparent={opacity < 0.999}
+        opacity={opacity}
+        toneMapped={false}
+        fog={false}
+      />
     </lineSegments>
   )
 }

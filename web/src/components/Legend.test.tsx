@@ -78,6 +78,8 @@ describe('Legend names what is actually on screen', () => {
     expect(markup).toContain('概率流速率 |j|/ρ')
     expect(markup).toContain('0.0421 a.u.')
     expect(markup).not.toContain('phase-wheel')
+    // The ramp is laid out in √(|j|/ρ ÷ max), matching the renderer's sqrt map.
+    expect(markup).toContain('色带横轴为 √(|j|/ρ ÷ max)')
   })
 
   it('says max rather than inventing a number when no speed was reported', () => {

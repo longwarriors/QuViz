@@ -334,6 +334,20 @@ describe('CurrentStreamlines', () => {
     await renderer.unmount()
   })
 
+  it('draws speed as data: no tone mapping and no fog on the line material', async () => {
+    const { renderer, segments } = await render(eigenstateField())
+    const material = segments.material as THREE.LineBasicMaterial
+
+    // The legend is byte-checked against speedRampHex (speedColor.test.ts), the
+    // colour an unlit, un-tone-mapped, unfogged line shows. ACES at exposure 0.9
+    // or a depth fog would make the key lie about every vertex.
+    expect(material.toneMapped).toBe(false)
+    expect(material.fog).toBe(false)
+    expect(material.vertexColors).toBe(true)
+
+    await renderer.unmount()
+  })
+
   it('disposes its geometry on unmount', async () => {
     const { renderer, geometry } = await render(eigenstateField())
     const dispose = vi.spyOn(geometry, 'dispose')

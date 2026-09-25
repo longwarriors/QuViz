@@ -280,10 +280,15 @@ h1, h2, p { margin: 0; }
 /* The knee sits at 50%, exactly where sequentialRgb's SEQUENTIAL_KNEE is. */
 .density-ramp { height: 7px; border-radius: 10px; background: linear-gradient(90deg, #383838, #4646fa 50%, #acacfd); }
 
+/*
+  The streamline speed ramp: speedRampHex(t) from scene/speedColor.ts at the
+  nine SPEED_LEGEND_STOPS, t = √(|j|/ρ ÷ max). speedColor.test.ts reads these
+  stops back and fails if one drifts from the renderer by a single byte.
+*/
 .speed-ramp {
   height: 10px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #2b6cff 0%, #7a5bd6 50%, #ff4d6d 100%);
+  background: linear-gradient(90deg, #2b6cff 0%, #6b69f3 12.5%, #8d65e6 25%, #a862d7 37.5%, #be5ec8 50%, #d05ab6 62.5%, #e156a3 75%, #f1528b 87.5%, #ff4d6d 100%);
 }
 .phase-labels { display: flex; justify-content: space-between; margin-top: 4px; color: var(--muted); font-family: var(--mono); font-size: 8px; }
 .legend p { margin-top: 9px; color: var(--muted); font-size: 9px; line-height: 1.55; }

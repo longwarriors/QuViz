@@ -1143,7 +1143,7 @@ describe('ControlPanel controls write to the store', () => {
     ['point_cloud', ['pointSize', 'opacity'], ['点尺寸', '透明度']],
     ['isosurface', ['opacity'], ['透明度']],
     ['slice', ['bloom'], ['Bloom']],
-    ['streamlines', ['opacity', 'fog', 'bloom'], ['透明度', '雾强度', 'Bloom']],
+    ['streamlines', ['opacity', 'bloom'], ['透明度', 'Bloom']],
   ])('%s exposes exactly the display controls its renderer consumes', async (
     representation,
     expectedControls,
@@ -1187,8 +1187,7 @@ describe('ControlPanel controls write to the store', () => {
     try {
       const knob = (name: string): HTMLInputElement | null =>
         flow.container.querySelector<HTMLInputElement>(`input[data-display="${name}"]`)
-      await setValue(knob('fog'), 'fog', '40')
-      expect(useSceneStore.getState().fogStrength).toBeCloseTo(0.4, 10)
+      expect(knob('fog')).toBeNull()
       await setValue(knob('bloom'), 'bloom', '30')
       expect(useSceneStore.getState().bloom).toBeCloseTo(0.3, 10)
     } finally {
