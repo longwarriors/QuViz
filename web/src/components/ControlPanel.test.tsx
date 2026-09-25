@@ -70,6 +70,7 @@ const CATALOGUE = vi.hoisted(() => ({
       note: 'Bohr oscillation',
       slice_resolution_floor: 65,
       streamline_seed_count_max: 40,
+      default_representation: 'isosurface',
     },
     {
       id: 'ring',
@@ -79,6 +80,7 @@ const CATALOGUE = vi.hoisted(() => ({
       note: 'ring current',
       slice_resolution_floor: 65,
       streamline_seed_count_max: 40,
+      default_representation: 'isosurface',
     },
     {
       id: '1s-3dz2',
@@ -88,6 +90,7 @@ const CATALOGUE = vi.hoisted(() => ({
       note: 'quadrupole breathing',
       slice_resolution_floor: 103,
       streamline_seed_count_max: 24,
+      default_representation: 'isosurface',
     },
   ],
 }))
@@ -1371,6 +1374,45 @@ describe('ControlPanel controls write to the store', () => {
     } finally {
       await tree.unmount()
       mixture.period_au = originalPeriod
+    }
+  })
+
+  it('opens a mixture on the representation its catalogue entry publishes', async () => {
+    const mixture = CATALOGUE.mixtures[1]
+    const original = mixture.default_representation
+    mixture.default_representation = 'slice'
+    useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
+    const tree = await mount(createElement(ControlPanel))
+    try {
+      const mixtures = tree.container.querySelectorAll<HTMLButtonElement>('.mixture-list .preset')
+      await press(mixtures[1], 'the second mixture')
+
+      const state = useSceneStore.getState()
+      expect(state.superpositionDefaultRepresentation).toBe('slice')
+      expect(state.representation).toBe('slice')
+      expect(planSceneRequest(selectSceneRequestInputs(state))).toMatchObject({
+        status: 'available',
+        endpoint: '/api/superposition/slice',
+      })
+    } finally {
+      await tree.unmount()
+      mixture.default_representation = original
+    }
+  })
+
+  it('records the selected mixture default from the catalogue without moving the picture', async () => {
+    const mixture = CATALOGUE.mixtures[0]
+    const original = mixture.default_representation
+    mixture.default_representation = 'slice'
+    useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
+    const tree = await mount(createElement(ControlPanel))
+    try {
+      const state = useSceneStore.getState()
+      expect(state.superpositionDefaultRepresentation).toBe('slice')
+      expect(state.representation).toBe('isosurface')
+    } finally {
+      await tree.unmount()
+      mixture.default_representation = original
     }
   })
 

@@ -336,6 +336,7 @@ export function ControlPanel({
             selected.terms,
             selected.slice_resolution_floor,
             selected.streamline_seed_count_max,
+            selected.default_representation,
           )
       })
       .catch(() => {
@@ -657,6 +658,7 @@ export function ControlPanel({
                       mixture.label,
                       mixture.slice_resolution_floor,
                       mixture.streamline_seed_count_max,
+                      mixture.default_representation,
                     )
                   }
                 >

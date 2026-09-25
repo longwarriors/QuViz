@@ -8,6 +8,7 @@ import type {
   PrincipalPlane,
   RepresentationKind,
   SliceObservable,
+  SuperpositionDefaultRepresentation,
 } from '../api/types'
 
 export type SceneMode = 'eigenstate' | 'superposition'
@@ -20,6 +21,12 @@ interface SceneStore {
   superpositionSliceResolutionFloor: number
   /** Workload-safe streamline ceiling published for the selected mixture. */
   superpositionStreamlineSeedCountMax: number | undefined
+  /**
+   * What the selected catalogue preset opens on, as the server probed it
+   * (`SuperpositionCatalogEntry.default_representation`). `'isosurface'` until a
+   * catalogue answers, which is what the initial 1s + 2p_z preset publishes.
+   */
+  superpositionDefaultRepresentation: SuperpositionDefaultRepresentation
   /**
    * The superposition's own basis, independent of `orbital.basis` on purpose:
    * they describe two different states, and sharing one field silently changed
@@ -71,11 +78,13 @@ interface SceneStore {
     label: string,
     sliceResolutionFloor: number,
     streamlineSeedCountMax: number,
+    defaultRepresentation: SuperpositionDefaultRepresentation,
   ) => void
   syncSuperpositionCapabilities: (
     terms: string,
     sliceResolutionFloor: number,
     streamlineSeedCountMax: number,
+    defaultRepresentation: SuperpositionDefaultRepresentation,
   ) => void
   /** Fail closed when the selected catalogue entry cannot be trusted. */
   invalidateSuperpositionStreamlineCapability: () => void
@@ -181,6 +190,12 @@ function clampSeedCount(
  * floor and no n <= 4 ceiling). That is why this resolver never has to answer
  * "nothing is available" -- and why superposition's fallback is the isosurface
  * rather than the point cloud, which has no time-dependent route at all.
+ *
+ * "Always available" means always PLANNABLE, not always BUILT: the catalogue
+ * probes each preset's route-default isosurface and publishes
+ * `default_representation`, which `openingRepresentation` below honours when a
+ * preset or a mode switch opens a picture. The resolver's last resort stays
+ * total either way.
  */
 const ALWAYS_AVAILABLE: Record<SceneMode, RepresentationKind> = {
   eigenstate: 'point_cloud',
@@ -225,6 +240,40 @@ export function resolveRepresentation(
   return ALWAYS_AVAILABLE[mode]
 }
 
+/**
+ * The representation a preset choice or a mode switch OPENS on.
+ *
+ * `ALWAYS_AVAILABLE` says the superposition isosurface can always be planned;
+ * it cannot say the server will build it. The catalogue probes the
+ * route-default isosurface of every preset and publishes
+ * `default_representation` -- `'slice'` when that request is refused (today
+ * 2s + 2p_z, whose 0.90 level set sits on a saddle of |Psi|^2 and fails the
+ * two-grid topology gate). So when the store would otherwise open such a preset
+ * on the isosurface, it asks for the published default instead, through
+ * `resolveRepresentation` so the capability matrix keeps the last word.
+ *
+ * Only openings go through here: an explicit `setRepresentation('isosurface')`
+ * is honoured and the server answers with its reason, and a catalogue sync
+ * records the default without moving a picture the user already has.
+ */
+function openingRepresentation(
+  mode: SceneMode,
+  orbital: OrbitalParameters,
+  resolved: RepresentationKind,
+  superpositionDefault: SuperpositionDefaultRepresentation,
+  superpositionStreamlineSeedCountMax?: number,
+): RepresentationKind {
+  const requested =
+    mode === 'superposition' && resolved === 'isosurface' ? superpositionDefault : resolved
+  return resolveRepresentation(
+    mode,
+    orbital,
+    requested,
+    resolved,
+    superpositionStreamlineSeedCountMax,
+  )
+}
+
 export const useSceneStore = create<SceneStore>()((set) => ({
   mode: 'eigenstate',
   superpositionTerms: '1,0,0,0.7071067811865476;2,1,0,0.7071067811865476',
@@ -233,6 +282,9 @@ export const useSceneStore = create<SceneStore>()((set) => ({
   // No local route-bound guess: the selected server catalogue entry must
   // arrive before a superposition current-field request can be proven safe.
   superpositionStreamlineSeedCountMax: undefined,
+  // The initial 1s + 2p_z preset publishes 'isosurface'; the catalogue sync
+  // replaces this with the server's answer.
+  superpositionDefaultRepresentation: 'isosurface',
   superpositionBasis: 'complex',
   superpositionZ: 1.0,
   aMu: 1.0,
@@ -262,13 +314,27 @@ export const useSceneStore = create<SceneStore>()((set) => ({
       // one has to be re-resolved here or the canvas is asked for a picture no
       // route can draw. Resolution follows that resolved row in the SAME write;
       // otherwise the panel can show 129 while the request planner sends 81.
-      const representation = resolveRepresentation(
+      const resolved = resolveRepresentation(
         mode,
         state.orbital,
         state.representation,
         state.representation,
         state.superpositionStreamlineSeedCountMax,
       )
+      // openingRepresentation only applies when this call actually SWITCHES the
+      // mode: the 叠加态 toggle stays clickable while already active, and
+      // re-clicking it must be a no-op, not a second "opening" that can
+      // override an explicit setRepresentation made since the last switch.
+      const representation =
+        state.mode === mode
+          ? resolved
+          : openingRepresentation(
+              mode,
+              state.orbital,
+              resolved,
+              state.superpositionDefaultRepresentation,
+              state.superpositionStreamlineSeedCountMax,
+            )
       return {
         mode,
         playing: false,
@@ -294,13 +360,20 @@ export const useSceneStore = create<SceneStore>()((set) => ({
     superpositionLabel,
     superpositionSliceResolutionFloor,
     superpositionStreamlineSeedCountMax,
+    superpositionDefaultRepresentation,
   ) =>
     set((state) => {
-      const representation = resolveRepresentation(
+      const representation = openingRepresentation(
         state.mode,
         state.orbital,
-        state.representation,
-        state.representation,
+        resolveRepresentation(
+          state.mode,
+          state.orbital,
+          state.representation,
+          state.representation,
+          superpositionStreamlineSeedCountMax,
+        ),
+        superpositionDefaultRepresentation,
         superpositionStreamlineSeedCountMax,
       )
       return {
@@ -308,6 +381,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
         superpositionLabel,
         superpositionSliceResolutionFloor,
         superpositionStreamlineSeedCountMax,
+        superpositionDefaultRepresentation,
         representation,
         timeAu: 0,
         playing: false,
@@ -331,6 +405,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
     terms,
     superpositionSliceResolutionFloor,
     superpositionStreamlineSeedCountMax,
+    superpositionDefaultRepresentation,
   ) =>
     set((state) => {
       if (state.superpositionTerms !== terms) return state
@@ -344,6 +419,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
       return {
         superpositionSliceResolutionFloor,
         superpositionStreamlineSeedCountMax,
+        superpositionDefaultRepresentation,
         representation,
         resolution: clampResolution(
           state.mode,

@@ -27,7 +27,8 @@
 - ✅ 已知 $\langle r^p\rangle$ — `test_expectation_radial_matches_known_closed_forms` 与 `tests/test_pr7_radial_moments.py`；高阶门禁以 1s 闭式独立验证 $p=31,60,170$，并用 $n=6,l=5,p=60$ circular-state Gamma 比率排除 1s 特化；同时要求节点折半与连续两次计算域扩张收敛，不可表示的 $p=200$ 明确报 overflow，不返回 `inf`；
 - ✅ `SuperpositionState`→scene/API 链路中的约化质量只有一个真源：`a_mu=m_e/μ` 同时决定 $a_\mu/Z$ 空间尺度、`reduced_mass_ratio=1/a_mu` 能量/相位、概率流 prefactor 与 scene extent — `test_energy_scales_with_reduced_mass_ratio` 及 `tests/test_pr7_mass_hamiltonian.py`；低层 energy primitive 保留显式 ratio 参数；
 - ✅ $\theta\in[0,\pi]$、$\phi\in[0,2\pi)$ 角度范围约定 — `test_cartesian_to_spherical_uses_documented_angle_ranges`；
-- ✅ Condon–Shortley 相位与实轨道 Cartesian 形式（$\ell=1,2$） — `test_real_p_harmonics_match_cartesian_directions`、`test_real_d_harmonics_match_cartesian_closed_forms`。
+- ✅ Condon–Shortley 相位与实轨道 Cartesian 形式（$\ell=1,2$） — `test_real_p_harmonics_match_cartesian_directions`、`test_real_d_harmonics_match_cartesian_closed_forms`；
+- ✅ 径向分布 `radial_profile`：256 点梯形积分与 1 相差不超过 $10^{-3}$，末点外解析尾概率不超过 $10^{-3}$，节点数为 $n-\ell-1$ 且 2s/3s/3p 节点等于闭式根、每个节点两侧 $R_{n\ell}$ 变号，$\langle r\rangle$ 为解析值且与数值积分相差小于 0.5%，1s/2p/3d/4f/2s 的最可几半径分别对照 $a/Z$、$4a/Z$、$9a/Z$、$16a/Z$、$(3+\sqrt5)a/Z$，能级梯与 metadata 同一约化质量约定，按 $a_\mu/Z$ 缩放时 `r_bohr` 逐位协变，`radial_density` 与 `most_probable_r_bohr` 在 9 位有效数字内协变；缩放溢出时为 `null` 并附 warning — `tests/test_radial_profile.py`。
 
 !!! info "为什么这些门禁要用独立参照"
 
@@ -76,13 +77,15 @@
 - ✅ 含径向节点的单一 s 态使用一维径向拓扑 oracle、有界自适应网格和最终连通分量复核 — 2s 在 mass=0.9 从请求 81 自动升至实际 123 并得到 3 个正确边界分量；3s/4s 及高质量 2s 在需求超过内部 129 上限时 fail-closed；
 - ✅ 非零激发 s 分量的多项叠加态绝不按系数容差冒充纯 s 态；$10^{-3}$、$10^{-8}$、$10^{-12}$ 近纯 2s 必须在 137 上限的最细 129/137 两级通过逐分量 Euler、density level 与质量门禁，等权 2s+2p 及“粗网格先稳定、最细网格再失稳”的反例均 fail-closed。精确零伴项被剔除后仍走径向 oracle；只构建并计费会参与判决的最细两个拓扑网格与最终诊断，真实 builder 的逐 term 完整立方网格求值记录必须与 estimator 逐项一致；两项 129/137 成本低于 16M，三项成本高于上限并在 builder 前拒绝 — `tests/test_scene_contract.py`、`tests/test_api.py`；
 - ✅ 有限盒真实质量变化与 render-grid alias 分开报告 — `tests/test_pr7_scene_diagnostics.py`；2p+4p 的同宇称离散漂移必须超过保守有限盒变化界至少 $10^6$ 倍，1s+2p 的反宇称质量必须在半周期保持不变，同能隙相干相消的四项负控制不得误报 phase-dependent error；
-- 🕒 不含激发 s 分量的一般多项叠加态及 $n>4$ 的通用拓扑证明；当前质量/alias 诊断不等于拓扑证书。
+- 🕒 不含激发 s 分量的一般多项叠加态及 $n>4$ 的通用拓扑证明；当前质量/alias 诊断不等于拓扑证书；
+- ✅ 叠加态预设的开场表示法由服务端实测：目录对 route 默认等值面请求（65、0.90、$t=0$、$Z=a_\mu=1$）先按 complex、再按 real basis 送进同一 workload guard 与 builder，第一次被拒即发布 `default_representation` 为 `slice`（两种 basis 都成功才发布 `isosurface`）；`2s-2pz` 当前发布 `slice`（0.86–0.91 与 0.915 被最细双网格拓扑门禁拒绝，0.85 以下与孤立的 0.911/0.912 通过）。前端选择该预设或切入叠加态时不再默认发出必然 422 的等值面请求，用户显式选择等值面仍照发 — `tests/test_superposition_default_view.py`、`web/src/api/client.test.ts`、`web/src/state/useSceneStore.test.ts`、`web/src/components/ControlPanel.test.tsx`。
 
 ## API 数值失败与缓存
 
 - ✅ 可归因于请求的 `ValueError`、具名 `ScientificComputationError`、`FloatingPointError` 与 `OverflowError` 在全部七类科学资产 builder 路径上转成保留原因的 422；普通 `RuntimeError` 家族不再 blanket catch。唯一的第三方边界例外是 `skimage.measure.marching_cubes` 自身抛出的**精确** `RuntimeError`：builder 就地包装为 `ScientificComputationError`，所以极小但合法的 `1s, Z=1e-20` float32 等值面塌缩返回带原因的 422；该调用点注入 `RecursionError`，以及路由注入 `RecursionError`/`AssertionError` 的负控制仍为 500 — `tests/test_api.py`；
 - ✅ float64 极值采用“普通输入保留原算术，只有直接中间量接近边界或已经溢出/下溢才转入 100 位十进制复算”的门禁：径向归一化在 `float.__pow__` 舍入边界不再泄漏裸 `(34, 'Result too large')`，径向自变量在 `Z=a_mu=1e308` 时先安全约去共同尺度而不静默归零，密度 floor 与径向节点在最大有限值及最小次正规数边界按精确二进制输入正确舍入，NumPy 标量进入兜底也不会泄漏类型错误；最终结果确实不可表示才抛含参数语境的 `ValueError` 并由 HTTP 保留为可读 422；普通切片 golden 仍逐字节不变 — `tests/test_hydrogenic.py`、`tests/test_api.py`、`tests/test_slice_contract.py`；
-- ✅ 两类 slice 只保留私有 builder LRU，public builder 返回 deep copy，HTTP route 不再重复缓存大 payload；相同路由调用仍逐次经过 public builder，且调用方变异不能污染下一次结果 — `tests/test_api.py`、`tests/test_slice_builders.py`。
+- ✅ 两类 slice 只保留私有 builder LRU，public builder 返回 deep copy，HTTP route 不再重复缓存大 payload；相同路由调用仍逐次经过 public builder，且调用方变异不能污染下一次结果 — `tests/test_api.py`、`tests/test_slice_builders.py`；
+- ✅ 静态目录导出逐字节等于实时服务：进程内 ASGI 回放与 FastAPI `TestClient` 对点云（含 `X-QuViz-*` 头）、等值面、两种 422 与百分号编码的叠加态切片逐字节相同；响应体按 SHA-256 前 24 位去重命名，`manifest.json` 条目按键排序、`version` 为排序后 `(key, file, status)` 三元组摘要，单进程与进程池输出逐字节相同；5xx、404 或传输异常中止且不留下 manifest — `tests/test_export_asgi.py`、`tests/test_export_static_site.py`、`tests/test_cli.py`。
 
 ## 前端
 

@@ -116,6 +116,9 @@ def test_phase_zero_python_api_reference_covers_public_modules() -> None:
     reference = (DOCS / "reference/physics-api.md").read_text(encoding="utf-8")
     modules = {
         "quviz.conventions",
+        "quviz.export.asgi",
+        "quviz.export.catalog_spec",
+        "quviz.export.static_site",
         "quviz.physics.continuity",
         "quviz.physics.finite_box",
         "quviz.physics.hybridization",

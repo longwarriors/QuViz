@@ -55,6 +55,13 @@ export interface OrbitalMetadata {
   color_semantics: string
   references: string[]
   warnings: string[]
+  /**
+   * Radial distribution of this eigenstate, computed by Python and only drawn
+   * here. `null` when the server could not represent it at the requested a_mu/Z
+   * scale (a warning says so); optional so fixtures built before the field
+   * existed still type-check.
+   */
+  radial_profile?: RadialProfile | null
 }
 
 export interface IsosurfacePayload extends SurfaceGeometry {
@@ -169,6 +176,12 @@ export interface SuperpositionCurrentPayload
 
 /** Server-published preset and its builder-derived capability metadata. */
 export type SuperpositionPreset = components['schemas']['SuperpositionCatalogEntry']
+
+/**
+ * What a catalogue preset opens on, as the server probed it: `'slice'` when the
+ * route-default isosurface request for that preset is refused (today 2s + 2p_z).
+ */
+export type SuperpositionDefaultRepresentation = SuperpositionPreset['default_representation']
 
 /**
  * One entry returned by `/api/orbitals/catalog`.
@@ -313,3 +326,10 @@ export type SlicePayload = components['schemas']['SlicePayload']
 export type SuperpositionSlicePayload = components['schemas']['SuperpositionSlicePayload']
 export type PrincipalPlane = components['schemas']['PrincipalPlane']
 export type SliceObservable = components['schemas']['SliceObservable']
+
+/**
+ * `P(r) = r^2 |R_nl(r)|^2` on 256 radii, with the radial nodes, <r>, the most
+ * probable radius and the energy ladder -- RE-EXPORTED from the generated
+ * schema for the reason given above: an alias cannot drift from the API.
+ */
+export type RadialProfile = components['schemas']['RadialProfile']
