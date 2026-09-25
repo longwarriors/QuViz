@@ -140,13 +140,11 @@
     - 已知会被服务端拒绝的组合不得入图。
   - 每章的二级标题 id 与图的深链接必须和注册表逐字一致；每一页（含附录）至少一张交互图，图注以“图 章号.序号”（附录用字母）开头；编号章节必须包含学习目标、常见误区、至少 3 道带答案的思考题与延伸阅读，且不得出现 `/api/`、测试路径等开发者术语。
 - 🔗 MkDocs 在真实 Chromium 中完成渲染 — `npm run test:fullstack` 同时启动生产应用与 `mkdocs serve --strict`，并逐项检查：
-  - 直达页面和 `navigation.instant` 换页后的全部 `.arithmatex` 都必须生成 `mjx-container`；
-  - 架构页 Mermaid 必须生成 SVG；
-  - Python API 必须出现 Phase 0 的 superposition / planes / models / slices / streamlines 模块；
-  - 从参考文献页即时导航进入教材第 1 章后：页头仍带 `<meta name="quviz-lab">`；交互图占位卡已由 `document$` 重新升级；“在实验室中打开”指向 `extra.quviz.lab_url` 下的正确深链接；页面没有自动加载任何 iframe；
-  - 本地请求、console 或 page error 任一非空即失败。
-
-  这些检查由 `web-fullstack` CI 作业执行；
+    - 直达页面和 `navigation.instant` 换页后的全部 `.arithmatex` 都必须生成 `mjx-container`；
+    - 架构页 Mermaid 必须生成 SVG；
+    - Python API 必须出现 Phase 0 的 superposition / planes / models / slices / streamlines 模块；
+    - 从参考文献页即时导航进入教材第 1 章后：页头仍带 `<meta name="quviz-lab">`；交互图占位卡已由 `document$` 重新升级；“在实验室中打开”指向 `extra.quviz.lab_url` 下的正确深链接；页面没有自动加载任何 iframe；
+    - 本地请求、console 或 page error 任一非空即失败；这些检查由 `web-fullstack` CI 作业执行。
 - 🧑 已知纠错不可被旧教程重新引入；
 - 🧑 引用是否真正支持正文声明；
 - 🧑 “已实现”“已验证”“计划中”三个状态不得混写。
