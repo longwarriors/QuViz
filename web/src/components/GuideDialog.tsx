@@ -2,6 +2,7 @@ import { X } from 'lucide-react'
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react'
 
 import { runtimeMode } from '../api/runtimeMode'
+import { nextRovingIndex } from './rovingTabs'
 
 export const GUIDE_SEEN_KEY = 'quviz.guide.v1'
 
@@ -206,17 +207,7 @@ export function GuideDialog({ open, onClose }: { open: boolean; onClose: () => v
   }
 
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
-    const count = GUIDE_TABS.length
-    const next =
-      event.key === 'ArrowRight'
-        ? (index + 1) % count
-        : event.key === 'ArrowLeft'
-          ? (index - 1 + count) % count
-          : event.key === 'Home'
-            ? 0
-            : event.key === 'End'
-              ? count - 1
-              : undefined
+    const next = nextRovingIndex(event.key, index, GUIDE_TABS.length)
     if (next === undefined) return
     event.preventDefault()
     setTab(GUIDE_TABS[next].id)

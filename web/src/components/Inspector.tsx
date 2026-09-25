@@ -4,6 +4,7 @@ import { type KeyboardEvent, useId, useRef, useState } from 'react'
 import type { SceneStatus } from '../api/types'
 import { ChartsPanel } from './charts/ChartsPanel'
 import { formatFinite, formatFiniteUnit } from './format'
+import { nextRovingIndex } from './rovingTabs'
 import { observableLabel, representationLabel } from './sceneStatus'
 
 interface InspectorProps {
@@ -87,16 +88,7 @@ export function Inspector({
   const tabId = (tab: InspectorTab): string => `${instanceId}-${tab}-tab`
   const panelId = (tab: InspectorTab): string => `${instanceId}-${tab}-panel`
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
-    let nextIndex: number | undefined
-    if (event.key === 'ArrowRight') {
-      nextIndex = (index + 1) % INSPECTOR_TABS.length
-    } else if (event.key === 'ArrowLeft') {
-      nextIndex = (index - 1 + INSPECTOR_TABS.length) % INSPECTOR_TABS.length
-    } else if (event.key === 'Home') {
-      nextIndex = 0
-    } else if (event.key === 'End') {
-      nextIndex = INSPECTOR_TABS.length - 1
-    }
+    const nextIndex = nextRovingIndex(event.key, index, INSPECTOR_TABS.length)
     if (nextIndex === undefined) return
 
     event.preventDefault()
