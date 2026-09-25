@@ -795,6 +795,13 @@ describe('development server contract', () => {
       '/redoc': 'http://127.0.0.1:8000',
     })
   })
+
+  it('builds with a relative base, so one bundle serves FastAPI "/" and a Pages sub-path', () => {
+    // An absolute base ('/QuViz/') breaks the fullstack gate, which serves
+    // web/dist at "/" through FastAPI; no base at all breaks every asset URL
+    // under /<repo>/ on GitHub Pages. The app has no router, so './' is safe.
+    expect(viteConfig.base).toBe('./')
+  })
 })
 
 describe('guard patterns (positive controls)', () => {
