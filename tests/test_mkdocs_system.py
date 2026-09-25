@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -211,3 +212,61 @@ def test_phase_zero_python_api_reference_covers_public_modules() -> None:
         if line.startswith("::: ")
     }
     assert documented == modules
+
+
+FONT_FILES = {
+    # @fontsource-variable/google-sans-flex@5.3.1 (SIL OFL 1.1), fetched verbatim.
+    "google-sans-flex-latin-wght-normal.woff2": (
+        "4f2ce47af77a0bb9ec3dbd2e81bab7eb97fbcfcd94e47fa63510bb4271b09113"
+    ),
+    "google-sans-flex-math-wght-normal.woff2": (
+        "f266d6cc9d343ae3da3de6ee68a772a76a27277ba864a1a07f8bc7ec4bcfd68d"
+    ),
+    "OFL.txt": "7168a081fbcea8dbe975e3a015c4e340761b3b4ddf8de0c8a818543f773a29e0",
+}
+# spec §4.4: the lab and the textbook share one set of design tokens.
+SPEC_TOKENS = {
+    "--qv-bg": "#0e0f11",
+    "--qv-glass": "rgba(0, 0, 0, 0.6)",
+    "--qv-glass-strong": "rgba(16, 17, 20, 0.86)",
+    "--qv-border": "rgba(255, 255, 255, 0.15)",
+    "--qv-border-strong": "rgba(255, 255, 255, 0.3)",
+    "--qv-glow": "0 0 12px rgba(100, 160, 255, 0.2)",
+    "--qv-blur": "blur(16px)",
+    "--qv-radius-panel": "24px",
+    "--qv-radius-pill": "100px",
+    "--qv-radius-tag": "4px",
+    "--qv-text": "#fff",
+    "--qv-text-2": "rgba(255, 255, 255, 0.62)",
+    "--qv-text-3": "rgba(255, 255, 255, 0.4)",
+    "--qv-band": "rgba(255, 255, 255, 0.045)",
+    "--qv-accent": "#8ab4f8",
+    "--qv-accent-strong": "#1a73e8",
+    "--qv-ok": "#81c995",
+    "--qv-warn": "#fdd663",
+    "--qv-danger": "#f28b82",
+}
+
+
+def test_google_sans_flex_is_self_hosted_with_its_licence_and_spec_tokens() -> None:
+    fonts = DOCS / "assets" / "fonts"
+    assert sorted(path.name for path in fonts.iterdir()) == sorted(FONT_FILES)
+    for name, digest in FONT_FILES.items():
+        assert hashlib.sha256((fonts / name).read_bytes()).hexdigest() == digest, name
+    assert "SIL OPEN FONT LICENSE Version 1.1" in (fonts / "OFL.txt").read_text(encoding="utf-8")
+
+    css = (DOCS / "assets/stylesheets/extra.css").read_text(encoding="utf-8")
+    assert css.count("@font-face") == 2
+    for name in FONT_FILES:
+        if name.endswith(".woff2"):
+            assert f'url("../fonts/{name}") format("woff2")' in css
+    assert '--md-text-font: "Google Sans Flex", system-ui, "PingFang SC"' in css
+    for token, value in SPEC_TOKENS.items():
+        assert f"  {token}: {value};" in css, token
+    # font: false keeps Material from requesting Google Fonts; nothing else may either.
+    assert _raw_config()["theme"]["font"] is False
+    for path in [*DOCS.rglob("*.css"), *DOCS.rglob("*.js"), *(ROOT / "overrides").rglob("*")]:
+        if path.is_file():
+            text = path.read_text(encoding="utf-8")
+            assert "fonts.googleapis.com" not in text, path
+            assert "fonts.gstatic.com" not in text, path
