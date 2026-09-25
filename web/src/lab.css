@@ -11,6 +11,10 @@
   Never set `visibility: visible` below a [data-chrome] element: the
   visual suite hides chrome with inline visibility:hidden before every
   capture.
+
+  Write `backdrop-filter` unprefixed and only once: the build's CSS
+  minifier adds the -webkit- copy itself, and a hand-written pair is
+  folded into the prefixed declaration alone, which Chromium ignores.
 */
 :root {
   color-scheme: dark;
@@ -86,14 +90,12 @@ h1, h2, h3, p, dl, dd, figure { margin: 0; }
   background: var(--qv-glass);
   box-shadow: var(--qv-glow);
   backdrop-filter: var(--qv-blur);
-  -webkit-backdrop-filter: var(--qv-blur);
 }
 .qv-glass-strong {
   border: 1px solid var(--qv-border);
   background: var(--qv-glass-strong);
   box-shadow: var(--qv-glow);
   backdrop-filter: var(--qv-blur);
-  -webkit-backdrop-filter: var(--qv-blur);
 }
 
 /* ---- App shell ---- */
@@ -567,7 +569,6 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
   background: var(--qv-glass);
   box-shadow: var(--qv-glow);
   backdrop-filter: var(--qv-blur);
-  -webkit-backdrop-filter: var(--qv-blur);
 }
 .qv-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .qv-brand-mark { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: rgba(138,180,248,.14); color: var(--qv-accent); }
@@ -747,7 +748,10 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
     max-height: none;
     border-radius: 24px 24px 0 0;
   }
-  .qv-detail-toggle { top: auto; right: var(--qv-edge); bottom: var(--qv-edge); height: 48px; }
+  /* Round like 调节, so it fits beside the time pill's 68px side inset;
+     the accessible name stays on aria-label. */
+  .qv-detail-toggle { top: auto; right: var(--qv-edge); bottom: var(--qv-edge); justify-content: center; width: 48px; height: 48px; padding: 0; }
+  .qv-detail-toggle > span { display: none; }
 }
 
 /* ---- Legend pill ---- */

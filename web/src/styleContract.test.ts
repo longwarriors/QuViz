@@ -92,6 +92,21 @@ describe('lab.css design tokens', () => {
     expect(labCss()).toMatch(/(?:^|\})\s*\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/)
   })
 
+  it('writes the glass blur once, unprefixed, so the production CSS keeps it', () => {
+    // Vite's CSS minifier folds a hand-written `backdrop-filter` +
+    // `-webkit-backdrop-filter` pair into the prefixed declaration alone, and
+    // Chromium ignores that one: the built lab computed `backdrop-filter: none`
+    // on every glass panel while the dev server (unminified) blurred them.
+    // Written once, unprefixed, the minifier emits the prefix itself and keeps
+    // the standard property (as it already did for the phone status chip).
+    const css = labCss()
+    expect(css).not.toMatch(/-webkit-backdrop-filter/)
+    for (const selector of ['.qv-glass', '.qv-glass-strong', '.qv-header']) {
+      const body = new RegExp(`(?:^|\\})\\s*${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`).exec(css)
+      expect(body?.[1], selector).toMatch(/backdrop-filter:\s*var\(--qv-blur\)/)
+    }
+  })
+
   it('paints the page with the scene background, so the canvas has no seam', async () => {
     const { SCENE_BACKGROUND } = await import('./scene/fog')
     expect(declaredTokens(read('./lab.css')).get('--qv-bg')).toBe(SCENE_BACKGROUND)
@@ -137,6 +152,56 @@ describe('legend placement does not collide with other chrome', () => {
     expect(band).toContain('.qv-time-pill { width: min(320px, calc(100vw - 2 * var(--qv-edge))); }')
     expect(band).toContain('.legend { width: 200px; }')
     expect(band).toContain('.qv-app[data-embed="true"] .legend { width: 180px; }')
+  })
+})
+
+/** The bodies of every `@media <query> { ... }` block, braces matched. */
+function mediaBlocks(css: string, query: string): string {
+  const bodies: string[] = []
+  let from = css.indexOf(query)
+  while (from !== -1) {
+    const open = css.indexOf('{', from)
+    let depth = 0
+    let index = open
+    for (; index < css.length; index += 1) {
+      if (css[index] === '{') depth += 1
+      if (css[index] === '}') depth -= 1
+      if (depth === 0) break
+    }
+    bodies.push(css.slice(open + 1, index))
+    from = css.indexOf(query, index)
+  }
+  return bodies.join('\n')
+}
+
+/**
+ * The pixel value of `property` in the first rule of `css` whose whole
+ * selector is `selector` (not a descendant or grouped selector ending in it).
+ */
+function pixels(css: string, selector: string, property: string): number {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const body = new RegExp(`(?:^|[{}])\\s*${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? ''
+  const value = new RegExp(`(?:^|[;\\s])${property}:\\s*(\\d+)px`).exec(body)?.[1]
+  if (value === undefined) throw new Error(`${selector} sets no ${property} in px`)
+  return Number(value)
+}
+
+describe('the phone bottom row does not collide', () => {
+  it('keeps the detail opener a round button inside the time pill\'s side inset', () => {
+    // <=820px the time pill is inset from both sides so that one round 48px
+    // button fits at each bottom corner: 调节 on the left, 科学详情 on the
+    // right. The labelled 科学详情 pill (~112px wide) reached 56px under the
+    // time pill and covered the frame counter and the scrubber's end; like
+    // 调节 it is an icon button there, named by its aria-label.
+    const css = labCss()
+    const phone = mediaBlocks(css, '@media (max-width: 820px)')
+    const edge = pixels(phone, ':root', '--qv-edge')
+    const inset = { left: pixels(phone, '.qv-time-pill', 'left'), right: pixels(phone, '.qv-time-pill', 'right') }
+    const gap = 8
+
+    expect(edge + pixels(css, '.qv-controls-fab', 'width') + gap).toBeLessThanOrEqual(inset.left)
+    expect(edge + pixels(phone, '.qv-detail-toggle', 'width') + gap).toBeLessThanOrEqual(inset.right)
+    expect(phone).toMatch(/\.qv-detail-toggle > span \{ display: none; \}/)
   })
 })
 
