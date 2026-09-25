@@ -94,6 +94,36 @@ def test_navigation_separates_the_learner_path_from_developer_pages() -> None:
     assert _nav_paths(_section(nav, "信源与审计"))[0] == "references/index.md"
 
 
+def test_theme_injects_the_lab_url_and_defaults_to_the_dark_palette() -> None:
+    config = _raw_config()
+    theme = config["theme"]
+    assert theme["custom_dir"] == "overrides"
+    assert theme["font"] is False
+    assert config["extra"] == {"quviz": {"lab_url": "http://127.0.0.1:8000/"}}
+
+    palette = theme["palette"]
+    assert [entry["scheme"] for entry in palette] == ["slate", "default"]
+    for entry in palette:
+        # Dark is the default, not a system-preference branch; light is the toggle.
+        assert "media" not in entry
+        assert (entry["primary"], entry["accent"]) == ("custom", "custom")
+
+    template = (ROOT / "overrides" / "main.html").read_text(encoding="utf-8")
+    assert template.startswith('{% extends "base.html" %}')
+    assert "{% block extrahead %}" in template
+    assert "{{ super() }}" in template
+    assert '<meta name="quviz-lab" content="{{ config.extra.quviz.lab_url | e }}">' in template
+
+    loaded = load_config(str(CONFIG_PATH))
+    assert Path(loaded["theme"].custom_dir).resolve() == (ROOT / "overrides").resolve()
+
+    mermaid = (DOCS / "assets/javascripts/mermaid.js").read_text(encoding="utf-8")
+    assert "theme: quvizMermaidTheme()" in mermaid
+    assert '? "default"' in mermaid
+    assert ': "dark"' in mermaid
+    assert '"neutral"' not in mermaid
+
+
 def test_strict_validation_policy_is_explicit() -> None:
     config = _raw_config()
     assert config["strict"] is True

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{#-
+  教材交互图（docs/assets/javascripts/quviz-figure.js）从这里读取实验室根地址。
+  mkdocs.yml 的 extra.quviz.lab_url 默认指向本地 quviz serve；GitHub Pages 的派生配置改为 "../"，
+  由脚本相对教材站点根解析。Material 即时导航换页时保留相同的 <head> 子元素，所以只注入一次即可。
+-#}
+{% block extrahead %}
+  {{ super() }}
+  {%- if config.extra.quviz and config.extra.quviz.lab_url %}
+  <meta name="quviz-lab" content="{{ config.extra.quviz.lab_url | e }}">
+  {%- endif %}
+{% endblock %}
