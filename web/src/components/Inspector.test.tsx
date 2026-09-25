@@ -115,8 +115,11 @@ describe('Inspector title of a superposition', () => {
     const markup = titled(arrivedMixture(BOHR_TERMS, BOHR_KET), [BOHR_PRESET])
 
     expect(markup).toContain('<h2>1s + 2p_z · Bohr 振荡</h2>')
+    // Its own line, so a narrow panel wraps the ket between terms and never
+    // splits "complex basis" across lines.
     expect(markup).toContain(
-      '<p class="qv-detail-sub"><span class="qv-detail-ket">0.707|1,0,0&gt; + 0.707|2,1,0&gt;</span> · complex basis</p>',
+      '<h2>1s + 2p_z · Bohr 振荡</h2><p class="qv-detail-sub qv-detail-ket">0.707|1,0,0&gt; + 0.707|2,1,0&gt;</p>' +
+        '<p class="qv-detail-sub">complex basis</p>',
     )
     expect(markup).not.toContain('<h2>0.707|1,0,0')
   })

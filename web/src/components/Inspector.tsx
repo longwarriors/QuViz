@@ -84,20 +84,18 @@ export function Inspector({
   const representation = metadata?.representation ?? mixture?.representation
   const energy = metadata?.energy_hartree ?? mixture?.energy_expectation_hartree
   // A catalogue superposition is titled by its panel name, with the server's
-  // ket string kept verbatim underneath; a custom one has no name but its ket.
+  // ket string kept verbatim on a monospace line underneath; a custom one has
+  // no name but its ket.
   const preset = mixture === undefined ? undefined : catalogueMixtureFor(mixture.terms, mixtures)
   const title = preset === undefined ? label : mixtureLabel(preset)
-  const subtitle = state ? (
-    `ψ(${state.n}, ${state.l}, ${state.m}) · ${state.basis} basis`
-  ) : mixture && preset ? (
-    <>
-      <span className="qv-detail-ket">{mixture.label}</span> · {mixture.basis} basis
-    </>
-  ) : mixture ? (
-    `${mixture.terms.length} 项叠加 · ${mixture.basis} basis`
-  ) : (
-    '等待已验证的元数据'
-  )
+  const ket = preset === undefined ? undefined : mixture?.label
+  const subtitle = state
+    ? `ψ(${state.n}, ${state.l}, ${state.m}) · ${state.basis} basis`
+    : mixture
+      ? preset === undefined
+        ? `${mixture.terms.length} 项叠加 · ${mixture.basis} basis`
+        : `${mixture.basis} basis`
+      : '等待已验证的元数据'
 
   const tabId = (tab: InspectorTab): string => `${instanceId}-${tab}-tab`
   const panelId = (tab: InspectorTab): string => `${instanceId}-${tab}-panel`
@@ -128,6 +126,7 @@ export function Inspector({
       <div className="qv-detail-head">
         <div className="qv-detail-title">
           <h2>{title ?? (status.loading ? '计算中…' : '暂无资产')}</h2>
+          {ket === undefined ? null : <p className="qv-detail-sub qv-detail-ket">{ket}</p>}
           <p className="qv-detail-sub">{subtitle}</p>
         </div>
         <span className="energy-pill">
