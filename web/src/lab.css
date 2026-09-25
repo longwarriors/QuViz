@@ -783,7 +783,14 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
 .phase-labels { display: flex; justify-content: space-between; margin-top: 4px; color: var(--qv-text-3); font-size: 11px; }
 .real-legend { display: flex; justify-content: space-between; gap: 8px; color: var(--qv-text-2); font-size: 12px; }
 .real-legend span { display: inline-flex; align-items: center; gap: 6px; }
-.qv-app[data-embed="true"] .legend { right: 12px; bottom: 12px; width: 240px; }
+/* The compact corner box is for >=821px only: at <=820px the mobile block
+   below owns .legend (top-anchored, away from the full-width mobile time
+   pill), and this rule must not fight it on `bottom`/`right`/`width` while
+   leaving `top` untouched -- that combination stretches a fixed-position box
+   the full page height. */
+@media (min-width: 821px) {
+  .qv-app[data-embed="true"] .legend { right: 12px; bottom: 12px; width: 240px; }
+}
 
 /* ---- Loading overlay ---- */
 .loading-overlay {
@@ -821,4 +828,16 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
   .legend:not([data-expanded="true"]) .legend-head { margin-bottom: 0; }
   .legend:not([data-expanded="true"]) > :not(.legend-head) { display: none; }
   .legend[data-expanded="true"] { width: min(300px, calc(100vw - 88px)); padding: 10px 12px; border-radius: 18px; }
+}
+
+/* 821-1091px: the centred time pill (up to 500px) and the right-anchored
+   legend (280px, 240px in embed) overlap horizontally in this band --
+   overlap = (W/2 + 250) - (W - 296), up to 135px at 821px; the embed variant
+   (240px legend, 12px offset) overlaps up to 1003px. Narrowing both removes
+   it with margin (>=34.5px) at every width from 821 to 1091px; above 1092px
+   the unmodified widths already clear each other. */
+@media (min-width: 821px) and (max-width: 1091px) {
+  .qv-time-pill { width: min(320px, calc(100vw - 2 * var(--qv-edge))); }
+  .legend { width: 200px; }
+  .qv-app[data-embed="true"] .legend { width: 180px; }
 }

@@ -98,6 +98,38 @@ describe('lab.css design tokens', () => {
   })
 })
 
+describe('legend placement does not collide with other chrome', () => {
+  it('gates the compact embed legend to >=821px, so it cannot stretch full-height at mobile widths', () => {
+    // Unconditional, the embed rule's higher specificity beat the <=820px
+    // mobile rule's `bottom: auto` on `right`/`bottom`/`width` but left `top`
+    // untouched, so the mobile rule's `top: calc(...)` still applied: a
+    // fixed-position box with both `top` and `bottom` set and `height: auto`
+    // stretches to fill the gap between them. Gating this rule to >=821px
+    // means <=820px has no embed-specific override at all, and the plain
+    // (top-anchored) mobile `.legend` rule applies uniformly.
+    expect(labCss()).toMatch(
+      /@media \(min-width: 821px\)\s*\{\s*\.qv-app\[data-embed="true"\] \.legend \{ right: 12px; bottom: 12px; width: 240px; \}\s*\}/,
+    )
+  })
+
+  it('narrows the time pill and the legend so they cannot overlap from 821 to 1091px', () => {
+    // Both are `position: fixed; bottom: ...px; z-index: 10`. The pill is
+    // centred at width min(500px, 100vw-32px) and the legend is right-anchored
+    // at 280px (240px embed): they overlap horizontally whenever the
+    // viewport is narrower than 1092px, down to 821px where the mobile
+    // block below takes over. This band must narrow both so neither reaches
+    // into the other's column.
+    const css = labCss()
+    const start = css.indexOf('@media (min-width: 821px) and (max-width: 1091px)')
+    expect(start, 'the 821-1091px band must exist').toBeGreaterThan(-1)
+    const nextMedia = css.indexOf('@media', start + 1)
+    const band = css.slice(start, nextMedia === -1 ? undefined : nextMedia)
+    expect(band).toContain('.qv-time-pill { width: min(320px, calc(100vw - 2 * var(--qv-edge))); }')
+    expect(band).toContain('.legend { width: 200px; }')
+    expect(band).toContain('.qv-app[data-embed="true"] .legend { width: 180px; }')
+  })
+})
+
 describe('self-hosted Google Sans Flex', () => {
   const FONT_DIRECTORY = new URL('../public/fonts/', import.meta.url)
 
