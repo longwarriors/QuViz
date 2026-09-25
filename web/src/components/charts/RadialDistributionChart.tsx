@@ -18,6 +18,8 @@ const MARGIN = { top: 16, right: 12, bottom: 34, left: 44 } as const
 const PLOT_WIDTH = WIDTH - MARGIN.left - MARGIN.right
 const PLOT_HEIGHT = HEIGHT - MARGIN.top - MARGIN.bottom
 const FIXED2 = { kind: 'fixed', digits: 2 } as const
+const FIXED3 = { kind: 'fixed', digits: 3 } as const
+const EXP3 = { kind: 'exponential', digits: 3 } as const
 
 /**
  * The box a marker label is laid out in, in viewBox units: an upper bound on
@@ -95,8 +97,6 @@ function markerLabels(
     peak: peakLabel,
   }
 }
-const FIXED3 = { kind: 'fixed', digits: 3 } as const
-const EXP3 = { kind: 'exponential', digits: 3 } as const
 
 export interface RadialSeries {
   r: number[]
