@@ -412,6 +412,22 @@ def test_ui_docs_follow_the_redesigned_lab_and_the_static_textbook() -> None:
         "按“单服务源码预览”一节依次运行 `npm --prefix web run build` 与 `quviz serve`"
         in installation
     )
+    # Part D's shipped labels (its copy deck): the right-hand panel and its
+    # opener read 科学详情, and the point-size knob reads 点尺寸.
+    assert "科学详情" in first_orbital
+    assert "科学详情" in walkthrough
+    assert "点大小" not in first_orbital
+    # No page that tours the lab keeps the spec's working name 详情面板.
+    textbook = sorted((ROOT / "docs/textbook").glob("*.md"))
+    for page in (frontend, first_orbital, walkthrough, *(p.read_text("utf-8") for p in textbook)):
+        assert "详情面板" not in page
+    # The status chip reports asset readiness, not the state; the state's
+    # label is the detail panel's title.
+    assert "顶部状态应显示" not in walkthrough
+    # The static catalogue uses the UI default resolution 65, raised to a
+    # state's legal floor where that is higher -- not every state's floor.
+    assert "各态最低合法分辨率" not in walkthrough
+    assert "网格分辨率取界面默认的 65" in walkthrough
 
 
 # --- red/green cases for the gate itself --------------------------------------
