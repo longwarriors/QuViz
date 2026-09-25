@@ -269,6 +269,46 @@ MUTATIONS: list[tuple[str, Callable[[dict[str, Any]], object], str]] = [
         lambda wf: wf["jobs"].update({"lint": {"runs-on": "ubuntu-latest", "steps": [{"run": "true"}]}}),
         "jobs must be exactly",
     ),
+    (
+        "deploy job keeps write access to contents",
+        lambda wf: wf["jobs"]["deploy"]["permissions"].update({"contents": "write"}),
+        "deploy job permissions",
+    ),
+    (
+        "deploy step loses its id",
+        lambda wf: wf["jobs"]["deploy"]["steps"][0].pop("id"),
+        "id deployment",
+    ),
+    (
+        "configure-pages id renamed",
+        lambda wf: _step(wf, "build", "configure-pages").update({"id": "cp"}),
+        "id `pages`",
+    ),
+    (
+        "self-hosted build runner",
+        lambda wf: wf["jobs"]["build"].update({"runs-on": "self-hosted"}),
+        "build job must run on ubuntu-latest",
+    ),
+    (
+        "self-hosted deploy runner",
+        lambda wf: wf["jobs"]["deploy"].update({"runs-on": "self-hosted"}),
+        "deploy job must run on ubuntu-latest",
+    ),
+    (
+        "serve the deploy build locally",
+        lambda wf: _step(wf, "build", "build_pages.py").update({"run": BUILD_COMMAND + " --serve 4180"}),
+        "--serve",
+    ),
+    (
+        "advisory build step",
+        lambda wf: _step(wf, "build", "build_pages.py").update({"continue-on-error": True}),
+        "continue-on-error",
+    ),
+    (
+        "conditional build job",
+        lambda wf: wf["jobs"]["build"].update({"if": "always()"}),
+        "job carries `if`",
+    ),
 ]  # fmt: skip
 
 
