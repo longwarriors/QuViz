@@ -372,6 +372,7 @@ describe('resolution follows the bound of the representation actually shown', ()
       '1s + 3d_z²',
       103,
       24,
+      'isosurface',
     )
 
     expect(read().resolution).toBe(103)
@@ -412,7 +413,7 @@ describe('scene setters', () => {
     read().setTimeAu(12)
     read().setPlaying(true)
 
-    read().setSuperposition('1,0,0,1', '1s', 65, 40)
+    read().setSuperposition('1,0,0,1', '1s', 65, 40, 'isosurface')
 
     expect(read().superpositionTerms).toBe('1,0,0,1')
     expect(read().superpositionLabel).toBe('1s')
@@ -429,7 +430,7 @@ describe('scene setters', () => {
     })
     const terms = read().superpositionTerms
 
-    read().syncSuperpositionCapabilities(terms, 103, 24)
+    read().syncSuperpositionCapabilities(terms, 103, 24, 'isosurface')
     expect(read().superpositionSliceResolutionFloor).toBe(103)
     expect(read().superpositionStreamlineSeedCountMax).toBe(24)
     expect(read().resolution).toBe(103)
@@ -438,6 +439,7 @@ describe('scene setters', () => {
       'a mixture selected after this fetch began',
       201,
       7,
+      'isosurface',
     )
     expect(read().superpositionSliceResolutionFloor).toBe(103)
     expect(read().superpositionStreamlineSeedCountMax).toBe(24)
@@ -457,6 +459,7 @@ describe('scene setters', () => {
       '1s + 3d_z²',
       103,
       24,
+      'isosurface',
     )
 
     expect(read().superpositionStreamlineSeedCountMax).toBe(24)
@@ -476,7 +479,7 @@ describe('scene setters', () => {
     })
     const terms = read().superpositionTerms
 
-    read().syncSuperpositionCapabilities(terms, 65, 17)
+    read().syncSuperpositionCapabilities(terms, 65, 17, 'isosurface')
 
     expect(read().superpositionStreamlineSeedCountMax).toBe(17)
     expect(read().seedCount).toBe(17)
@@ -495,7 +498,7 @@ describe('scene setters', () => {
     })
     const terms = read().superpositionTerms
 
-    read().syncSuperpositionCapabilities(terms, 65, 0)
+    read().syncSuperpositionCapabilities(terms, 65, 0, 'isosurface')
 
     expect(read().superpositionStreamlineSeedCountMax).toBe(0)
     expect(read().representation).toBe('isosurface')
@@ -556,5 +559,69 @@ describe('scene setters', () => {
       autoRotate: true,
       showGrid: false,
     })
+  })
+})
+
+describe('catalogue default representation', () => {
+  const DEGENERATE_TERMS = '2,0,0,0.7071067811865476;2,1,0,0.7071067811865476'
+  const BOHR_TERMS = '1,0,0,0.7071067811865476;2,1,0,0.7071067811865476'
+
+  it('opens a preset whose published default is a slice on the slice (2s-2pz regression)', () => {
+    read().setMode('superposition')
+    expect(read().representation).toBe('isosurface')
+
+    read().setSuperposition(DEGENERATE_TERMS, '2s + 2p_z (degenerate, stationary)', 65, 40, 'slice')
+
+    expect(read().superpositionDefaultRepresentation).toBe('slice')
+    expect(read().representation).toBe('slice')
+    expect(planSceneRequest(selectSceneRequestInputs(read()))).toMatchObject({
+      status: 'available',
+      endpoint: '/api/superposition/slice',
+      params: { resolution: 65 },
+    })
+  })
+
+  it('keeps the isosurface for a preset that publishes it as its default', () => {
+    read().setMode('superposition')
+
+    read().setSuperposition(BOHR_TERMS, '1s + 2p_z (Bohr oscillation)', 65, 40, 'isosurface')
+
+    expect(read().representation).toBe('isosurface')
+  })
+
+  it('keeps a representation other than the isosurface when such a preset is chosen', () => {
+    useSceneStore.setState({ superpositionStreamlineSeedCountMax: 40 })
+    read().setMode('superposition')
+    read().setRepresentation('streamlines')
+
+    read().setSuperposition(DEGENERATE_TERMS, '2s + 2p_z', 65, 40, 'slice')
+
+    expect(read().representation).toBe('streamlines')
+  })
+
+  it('enters superposition mode on the selected preset default', () => {
+    useSceneStore.setState({ representation: 'isosurface', superpositionDefaultRepresentation: 'slice' })
+
+    read().setMode('superposition')
+
+    expect(read().representation).toBe('slice')
+  })
+
+  it('still honours an explicit isosurface request for such a preset', () => {
+    read().setMode('superposition')
+    read().setSuperposition(DEGENERATE_TERMS, '2s + 2p_z', 65, 40, 'slice')
+
+    read().setRepresentation('isosurface')
+
+    expect(read().representation).toBe('isosurface')
+  })
+
+  it('records the published default on a catalogue sync without moving the picture', () => {
+    useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
+
+    read().syncSuperpositionCapabilities(read().superpositionTerms, 65, 40, 'slice')
+
+    expect(read().superpositionDefaultRepresentation).toBe('slice')
+    expect(read().representation).toBe('isosurface')
   })
 })

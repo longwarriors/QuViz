@@ -77,7 +77,8 @@
 - ✅ 含径向节点的单一 s 态使用一维径向拓扑 oracle、有界自适应网格和最终连通分量复核 — 2s 在 mass=0.9 从请求 81 自动升至实际 123 并得到 3 个正确边界分量；3s/4s 及高质量 2s 在需求超过内部 129 上限时 fail-closed；
 - ✅ 非零激发 s 分量的多项叠加态绝不按系数容差冒充纯 s 态；$10^{-3}$、$10^{-8}$、$10^{-12}$ 近纯 2s 必须在 137 上限的最细 129/137 两级通过逐分量 Euler、density level 与质量门禁，等权 2s+2p 及“粗网格先稳定、最细网格再失稳”的反例均 fail-closed。精确零伴项被剔除后仍走径向 oracle；只构建并计费会参与判决的最细两个拓扑网格与最终诊断，真实 builder 的逐 term 完整立方网格求值记录必须与 estimator 逐项一致；两项 129/137 成本低于 16M，三项成本高于上限并在 builder 前拒绝 — `tests/test_scene_contract.py`、`tests/test_api.py`；
 - ✅ 有限盒真实质量变化与 render-grid alias 分开报告 — `tests/test_pr7_scene_diagnostics.py`；2p+4p 的同宇称离散漂移必须超过保守有限盒变化界至少 $10^6$ 倍，1s+2p 的反宇称质量必须在半周期保持不变，同能隙相干相消的四项负控制不得误报 phase-dependent error；
-- 🕒 不含激发 s 分量的一般多项叠加态及 $n>4$ 的通用拓扑证明；当前质量/alias 诊断不等于拓扑证书。
+- 🕒 不含激发 s 分量的一般多项叠加态及 $n>4$ 的通用拓扑证明；当前质量/alias 诊断不等于拓扑证书；
+- ✅ 叠加态预设的开场表示法由服务端实测：目录对 route 默认等值面请求（65、0.90、$t=0$、$Z=a_\mu=1$，complex 与 real 两种 basis）实际运行同一 workload guard 与 builder，被拒则发布 `default_representation` 为 `slice`；`2s-2pz` 当前发布 `slice`（0.86–0.91 与 0.915 被最细双网格拓扑门禁拒绝，0.85 以下与孤立的 0.911/0.912 通过）。前端选择该预设或切入叠加态时不再默认发出必然 422 的等值面请求，用户显式选择等值面仍照发 — `tests/test_superposition_default_view.py`、`web/src/api/client.test.ts`、`web/src/state/useSceneStore.test.ts`、`web/src/components/ControlPanel.test.tsx`。
 
 ## API 数值失败与缓存
 
