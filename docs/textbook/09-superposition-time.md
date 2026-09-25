@@ -31,7 +31,7 @@ $$
 $$
 
 系数 $c_k$ 由 $t=0$ 时的态决定，此后不再改变，每一项只按自己的能量转动相位 [@griffiths2018qm; @science-asylum2020-orbitals]。
-不同的本征态彼此正交归一，所以 $\sum_k\lvert c_k\rvert^2=1$ 就是全部的归一化条件，并且在任何时刻都成立。
+这里各项 $\psi_k$ 是互不相同的 $\psi_{n\ell m}$，它们彼此正交归一，所以 $\sum_k\lvert c_k\rvert^2=1$ 就是全部的归一化条件，并且在任何时刻都成立。
 
 实验室正是这样计算叠加态的：给每一项乘上它的解析相位因子，再把各项相加。其中没有数值的时间步进，所以也没有随时间累积的误差。
 能量取[第 2 章](02-hydrogen-levels.md#energy-levels)的能级公式；教材版实验室取 $Z=1$、$a_\mu=1$，所以 $E_n=-1/(2n^2)$ Ha。
@@ -55,7 +55,7 @@ $(E_2-E_1)t/\hbar$。这与两个音调叠加时听到的「拍」一样，频�
 各贡献一个频率 $(E_j-E_k)/\hbar$。氢原子的能级 $E_n=-1/(2n^2)$ Ha 只依赖 $n$ [@griffiths2018qm, ch. 4 (pp. 131--197)]，
 所以 $E_2-E_1=\tfrac38$ Ha，$E_3-E_1=\tfrac49$ Ha，而 $n$ 相同的项之间没有拍频。
 
-同样的推导也适用于可观测量的平均值。以偶极 $\langle z\rangle$ 为例：氢原子的每个本征态都有确定的宇称，$\lvert\psi_k\rvert^2$ 关于原点对称，
+同样的推导也适用于可观测量的平均值。以偶极 $\langle z\rangle$ 为例：每个 $\psi_{n\ell m}$ 都有确定的宇称 $(-1)^\ell$（它们的简并组合则不一定，例如下文的 $2s+2p_z$），$\lvert\psi_k\rvert^2$ 关于原点对称，
 所以 $\langle\psi_k\lvert z\rvert\psi_k\rangle=0$，只剩交叉项：
 
 $$
@@ -147,7 +147,7 @@ $\operatorname{Im}\Psi=-\sin(E_2t/\hbar)\,\Psi(\mathbf r,0)$。如果在不同�
 叠加后却是一个实函数乘常数相位，概率流处处为零。
 
 <figure class="quviz-figure" data-lab="mode=superposition&preset=2s-2pz&t=0&rep=slice&plane=xz&obs=probability_density" markdown>
-**图 9.5** 简并叠加态 $(\psi_{2s}+\psi_{2p_z})/\sqrt2$ 的概率密度：明显偏向 $-z$（7/8 的概率在 $z<0$ 一侧，$\langle z\rangle=-3a_0$），但两项能量相同，这张图在任何时刻都不变。
+**图 9.5** 简并叠加态 $(\psi_{2s}+\psi_{2p_z})/\sqrt2$ 的概率密度：明显偏向 $-z$（$\langle z\rangle=-3a_0$），但两项能量相同，这张图在任何时刻都不变。7/8 的概率在 $z<0$ 一侧。
 </figure>
 
 ## 实验室里的时间 {#playback}
