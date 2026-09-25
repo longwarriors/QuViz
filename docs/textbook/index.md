@@ -26,6 +26,8 @@
 | 7 | [相位与平面切片](07-phase-slices.md) | 怎样在一张平面上读出波函数的符号与相位？ |
 | 8 | [概率流](08-probability-current.md) | 密度不随时间变化，概率还能流动吗？ |
 | 9 | [叠加态与时间演化](09-superposition-time.md) | 什么样的叠加态会动，动的频率是多少？ |
+| 10 | [从密度到实验图样](10-experiment.md) | 实验到底“看见”了什么？ |
+| 11 | [对称性与杂化](11-symmetry-hybridization.md) | 杂化轨道是新的量子态，还是换了一组基？ |
 
 ## 与站点其他部分的关系 {#other-parts}
 

@@ -18,7 +18,8 @@ silently lose a figure, change a deep-link anchor or drift from the plan.
 Some chapters also describe what a catalogue asset looks like at the
 catalogue's own settings (a mesh artifact, which samples a phase slice masks,
 how the streamline figures are seeded and why two of them look alike, how
-visibly a superposition slice changes between frames). Those statements are
+visibly a superposition slice changes between frames, where a degenerate
+superposition's parabolic node cuts its slice). Those statements are
 pinned against the builders at the end of this file, so a builder, grid or
 seeding change cannot silently falsify the prose.
 """
@@ -268,6 +269,41 @@ CHAPTERS: dict[str, Chapter] = {
             "mode=superposition&preset=2s-2pz&t=0&rep=slice&plane=xz&obs=probability_density",
         ),
     ),
+    "10-experiment.md": Chapter(
+        sections=(
+            "goals",
+            "measurement-chain",
+            "stark-microscopy",
+            "forward-model",
+            "what-the-lab-shows",
+            "repeated-measurements",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=superposition&preset=2s-2pz&t=0&rep=slice&plane=xz&obs=probability_density",
+            "mode=eigenstate&n=3&l=1&m=0&basis=real&rep=point_cloud",
+        ),
+    ),
+    "11-symmetry-hybridization.md": Chapter(
+        sections=(
+            "goals",
+            "basis-freedom",
+            "sp3",
+            "tetrahedral-angle",
+            "what-symmetry-decides",
+            "what-symmetry-cannot",
+            "hybrids-in-the-lab",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=eigenstate&n=2&l=1&m=0&basis=real&rep=isosurface",
+            "mode=superposition&preset=2s-2pz&t=0&rep=slice&plane=xz&obs=wavefunction_real",
+        ),
+    ),
 }
 
 
@@ -413,6 +449,7 @@ HEADING = re.compile(r"^## .*?\{#(?P<id>[a-z0-9]+(?:-[a-z0-9]+)*)\}\s*$")
 QUESTION = re.compile(r'^\?\?\? question "[^"“”]+"\s*$', re.MULTILINE)
 DEVELOPER_JARGON = re.compile(r"/api/|tests/|web/src|\bPR-\d|Phase 0")
 LEARNER_TAIL = ("misconceptions", "exercises", "further-reading")
+HTML_TAG_LOOKALIKE = re.compile(r"</?(?!figure\b)[A-Za-z]")
 
 
 def figures_in(text: str) -> list[tuple[dict[str, str | None], str]]:
@@ -597,6 +634,25 @@ def test_numbered_chapters_follow_the_learner_template() -> None:
     assert problems == [], "\n".join(problems)
 
 
+def test_textbook_pages_use_raw_html_only_for_figures() -> None:
+    r"""Nothing but the figure tags may look like raw HTML on a textbook page.
+
+    Python-Markdown's HTML block parser runs before arithmatex protects the math,
+    so ``$E_{2s}<E_{2p}$`` opens an unclosed ``<E_...`` tag. Every later
+    ``<figure ... markdown>`` on the page then stays unparsed: it is wrapped in
+    ``<p>`` with its ``markdown`` attribute left in, while the strict build and
+    the figure checks above stay green. Write ``\lt`` instead.
+    """
+
+    problems = [
+        f"{path.name}:{number}: {line.strip()[:80]!r}"
+        for path in sorted(TEXTBOOK.glob("*.md"))
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if HTML_TAG_LOOKALIKE.search(line)
+    ]
+    assert problems == [], "\n".join(problems)
+
+
 def test_textbook_index_links_every_chapter_in_order() -> None:
     index = (TEXTBOOK / "index.md").read_text(encoding="utf-8")
     positions = [index.find(f"]({name})") for name in CHAPTERS]
@@ -737,14 +793,17 @@ def _preset(preset: str) -> tuple[SuperpositionState, int, int]:
     return state, resolution, min(48, int(str(entry["streamline_seed_count_max"])))
 
 
-def _xz_density(
-    state: SuperpositionState, time: float, resolution: int
+def _xz_slice(
+    state: SuperpositionState,
+    time: float,
+    resolution: int,
+    observable: SliceObservable = SliceObservable.PROBABILITY_DENSITY,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     payload = build_superposition_slice(
         state,
         time=time,
         plane=PrincipalPlane.XZ,
-        observable=SliceObservable.PROBABILITY_DENSITY,
+        observable=observable,
         resolution=resolution,
     )
     assert (payload.u_axis, payload.v_axis) == ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0])
@@ -769,8 +828,8 @@ def test_chapter_9_figures_match_the_superposition_builders() -> None:
     """
 
     bohr, resolution, seeds = _preset("1s-2pz")
-    up, _, z = _xz_density(bohr, 0.0, resolution)
-    down, _, _ = _xz_density(bohr, 8.4, resolution)
+    up, _, z = _xz_slice(bohr, 0.0, resolution)
+    down, _, _ = _xz_slice(bohr, 8.4, resolution)
     assert up[z > 0].sum() > 2 * up[z < 0].sum()
     assert np.max(np.abs(down[::-1] - up)) < 1e-5 * up.max()
 
@@ -784,8 +843,8 @@ def test_chapter_9_figures_match_the_superposition_builders() -> None:
         assert not np.any((z_line[:-1] < 0) & (z_line[1:] > 0))
 
     quad, resolution, _ = _preset("1s-3dz2")
-    before, x, z = _xz_density(quad, 0.0, resolution)
-    after, _, _ = _xz_density(quad, 7.0, resolution)
+    before, x, z = _xz_slice(quad, 0.0, resolution)
+    after, _, _ = _xz_slice(quad, 7.0, resolution)
     assert np.max(np.abs(after - after[::-1])) <= 1e-12 * after.max()
     change = np.sqrt(after / after.max()) - np.sqrt(before / before.max())
     radius = np.hypot(x, z)
@@ -799,7 +858,37 @@ def test_chapter_9_figures_match_the_superposition_builders() -> None:
         assert np.max(density[radius >= 2]) < 0.03 * density.max()
 
     degenerate, resolution, _ = _preset("2s-2pz")
-    still, _, z = _xz_density(degenerate, 0.0, resolution)
-    later, _, _ = _xz_density(degenerate, 5.0, resolution)
+    still, _, z = _xz_slice(degenerate, 0.0, resolution)
+    later, _, _ = _xz_slice(degenerate, 5.0, resolution)
     assert still[z < 0].sum() > 3 * still[z > 0].sum()
     assert np.max(np.abs(later - still)) <= 1e-12 * still.max()
+
+
+def test_chapters_10_and_11_figures_match_the_degenerate_slice_builder() -> None:
+    """Figures 10.1 and 11.2 show (psi_2s + psi_2pz) / sqrt 2 on the catalogue's xz slice.
+
+    Its only node is the paraboloid r - z = 2 bohr, which the xz plane cuts in the
+    parabola z = x^2 / 4 - 1 cupping the nucleus from below: Re psi is positive
+    inside it and negative outside. Both the density and Re psi peak at the
+    nucleus, and the deepest negative Re psi, about 3 bohr down the -z axis, is
+    only about 45 % of that peak. If the preset, the slice builder or its floor
+    changes, revisit the "stark-microscopy" and "hybrids-in-the-lab" sections and
+    the captions of figures 10.1 and 11.2.
+    """
+
+    degenerate, resolution, _ = _preset("2s-2pz")
+    density, x, z = _xz_slice(degenerate, 0.0, resolution)
+    real, _, _ = _xz_slice(degenerate, 0.0, resolution, SliceObservable.WAVEFUNCTION_REAL)
+    peak = np.unravel_index(np.argmax(density), density.shape)
+    assert (x[peak], z[peak]) == (0.0, 0.0)
+    assert np.unravel_index(np.argmax(real), real.shape) == peak
+
+    spacing = x[0, 1] - x[0, 0]
+    above_node = z - (x**2 / 4 - 1)
+    clear = np.abs(above_node) > spacing
+    assert np.all(real[clear & (above_node > 0)] > 0)
+    assert np.all(real[clear & (above_node < 0)] < 0)
+
+    deepest = np.unravel_index(np.argmin(real), real.shape)
+    assert x[deepest] == 0.0 and -3.5 < z[deepest] < -2.5
+    assert 0.40 < -real.min() / real.max() < 0.50

@@ -127,6 +127,8 @@ nav:
       - 7 相位与平面切片: textbook/07-phase-slices.md
       - 8 概率流: textbook/08-probability-current.md
       - 9 叠加态与时间演化: textbook/09-superposition-time.md
+      - 10 从密度到实验图样: textbook/10-experiment.md
+      - 11 对称性与杂化: textbook/11-symmetry-hybridization.md
   - 深入阅读:
       - 科学模型:
           - concepts/index.md
