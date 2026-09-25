@@ -10,14 +10,12 @@ import {
   fetchSuperpositionIsosurface,
   fetchSuperpositionSlice,
 } from '../api/client'
-import { PRINCIPAL_PLANES, SLICE_OBSERVABLES } from '../api/sliceContract'
+import { sceneCallFor } from '../api/requests'
 import type {
   CurrentFieldPayload,
   IsosurfacePayload,
   PointCloudData,
-  PrincipalPlane,
   SceneStatus,
-  SliceObservable,
   SlicePayload,
   SuperpositionCurrentPayload,
   SuperpositionIsosurfacePayload,
@@ -67,86 +65,16 @@ export interface SceneAssetState {
   fitKey: string | null
 }
 
-/** Query-parameter names, as routes.py spells them. */
-const SAMPLES_PARAM = 'samples'
-const SEED_PARAM = 'seed'
-const RESOLUTION_PARAM = 'resolution'
-const PROBABILITY_MASS_PARAM = 'probability_mass'
-const SEED_COUNT_PARAM = 'seed_count'
+/** The query parameter a time-dependent plan carries; a plan without it is stationary. */
 const TIME_PARAM = 'time'
-const A_MU_PARAM = 'a_mu'
-const PLANE_PARAM = 'plane'
-const OBSERVABLE_PARAM = 'observable'
-
-const POINT_CLOUD_ENDPOINT = '/api/orbitals/point-cloud'
-const ISOSURFACE_ENDPOINT = '/api/orbitals/isosurface'
-const CURRENT_FIELD_ENDPOINT = '/api/orbitals/current-field'
-const SLICE_ENDPOINT = '/api/orbitals/slice'
-const SUPERPOSITION_ISOSURFACE_ENDPOINT = '/api/superposition/isosurface'
-const SUPERPOSITION_CURRENT_FIELD_ENDPOINT = '/api/superposition/current-field'
-const SUPERPOSITION_SLICE_ENDPOINT = '/api/superposition/slice'
-
-/**
- * A tunable the plan declares, taken from the plan rather than from the raw
- * inputs: `planSceneRequest` has already clamped it into the bound the route
- * accepts, and the unclamped input is exactly what used to produce 422s.
- *
- * A missing one is a contract break between the capability matrix and this
- * dispatcher, not something to paper over with a default -- a defaulted
- * resolution would render a different grid from the one the panel is showing.
- */
-function requireNumber(plan: ScenePlan, name: string): number {
-  const value = plan.params[name]
-  if (typeof value !== 'number') {
-    throw new Error(`The plan for ${plan.endpoint} carries no numeric ${name}.`)
-  }
-  return value
-}
-
-/**
- * An enumerated choice the plan declares, checked against the closed set the
- * contract names.
- *
- * The counterpart of `requireNumber` for `plane` and `observable`, and it
- * fails closed for a sharper reason than a missing number does. A missing
- * `resolution` produces a 422 the user sees; a missing `plane` produces
- * nothing at all, because the route substitutes `xz` and returns a perfectly
- * valid section of a plane nobody asked for while the panel goes on saying
- * `xy`. The membership test is what makes the returned type honest rather than
- * a cast: `PrincipalPlane` is a claim about the value, and an unchecked `as`
- * would let a typo become a query parameter.
- */
-function requireChoice<T extends string>(
-  plan: ScenePlan,
-  name: string,
-  declared: readonly T[],
-): T {
-  const value = plan.params[name]
-  if (typeof value !== 'string') {
-    throw new Error(`The plan for ${plan.endpoint} carries no ${name}.`)
-  }
-  if (!declared.includes(value as T)) {
-    throw new Error(
-      `The plan for ${plan.endpoint} names ${name}=${value}, which is not one of ` +
-        `${declared.join(', ')}.`,
-    )
-  }
-  return value as T
-}
-
-const requirePlane = (plan: ScenePlan): PrincipalPlane =>
-  requireChoice(plan, PLANE_PARAM, PRINCIPAL_PLANES)
-
-const requireObservable = (plan: ScenePlan): SliceObservable =>
-  requireChoice(plan, OBSERVABLE_PARAM, SLICE_OBSERVABLES)
 
 /**
  * Issue the request the plan describes.
  *
- * One dispatch on the endpoint the capability matrix chose, replacing the
- * four-branch `if` chain that re-derived the choice from `mode` and
- * `representation` and could disagree with the matrix about what was
- * available. Every cell the matrix can plan is covered; an endpoint without a
+ * The dispatch itself is `sceneCallFor` (src/api/requests.ts), shared with
+ * `requestsForPlan`: the static catalogue is enumerated from the same decision
+ * this function fetches, so a cell cannot be fetched one way and catalogued
+ * another. Every cell the matrix can plan is covered; an endpoint without a
  * fetcher throws rather than silently rendering nothing.
  */
 export async function executeSceneRequest(
@@ -154,91 +82,67 @@ export async function executeSceneRequest(
   inputs: SceneAssetInputs,
   signal: AbortSignal,
 ): Promise<SceneAsset> {
-  switch (plan.endpoint) {
-    case POINT_CLOUD_ENDPOINT:
+  const call = sceneCallFor(plan, inputs)
+  switch (call.kind) {
+    case 'point_cloud':
       return {
         kind: 'point_cloud',
-        data: await fetchPointCloud(
-          inputs.orbital,
-          requireNumber(plan, SAMPLES_PARAM),
-          requireNumber(plan, SEED_PARAM),
-          signal,
-        ),
+        data: await fetchPointCloud(call.orbital, call.samples, call.seed, signal),
       }
-    case ISOSURFACE_ENDPOINT:
+    case 'isosurface':
       return {
         kind: 'isosurface',
-        data: await fetchIsosurface(
-          inputs.orbital,
-          requireNumber(plan, RESOLUTION_PARAM),
-          requireNumber(plan, PROBABILITY_MASS_PARAM),
-          signal,
-        ),
+        data: await fetchIsosurface(call.orbital, call.resolution, call.probabilityMass, signal),
       }
-    case CURRENT_FIELD_ENDPOINT:
-      return {
-        kind: 'streamlines',
-        data: await fetchCurrentField(inputs.orbital, requireNumber(plan, SEED_COUNT_PARAM), signal),
-      }
-    case SLICE_ENDPOINT:
+    case 'streamlines':
+      return { kind: 'streamlines', data: await fetchCurrentField(call.orbital, call.seedCount, signal) }
+    case 'slice':
       return {
         kind: 'slice',
-        // `a_mu` comes from the plan rather than from `inputs.aMu`: the plan's
-        // copy has been clamped into the bound the route accepts, and the
-        // panel's raw value is exactly what produces 422s.
-        data: await fetchSlice(
-          inputs.orbital,
-          requireNumber(plan, RESOLUTION_PARAM),
-          requireNumber(plan, A_MU_PARAM),
-          requirePlane(plan),
-          requireObservable(plan),
-          signal,
-        ),
+        data: await fetchSlice(call.orbital, call.resolution, call.aMu, call.plane, call.observable, signal),
       }
-    case SUPERPOSITION_ISOSURFACE_ENDPOINT:
+    case 'superposition_isosurface':
       return {
         kind: 'superposition_isosurface',
         data: await fetchSuperpositionIsosurface(
-          inputs.superpositionTerms,
-          requireNumber(plan, TIME_PARAM),
-          requireNumber(plan, RESOLUTION_PARAM),
-          inputs.superpositionBasis,
-          inputs.orbital.z,
-          requireNumber(plan, A_MU_PARAM),
-          requireNumber(plan, PROBABILITY_MASS_PARAM),
+          call.terms,
+          call.timeAu,
+          call.resolution,
+          call.basis,
+          call.z,
+          call.aMu,
+          call.probabilityMass,
           signal,
         ),
       }
-    case SUPERPOSITION_SLICE_ENDPOINT:
+    case 'superposition_slice':
       return {
         kind: 'superposition_slice',
         data: await fetchSuperpositionSlice(
-          inputs.superpositionTerms,
-          requireNumber(plan, TIME_PARAM),
-          requireNumber(plan, RESOLUTION_PARAM),
-          inputs.superpositionBasis,
-          inputs.orbital.z,
-          requireNumber(plan, A_MU_PARAM),
-          requirePlane(plan),
-          requireObservable(plan),
-          signal,
-        ),
-      }
-    case SUPERPOSITION_CURRENT_FIELD_ENDPOINT:
-      return {
-        kind: 'superposition_streamlines',
-        data: await fetchSuperpositionCurrentField(
-          inputs.superpositionTerms,
-          requireNumber(plan, TIME_PARAM),
-          requireNumber(plan, SEED_COUNT_PARAM),
-          inputs.superpositionBasis,
-          inputs.orbital.z,
-          requireNumber(plan, A_MU_PARAM),
+          call.terms,
+          call.timeAu,
+          call.resolution,
+          call.basis,
+          call.z,
+          call.aMu,
+          call.plane,
+          call.observable,
           signal,
         ),
       }
     default:
-      throw new Error(`No client fetcher serves ${plan.endpoint}.`)
+      return {
+        kind: 'superposition_streamlines',
+        data: await fetchSuperpositionCurrentField(
+          call.terms,
+          call.timeAu,
+          call.seedCount,
+          call.basis,
+          call.z,
+          call.aMu,
+          signal,
+        ),
+      }
   }
 }
 

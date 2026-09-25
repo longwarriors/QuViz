@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { CAPABILITY_ROUTE_CONSTRAINTS } from './capability'
+import {
+  CAPABILITY_ROUTE_CONSTRAINTS,
+  planSceneRequest,
+  type ScenePlan,
+  type SceneRequestInputs,
+} from './capability'
 import {
   currentFieldRequest,
   isosurfaceRequest,
@@ -11,6 +16,8 @@ import {
   ORBITAL_POINT_CLOUD_ROUTE,
   ORBITAL_SLICE_ROUTE,
   pointCloudRequest,
+  requestsForPlan,
+  sceneCallFor,
   sliceRequest,
   SUPERPOSITION_CATALOG_REQUEST,
   SUPERPOSITION_CURRENT_FIELD_ROUTE,
@@ -121,5 +128,149 @@ describe('route table', () => {
       .map((route) => route.endpoint as string)
       .sort()
     expect(scene).toEqual(planned)
+  })
+})
+
+/* ------------------------------------------------------------ scene dispatch */
+
+const TERMS_1S2PZ = '1,0,0,0.7071067811865476;2,1,0,0.7071067811865476'
+const ENCODED_1S2PZ = new URLSearchParams({ terms: TERMS_1S2PZ }).toString().slice('terms='.length)
+
+const sceneInputs = (patch: Partial<SceneRequestInputs> = {}): SceneRequestInputs => ({
+  mode: 'eigenstate',
+  representation: 'point_cloud',
+  orbital: { n: 2, l: 1, m: 1, z: 1, basis: 'complex' },
+  samples: 28000,
+  seed: 7,
+  resolution: 65,
+  probabilityMass: 0.9,
+  seedCount: 48,
+  superpositionTerms: TERMS_1S2PZ,
+  superpositionStreamlineSeedCountMax: 40,
+  superpositionBasis: 'complex',
+  aMu: 1,
+  timeAu: 0.6,
+  ...patch,
+})
+
+function planFor(inputs: SceneRequestInputs): ScenePlan {
+  const plan = planSceneRequest(inputs)
+  if (plan.status !== 'available') throw new Error(`expected a plan: ${plan.reason}`)
+  return plan
+}
+
+describe('requestsForPlan', () => {
+  it.each([
+    [
+      'point cloud: the cloud and its metadata, in fetch order',
+      sceneInputs(),
+      [
+        '/api/orbitals/point-cloud?n=2&l=1&m=1&z=1&basis=complex&samples=28000&seed=7',
+        '/api/orbitals/metadata?n=2&l=1&m=1&z=1&basis=complex',
+      ],
+    ],
+    [
+      'eigenstate isosurface',
+      sceneInputs({ representation: 'isosurface' }),
+      ['/api/orbitals/isosurface?n=2&l=1&m=1&z=1&basis=complex&resolution=65&probability_mass=0.9'],
+    ],
+    [
+      'eigenstate streamlines',
+      sceneInputs({ representation: 'streamlines' }),
+      ['/api/orbitals/current-field?n=2&l=1&m=1&z=1&basis=complex&seed_count=48'],
+    ],
+    [
+      'eigenstate slice',
+      sceneInputs({ representation: 'slice', plane: 'yz', sliceObservable: 'phase' }),
+      ['/api/orbitals/slice?n=2&l=1&m=1&z=1&basis=complex&resolution=65&a_mu=1&plane=yz&observable=phase'],
+    ],
+    [
+      'superposition isosurface',
+      sceneInputs({ mode: 'superposition', representation: 'isosurface' }),
+      [
+        `/api/superposition/isosurface?terms=${ENCODED_1S2PZ}&time=0.6&resolution=65&basis=complex&z=1&a_mu=1&probability_mass=0.9`,
+      ],
+    ],
+    [
+      'superposition streamlines (seed count clamped to the catalogue 40)',
+      sceneInputs({ mode: 'superposition', representation: 'streamlines' }),
+      [
+        `/api/superposition/current-field?terms=${ENCODED_1S2PZ}&time=0.6&seed_count=40&basis=complex&z=1&a_mu=1`,
+      ],
+    ],
+    [
+      'superposition slice (route default plane and observable)',
+      sceneInputs({ mode: 'superposition', representation: 'slice' }),
+      [
+        `/api/superposition/slice?terms=${ENCODED_1S2PZ}&time=0.6&resolution=65&basis=complex&z=1&a_mu=1&plane=xz&observable=probability_density`,
+      ],
+    ],
+  ] as const)('%s', (_label, inputs, expected) => {
+    expect(requestsForPlan(planFor(inputs), inputs).map(key)).toEqual(expected)
+  })
+})
+
+describe('sceneCallFor', () => {
+  it('takes the state from the inputs and every tunable from the clamped plan', () => {
+    const inputs = sceneInputs({ mode: 'superposition', representation: 'isosurface' })
+    const clamped = planFor({ ...inputs, aMu: 100, resolution: 999 })
+    expect(sceneCallFor(clamped, inputs)).toEqual({
+      kind: 'superposition_isosurface',
+      terms: TERMS_1S2PZ,
+      basis: 'complex',
+      z: 1,
+      aMu: 20,
+      timeAu: 0.6,
+      resolution: 81,
+      probabilityMass: 0.9,
+    })
+  })
+
+  it('refuses an endpoint no fetcher serves', () => {
+    expect(() =>
+      sceneCallFor(
+        { status: 'available', endpoint: '/api/orbitals/hologram', params: {}, latency: 'fast' },
+        sceneInputs(),
+      ),
+    ).toThrow('No client fetcher serves /api/orbitals/hologram.')
+  })
+
+  it('refuses a plan missing a number its endpoint needs', () => {
+    expect(() =>
+      sceneCallFor(
+        {
+          status: 'available',
+          endpoint: '/api/orbitals/isosurface',
+          params: { probability_mass: 0.9 },
+          latency: 'slow',
+        },
+        sceneInputs(),
+      ),
+    ).toThrow('The plan for /api/orbitals/isosurface carries no numeric resolution.')
+  })
+
+  it('refuses a slice plan with no plane, or a plane outside the principal set', () => {
+    expect(() =>
+      sceneCallFor(
+        {
+          status: 'available',
+          endpoint: '/api/orbitals/slice',
+          params: { resolution: 65, a_mu: 1, observable: 'phase' },
+          latency: 'slow',
+        },
+        sceneInputs(),
+      ),
+    ).toThrow('The plan for /api/orbitals/slice carries no plane.')
+    expect(() =>
+      sceneCallFor(
+        {
+          status: 'available',
+          endpoint: '/api/superposition/slice',
+          params: { resolution: 65, a_mu: 1, time: 0, plane: 'xw', observable: 'phase' },
+          latency: 'slow',
+        },
+        sceneInputs({ mode: 'superposition' }),
+      ),
+    ).toThrow('names plane=xw')
   })
 })

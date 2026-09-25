@@ -38,6 +38,8 @@ import {
   type SceneAsset,
   type SceneAssetInputs,
 } from './useSceneAsset'
+import { requestsForPlan } from '../api/requests'
+import { requestKey } from '../api/transport'
 
 /* ------------------------------------------------------------------ fetch */
 
@@ -780,6 +782,30 @@ describe('executeSceneRequest', () => {
       if (plan.status !== 'available') throw new Error(`expected a plan for ${inputs.representation}`)
       void executeSceneRequest(plan, inputs, new AbortController().signal).catch(() => undefined)
       expect(calls.some((call) => call.url.startsWith(plan.endpoint))).toBe(true)
+    }
+  })
+
+  it('fetches exactly the requests requestsForPlan enumerates, for every cell', () => {
+    // The static catalogue is built from requestsForPlan; this is what keeps the
+    // catalogue and the requests the app really makes the same list.
+    const cells: SceneAssetInputs[] = [
+      { ...baseInputs, representation: 'point_cloud' },
+      { ...baseInputs, representation: 'isosurface' },
+      { ...baseInputs, representation: 'streamlines' },
+      { ...baseInputs, representation: 'slice', plane: 'yz', sliceObservable: 'phase' },
+      { ...superpositionInputs, representation: 'isosurface' },
+      { ...superpositionInputs, representation: 'streamlines' },
+      { ...superpositionInputs, representation: 'slice', plane: 'xz', sliceObservable: 'wavefunction_imag' },
+    ]
+    for (const inputs of cells) {
+      calls = []
+      const plan = planSceneRequest(inputs)
+      if (plan.status !== 'available') throw new Error(`expected a plan for ${inputs.representation}`)
+      void executeSceneRequest(plan, inputs, new AbortController().signal).catch(() => undefined)
+      expect(
+        calls.map((call) => call.url),
+        `${inputs.mode} x ${inputs.representation}`,
+      ).toEqual(requestsForPlan(plan, inputs).map((request) => requestKey(request.route, request.query)))
     }
   })
 
