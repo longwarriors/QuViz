@@ -125,6 +125,7 @@ nav:
       - 5 电子云：从概率到采样: textbook/05-electron-cloud.md
       - 6 等值面：轨道的“形状”: textbook/06-isosurface.md
       - 7 相位与平面切片: textbook/07-phase-slices.md
+      - 8 概率流: textbook/08-probability-current.md
   - 深入阅读:
       - 科学模型:
           - concepts/index.md

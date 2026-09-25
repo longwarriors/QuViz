@@ -16,9 +16,10 @@ level-2 section ids and figure deep links of each page, so a chapter cannot
 silently lose a figure, change a deep-link anchor or drift from the plan.
 
 Some chapters also describe what a catalogue asset looks like at the
-catalogue's own grid (a mesh artifact, which samples a phase slice masks).
+catalogue's own settings (a mesh artifact, which samples a phase slice masks,
+how the streamline figures are seeded and why two of them look alike).
 Those statements are pinned against the builders at the end of this file, so a
-builder or grid change cannot silently falsify the prose.
+builder, grid or seeding change cannot silently falsify the prose.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ from scipy.sparse.csgraph import connected_components
 from quviz.api.routes import superposition_catalog
 from quviz.conventions import BasisKind, PrincipalPlane, SliceObservable
 from quviz.physics.hydrogenic import hydrogenic_wavefunction
-from quviz.scene.builders import build_isosurface
+from quviz.scene.builders import build_current_field, build_isosurface
 from quviz.scene.slices import build_slice
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -219,6 +220,25 @@ CHAPTERS: dict[str, Chapter] = {
             "mode=eigenstate&n=3&l=2&m=2&basis=complex&rep=slice&plane=xy&obs=wavefunction_real",
             "mode=eigenstate&n=2&l=1&m=1&basis=complex&rep=slice&plane=xy&obs=phase",
             "mode=eigenstate&n=2&l=1&m=-1&basis=complex&rep=slice&plane=xy&obs=phase",
+        ),
+    ),
+    "08-probability-current.md": Chapter(
+        sections=(
+            "goals",
+            "current",
+            "continuity",
+            "real-states",
+            "complex-states",
+            "streamlines",
+            "not-trajectories",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=eigenstate&n=2&l=1&m=1&basis=complex&rep=streamlines",
+            "mode=eigenstate&n=2&l=1&m=-1&basis=complex&rep=streamlines",
+            "mode=eigenstate&n=3&l=2&m=2&basis=complex&rep=streamlines",
         ),
     ),
 }
@@ -646,3 +666,35 @@ def test_chapter_7_mask_examples_match_the_slice_builder() -> None:
     assert masked.size == 0
     masked, residue = _masked(2, 1, 0, "real", "xy")
     assert len(masked) == 65 * 65 and residue < 1e-17
+
+
+def test_chapter_8_streamline_figures_match_the_current_field_builder() -> None:
+    """Chapter 8's streamline figures, checked on the catalogue's current fields.
+
+    Each figure state gets 48 seeds (spec.json) and 48 lines. Every line is a
+    horizontal circle about z, turning counter-clockwise seen from +z for m > 0,
+    with one speed |m|/s and so one colour. The m = -1 lines are the y-mirror
+    images of the m = +1 lines, so with no arrows drawn figures 8.1 and 8.2 look
+    identical. If the seeding or the seed count changes, the "streamlines"
+    section and the captions of figures 8.1-8.3 must be revisited.
+    """
+
+    fields = {
+        (n, l, m): build_current_field(n, l, m, basis=BasisKind.COMPLEX, seed_count=48)
+        for n, l, m in ((2, 1, 1), (2, 1, -1), (3, 2, 2))
+    }
+    for (_, _, m), field in fields.items():
+        assert len(field.lines) == 48, m
+        for line, speed in zip(field.lines, field.speed, strict=True):
+            x, y, z = np.asarray(line).T
+            s = np.hypot(x, y)
+            assert np.ptp(s) / s[0] < 1e-4 and np.ptp(z) == 0.0
+            assert np.all(np.sign(x[:-1] * np.diff(y) - y[:-1] * np.diff(x)) == np.sign(m))
+            assert np.allclose(np.asarray(speed) * s, abs(m), rtol=1e-5)
+    plus, minus = fields[(2, 1, 1)], fields[(2, 1, -1)]
+    for forward, reverse, forward_speed, reverse_speed in zip(
+        plus.lines, minus.lines, plus.speed, minus.speed, strict=True
+    ):
+        assert np.array_equal(np.asarray(reverse), np.asarray(forward) * [1.0, -1.0, 1.0])
+        # Equal up to the last serialised digit (measured: 5 of 15487 vertices, 1e-12).
+        assert np.allclose(reverse_speed, forward_speed, rtol=1e-9, atol=0.0)
