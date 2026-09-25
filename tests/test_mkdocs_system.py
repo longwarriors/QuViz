@@ -163,6 +163,7 @@ def test_mathjax_and_mermaid_are_exactly_pinned_and_instant_navigation_aware() -
         "https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js",
         "https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js",
         "assets/javascripts/mermaid.js",
+        "assets/javascripts/quviz-figure.js",
     ]
     mathjax = (DOCS / "assets/javascripts/mathjax.js").read_text(encoding="utf-8")
     mermaid = (DOCS / "assets/javascripts/mermaid.js").read_text(encoding="utf-8")
@@ -171,6 +172,9 @@ def test_mathjax_and_mermaid_are_exactly_pinned_and_instant_navigation_aware() -
     assert "startOnLoad: false" in mermaid
     assert "document$.subscribe(renderMermaid)" in mermaid
     assert "window.mermaid.run({ nodes })" in mermaid
+    figure = (DOCS / "assets/javascripts/quviz-figure.js").read_text(encoding="utf-8")
+    assert "document$.subscribe(enhance)" in figure
+    assert "window.QuvizFigure" in figure
 
 
 def test_mermaid_fence_reaches_runtime_as_plain_diagram_text() -> None:

@@ -317,3 +317,132 @@
     transition: none;
   }
 }
+
+/* 教材交互图：quviz-figure.js 生成的占位卡。舞台始终是实验室的深色，与配色方案无关。 */
+.md-typeset .quviz-figure {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 1.6em 0;
+  border: 1px solid var(--qv-line);
+  border-radius: var(--qv-radius-panel);
+  background-color: var(--qv-card-bg);
+  box-shadow: var(--qv-glow);
+  overflow: hidden;
+}
+
+.md-typeset .quviz-figure > p {
+  margin: 0;
+  padding: 0.9rem 1.2rem 1.1rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.72rem;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.md-typeset .quviz-figure > p strong {
+  color: var(--md-default-fg-color);
+}
+
+.quviz-figure__stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 16 / 10;
+  min-height: 12rem;
+  border-bottom: 1px solid var(--qv-line);
+  background:
+    radial-gradient(circle at 50% 45%, rgba(138, 180, 248, 0.1), transparent 60%),
+    #111316;
+}
+
+.quviz-figure__placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  max-width: 30rem;
+  padding: 1.2rem;
+  text-align: center;
+}
+
+.quviz-figure__badge {
+  padding: 2px 8px;
+  border: 1px solid var(--qv-border-strong);
+  border-radius: var(--qv-radius-tag);
+  color: var(--qv-text-2);
+  font-size: 0.6rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.quviz-figure__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.md-typeset .quviz-figure__actions .md-button {
+  margin: 0;
+}
+
+.md-typeset .quviz-figure__open,
+.md-typeset .quviz-figure__open:is(:hover, :focus-visible) {
+  border-color: var(--qv-border-strong);
+  color: var(--qv-text);
+}
+
+.md-typeset .quviz-figure__note {
+  margin: 0;
+  color: var(--qv-text-3);
+  font-size: 0.62rem;
+}
+
+.md-typeset .quviz-figure[data-quviz-state="error"] .quviz-figure__note {
+  color: var(--qv-warn);
+}
+
+.quviz-figure__frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background-color: var(--qv-bg);
+}
+
+.quviz-figure__close {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  z-index: 1;
+  padding: 0.3rem 0.9rem;
+  border: 1px solid var(--qv-border-strong);
+  border-radius: var(--qv-radius-pill);
+  background-color: var(--qv-glass);
+  color: var(--qv-text);
+  font: inherit;
+  font-size: 0.62rem;
+  cursor: pointer;
+  -webkit-backdrop-filter: var(--qv-blur);
+  backdrop-filter: var(--qv-blur);
+}
+
+.quviz-figure__close:is(:hover, :focus-visible) {
+  border-color: var(--qv-accent);
+  box-shadow: var(--qv-glow);
+}
+
+/* .md-button 的 display 会盖过 UA 的 [hidden]，这里显式恢复隐藏语义。 */
+.md-typeset .quviz-figure [hidden],
+.md-typeset a[data-quviz-lab][hidden] {
+  display: none !important;
+}
+
+@media screen and (max-width: 44.9375em) {
+  .quviz-figure__stage {
+    aspect-ratio: 4 / 5;
+  }
+}

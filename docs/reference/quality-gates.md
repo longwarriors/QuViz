@@ -127,6 +127,11 @@
 - 🕒 引用内容漂移检查（当前没有任何门禁比对页面内容）；
 - ✅ `references.bib` 中未被正文引用的孤儿键 — `tests/test_bibliography.py::test_every_bibliography_entry_is_cited_or_marked_tooling`；代码块、行内代码与块级 HTML 注释里的引用不算正文，正文行内的注释按 python-markdown 的行为计入（`tests/test_citation_gates.py`）；
 - ✅ `source-audit` 条目的 `commit` 与 URL 中 SHA 一致、tag 或无法与 tag 区分的 ref 需要与之相等的 `version`、明确的分支 URL 一律拒绝、非代码托管来源带访问日期（完整规则见[添加和维护引用](../how-to/cite-sources.md#enforced-rules)） — `test_repository_bibliography_has_coherent_source_pins`；
+- ✅ 教材交互图脚本 — `tests/test_quviz_figure_js.py` 在 Node 中用最小假 DOM 执行真实的 `docs/assets/javascripts/quviz-figure.js`，逐条检查以下行为：
+  - `extra.quviz.lab_url` 相对教材站点根（Material `__config.base`，只在首次整页加载时解析）而不是相对当前页解析；
+  - 点击前不产生任何 iframe；iframe 带 `loading="lazy"`、`sandbox`、`allow="fullscreen"` 与图注标题；
+  - 同一页只保留一个活动交互图；`document$` 重复触发不会重复升级；
+  - 缺失 meta、非 http(s) 地址或带 `embed=` 的深链接一律禁用按钮并显示原因。
 - 🔗 MkDocs 在真实 Chromium 中完成渲染 — `npm run test:fullstack` 同时启动生产应用与
   `mkdocs serve --strict`：直达页面和 `navigation.instant` 换页后的全部 `.arithmatex` 都必须
   生成 `mjx-container`，架构页 Mermaid 必须生成 SVG，Python API 必须出现 Phase 0 的
