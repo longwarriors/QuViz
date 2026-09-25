@@ -42,6 +42,20 @@
 
 **尚未执行的对外动作**（需维护者确认）：推送分支；在仓库设置中启用 GitHub Pages，构建来源设为 GitHub Actions；合并到 master 以触发首次部署。另有两项待维护者决定：是否在首次发布前改正仓库名里的 `Atmoic`（站点地址会随之改变）；是否在公开站点保留指向私有 claude.ai artifact 的 `claude-fable-audit` 引用。
 
+本树最终实测（2026-09-26，Windows 11、CPython 3.12、同一工作树）：
+
+| 门禁 | 结果 |
+|---|---|
+| Ruff / mypy | ruff 与 format 通过；mypy strict 无问题（38 个源文件） |
+| Python 全量 | 1658 passed，0 skipped；总覆盖率 93.28%（门槛 85%） |
+| 引用、HTTP schema 与 MkDocs | 两个 `--check` 与 `mkdocs build --strict` 通过 |
+| 前端全量 | 66 个 spec 文件、1531 passed，0 skipped、0 todo；63 个模块逐文件达标 |
+| 类型检查与生产构建 | `typecheck` 通过；JS 1,318.84 kB（gzip 367.69 kB） |
+| 全栈浏览器 | `npm run test:fullstack` 1/1 通过 |
+| 静态站构建 | `build_pages.py` 完整构建通过：站点 305.27 MB（`data/` 295.24 MB，`learn/` 8.59 MB，`assets/` 1.35 MB） |
+| 静态站浏览器 | `npm run test:pages` 8/8 通过 |
+| 视觉像素 | `scripts/visual-docker.ps1` 8/8 通过（1280×800 基线） |
+
 ## 能力账本
 
 | 能力 | 实现与验证 | 当前边界 |
