@@ -236,6 +236,18 @@ def test_a_crashed_worker_is_reported_as_a_transport_failure_of_its_key() -> Non
     )
 
 
+@pytest.mark.parametrize("status", [500, 503])
+def test_a_5xx_replay_fails_naming_the_key_status_and_body(status: int) -> None:
+    replay = static_site._Replay(METADATA, status, "text/plain", (), b"boom", 0.0, None)
+    assert static_site._failure(replay) == f"{METADATA}: HTTP {status}: boom"
+
+
+@pytest.mark.parametrize("status", [499, 405])
+def test_a_non_5xx_non_404_replay_is_publishable(status: int) -> None:
+    replay = static_site._Replay(METADATA, status, "text/plain", (), b"ok", 0.0, None)
+    assert static_site._failure(replay) is None
+
+
 @pytest.mark.parametrize(
     ("document", "message"),
     [
