@@ -383,6 +383,28 @@ def test_probability_flow_docs_cover_scale_covariance_and_discovery() -> None:
     assert "`slice_resolution_floor`" in frontend
 
 
+def test_ui_docs_follow_the_redesigned_lab_and_the_static_textbook() -> None:
+    frontend = (ROOT / "docs/tutorials/frontend-rendering.md").read_text(encoding="utf-8")
+    first_orbital = (ROOT / "docs/getting-started/first-orbital.md").read_text(encoding="utf-8")
+    walkthrough = (ROOT / "docs/tutorials/phase-0-walkthrough.md").read_text(encoding="utf-8")
+    development = (ROOT / "docs/getting-started/development.md").read_text(encoding="utf-8")
+    installation = (ROOT / "docs/getting-started/installation.md").read_text(encoding="utf-8")
+
+    # The old "no glassmorphism" paragraph would contradict the redesigned lab.
+    assert "不再使用蓝紫玻璃拟态" not in frontend
+    assert "`data-chrome`" in frontend
+    assert "$z$ 轴朝上" in frontend
+    for page in (first_orbital, walkthrough):
+        assert "态制备" not in page
+    assert "**量子态**" in first_orbital
+    assert "检查器" not in walkthrough
+    assert "未预计算" in walkthrough
+    assert "(../adr/0005-static-hosting.md)" in walkthrough
+    # mkdocs serve on 8000 would collide with the lab that textbook figures embed.
+    assert "uv run --locked --no-sync mkdocs serve -a 127.0.0.1:8001" in development
+    assert "extra.quviz.lab_url" in installation
+
+
 # --- red/green cases for the gate itself --------------------------------------
 
 
