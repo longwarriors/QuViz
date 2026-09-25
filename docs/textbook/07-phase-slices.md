@@ -1,0 +1,172 @@
+# 第 7 章 相位与平面切片
+
+等值面只画密度，波函数的符号与相位只能由颜色附带表达。平面切片换一种做法：只看一张过原点的平面，但在这张平面上
+可以直接画出 $\psi$ 的四种场——密度、实部、虚部和相位。这一章说明怎样选平面和场，怎样读三种色图，为什么相位切片上
+会有透明的地方，以及把波函数乘上一个全局相位后，每一种切片会怎样变化。
+
+## 学习目标 {#goals}
+
+读完本章，你应当能够：
+
+- 选择一个主平面，以及四种场中的一种；
+- 读懂密度、实部/虚部和相位三种色图；
+- 区分相位遮罩与节点；
+- 预测全局相位怎样改变每一种切片。
+
+## 三个主平面 {#planes}
+
+实验室提供三个过原点的主平面：
+
+- **xy 平面**（$z=0$）：$u$ 轴为 $x$，$v$ 轴为 $y$，法向为 $+z$；
+- **xz 平面**（$y=0$）：$u$ 轴为 $x$，$v$ 轴为 $z$，法向为 $-y$；
+- **yz 平面**（$x=0$）：$u$ 轴为 $y$，$v$ 轴为 $z$，法向为 $+x$。
+
+每个平面都用一个右手标架 $(u,v,n)$ 采样，满足 $\hat u\times\hat v=\hat n$。xz 平面的法向是 $-y$ 而不是 $+y$，正是因为
+$\hat x\times\hat z=-\hat y$。选择平面切片后，实验室从法向一侧沿法线看向平面：屏幕向右是 $u$，屏幕向上是 $v$。
+所以在 xz 平面上 $z$ 轴朝上，$2p_z$ 的两瓣上下排列；在 xy 平面上是从 $+z$ 往下看，屏幕上的逆时针方向就是绕 $z$ 轴的正方向。
+这一点对判断相位的绕行方向很重要：从平面的另一侧看，逆时针会变成顺时针。
+
+切片在平面上的正方形网格上取样，每个样本画成一个颜色块，块与块之间不做插值：屏幕上的每一格都是实际算过的值。
+
+## 四种场 {#four-fields}
+
+在选定的平面上，实验室可以画四种场：
+
+$$
+\lvert\psi\rvert^2,\qquad\operatorname{Re}\psi,\qquad\operatorname{Im}\psi,\qquad\arg\psi
+$$
+
+其中只有 $\lvert\psi\rvert^2$ 是概率密度；实部、虚部和相位是波函数本身及其派生量，不是能直接测量的经典场。
+
+- **实基本征态**是实函数，$\operatorname{Im}\psi\equiv0$，所以虚部切片是一片均匀的中性色；实部切片就是 $\psi$ 本身，正负号一目了然。
+- **复基 $m\ne0$ 的本征态**含因子 $e^{im\phi}$。在固定的 $r,\theta$ 处，$\operatorname{Re}\psi$ 与 $\operatorname{Im}\psi$ 随方位角分别按
+  $\cos m\phi$ 与 $\sin m\phi$ 变化（$m$ 为正奇数时，两者都多一个 Condon–Shortley 负号），所以两张切片的图案相同，只是绕 $z$ 轴
+  相差 $90^\circ/\lvert m\rvert$。
+
+<figure class="quviz-figure" data-lab="mode=eigenstate&n=2&l=1&m=0&basis=real&rep=slice&plane=xz&obs=wavefunction_real" markdown>
+**图 7.1** 实基 $2p_z$ 在 $xz$ 平面上的 $\operatorname{Re}\psi$：上半平面为正（红）、下半平面为负（青），零值线就是 $z=0$ 的节面。节面上的样本值为零（只剩舍入残差），画成中性的深灰色。
+</figure>
+
+<figure class="quviz-figure" data-lab="mode=eigenstate&n=3&l=2&m=2&basis=complex&rep=slice&plane=xy&obs=wavefunction_real" markdown>
+**图 7.2** 复基 $3d$、$m=2$ 在 $xy$ 平面上的 $\operatorname{Re}\psi\propto\cos2\phi$：正负四瓣交替，$\pm x$ 方向为红，$\pm y$ 方向为青；这正是实基 $3d_{x^2-y^2}$ 的图案。切换到 $\operatorname{Im}\psi\propto\sin2\phi$ 会看到同样的图案绕 $z$ 轴逆时针转过 $45^\circ$，也就是实基 $3d_{xy}$ 的图案。
+</figure>
+
+## 色图 {#colour-maps}
+
+三类场各用一种色图，右下角的图例胶囊总是写明当前用的是哪一种。
+
+- **密度：顺序色图。** 从深灰色经过蓝色到浅蓝白色，单调变亮。颜色在色带上的位置正比于
+  $\lvert\psi\rvert/\max\lvert\psi\rvert=\sqrt{\rho/\rho_{\max}}$（图例写作「亮度 ∝ $\lvert\psi\rvert/\max\lvert\psi\rvert$」），其中最大值取在这张平面上，
+  而不是正比于 $\rho$ 本身。开平方让密度较低的区域仍然可见：密度只有最大值四分之一的地方，颜色已经在色带的一半处。
+  这张色带只有一种色相，不会被误读成正负号。
+- **实部/虚部：发散色图。** $-A$ 处为青色，0 处为中性的深灰色，$+A$ 处为红色，其中 $A$ 是这张平面上数值绝对值的最大值，
+  写在图例上。两端的红与青正是相位色环上相位 0 与 $\pi$ 的颜色，所以“红为正、青为负”的读法与实轨道的等值面一致。
+  每张切片都按自己的 $A$ 归一化，所以不同切片之间只能比较图案，不能直接比较颜色深浅；要比较大小，请看图例上的 $A$。
+- **相位：周期色环。** 与第 4 章相同：相位 0 为红，$\pi$ 为青，$+\pi/2$ 为黄绿，$-\pi/2$ 为紫，$-\pi$ 与 $+\pi$ 是同一种颜色。
+  相位是角度而不是大小，所以这张色图不做任何归一化。
+
+<figure class="quviz-figure" data-lab="mode=eigenstate&n=2&l=1&m=1&basis=complex&rep=slice&plane=xy&obs=phase" markdown>
+**图 7.3** 复基 $2p$、$m=+1$ 在 $xy$ 平面上的相位 $\arg\psi$：沿逆时针方向增加一整圈 $2\pi$；由于 Condon–Shortley 相位，$+x$ 轴上的相位是 $\pi$（青），$+y$ 轴上是 $-\pi/2$（紫）。原点处 $\psi=0$，被遮罩为透明。
+</figure>
+
+<figure class="quviz-figure" data-lab="mode=eigenstate&n=2&l=1&m=-1&basis=complex&rep=slice&plane=xy&obs=phase" markdown>
+**图 7.4** 复基 $2p$、$m=-1$ 在同一平面上的相位：绕行方向与图 7.3 相反，$+x$ 轴上的相位是 0（红），$+y$ 轴上同样是 $-\pi/2$（紫）。两者的 $\lvert\psi\rvert^2$ 完全相同。
+</figure>
+
+## 相位遮罩 {#phase-mask}
+
+在 $\psi=0$ 的地方，$\arg\psi$ 没有定义；在振幅极小的地方，算出的角度很容易被舍入误差左右，在数值上没有意义。
+所以相位切片把振幅低于一个很小阈值的样本画成完全透明。阈值按这个态自身的振幅尺度设定，而不是按这张平面上的最大值：
+例如 $2p_z$ 的 $xy$ 平面恰好是它的节面，平面上的计算值只剩约 $10^{-18}$ 量级的舍入残差，整张相位切片都被遮罩，
+而不会把残差放大成一片看似有确定相位的颜色。
+
+只有相位切片有遮罩。密度、实部和虚部切片处处都画：数值接近零就是深灰色，而不是透明。图例胶囊会给出当前平面上被遮罩的比例，
+遮罩所用的阈值写在「场景契约」标签页里。
+
+遮罩不是节点的证明。透明只说明“这里振幅太小，无法给出相位”；反过来，不透明也不说明这里没有节点：
+
+- $2p_z$ 的 $xz$ 相位切片上，整行 $z=0$ 的样本被遮罩，因为节面正好落在一行样本上；
+- $3d_{z^2}$ 的圆锥形节面不经过样本点，它的 $xz$ 相位切片上只有原点一个样本被遮罩，圆锥节面只表现为红与青的分界；
+- $2s$ 的径向节点在 $r=2a_0$，它的 $xz$ 相位切片上没有一个样本被遮罩，节点同样只表现为红与青的分界。
+
+## 全局相位与切片 {#global-phase}
+
+把波函数乘上一个全局相位，$\psi'=e^{i\alpha}\psi$，物理状态不变，但切片的变化各不相同：
+
+- **密度不变：** $\lvert\psi'\rvert^2=\lvert\psi\rvert^2$，密度切片一模一样；
+- **实部与虚部互相转动：** 在每一点上，$(\operatorname{Re}\psi,\operatorname{Im}\psi)$ 这一对数像平面上的向量一样转过角度 $\alpha$（见下式）；
+- **相位整体平移：** $\arg\psi'=\arg\psi+\alpha$，相位切片上的每一种颜色都沿色环转过同一个角度 $\alpha$，但任意两点之间的
+  相位差不变；遮罩只取决于 $\lvert\psi\rvert$，也不变。
+
+$$
+\operatorname{Re}\psi'=\cos\alpha\,\operatorname{Re}\psi-\sin\alpha\,\operatorname{Im}\psi,\qquad
+\operatorname{Im}\psi'=\sin\alpha\,\operatorname{Re}\psi+\cos\alpha\,\operatorname{Im}\psi
+$$
+
+一个实函数 $\psi$ 乘上 $e^{i\alpha}$ 后，$\operatorname{Re}\psi'=\cos\alpha\,\psi$，$\operatorname{Im}\psi'=\sin\alpha\,\psi$：两张切片都是 $\psi$ 本身的图案乘上一个常数。
+因为每张切片按自己的 $A$ 归一化，图案看起来不变，只有图例上的 $A$ 变了；常数为负时红青互换。
+
+第 9 章还会遇到这种情形：能量简并的叠加态随时间只获得一个整体相位因子 $e^{-iEt/\hbar}$，所以它的实部、虚部切片随时间转动，
+密度却始终静止不动。
+
+球谐函数的相位约定也是这样一种全局相位的选择。对 $m$ 为正奇数的单个复基态，去掉 Condon–Shortley 相位相当于乘上 $-1=e^{i\pi}$：它决定了
+图 7.3 中 $+x$ 轴是青色而不是红色，却不改变任何密度 [@dlmf-spherical-harmonics, eqs. 14.30.3, 14.30.6, and 14.30.11_5]。
+
+## 常见误区 {#misconceptions}
+
+!!! warning "误区：切片上透明的地方就是节面"
+
+    透明只出现在相位切片上，表示振幅低于阈值、相位无法定义。它常常与节点重合（例如 $2p_z$ 在 $xz$ 平面上的 $z=0$ 一行），
+    但这只是因为节点正好落在样本上；$2s$ 的径向节点就没有一个样本被遮罩。要找实函数的节点，看 $\operatorname{Re}\psi$ 切片上
+    红与青的分界更可靠。
+
+!!! warning "误区：Re ψ 的红和青是正负电荷"
+
+    红与青只表示 $\operatorname{Re}\psi$ 的正负。把整个波函数乘以 $-1$，红青互换，物理状态不变；乘以 $i$，实部切片甚至会变成
+    原来虚部切片红青互换后的样子。电子的电荷密度是 $-e\lvert\psi\rvert^2$，处处为负或为零，与这两种颜色无关。
+
+!!! warning "误区：相位也可以用普通彩虹色条表示"
+
+    相位是周期量，$-\pi$ 与 $+\pi$ 是同一个相位。普通色条把它们放在两端、画成两种不同的颜色，会在相位连续的地方画出一条
+    假的分界线。例如图 7.3 中，相位在 $+x$ 轴上从 $\pi$ 跳到 $-\pi$ 只是记法上的折返；周期色环上两者是同一种青色，
+    画面在那里连续。
+
+## 思考题 {#exercises}
+
+??? question "思考题 7.1：在 xz 平面上，|ψ|² 和 Re ψ 哪个更能显示 2p_z 的节面？"
+
+    $\operatorname{Re}\psi$。它在 $z=0$ 两侧符号相反，一侧为红、一侧为青，节面就是颜色翻转的地方；密度切片只在那里显示
+    一条暗线，看不出两侧的符号关系。
+
+??? question "思考题 7.2：复基 2p、m = +1 在 xy 平面上的 Re ψ 与 Im ψ 有什么关系？"
+
+    在 $xy$ 平面上 $\theta=\pi/2$，而 $Y_1^{1}=-\sqrt{3/(8\pi)}\,\sin\theta\,e^{i\phi}$ 带 Condon–Shortley 负号，所以
+
+    $$
+    \operatorname{Re}\psi\propto-\cos\phi,\qquad\operatorname{Im}\psi\propto-\sin\phi.
+    $$
+
+    两张切片是同样的两瓣图案，虚部相对实部绕 $z$ 轴逆时针转过 $90^\circ$。
+
+??? question "思考题 7.3：为什么 2p 态在原点处的相位无法着色？"
+
+    $R_{21}\propto r$，所以 $\psi(\mathbf 0)=0$，$\arg\psi$ 在那里没有定义。遮罩把这个样本画成透明；在图 7.3 与图 7.4 的
+    $xy$ 相位切片上，它是整张平面上唯一被遮罩的样本。
+
+??? question "思考题 7.4：把 ψ 乘以 i，四种切片各怎样变化？"
+
+    $i=e^{i\pi/2}$，代入上一节的公式（$\alpha=\pi/2$）：
+
+    - $\lvert\psi\rvert^2$ 不变；
+    - 新的实部等于原来虚部的相反数：$\operatorname{Re}(i\psi)=-\operatorname{Im}\psi$；
+    - 新的虚部等于原来的实部：$\operatorname{Im}(i\psi)=\operatorname{Re}\psi$；
+    - $\arg\psi$ 处处增加 $\pi/2$，色环转过四分之一圈，被遮罩的样本不变。
+
+## 延伸阅读 {#further-reading}
+
+- [实轨道与复轨道](../tutorials/real-vs-complex.md)：相位色环、有符号切片的发散色图与密度切片的顺序色图；
+- [可视对象语义](../concepts/semantics.md)：波函数、相位与概率密度各是什么，以及遮罩为什么不是节点证书；
+- [第 4 章](04-real-complex.md)：复球谐、实球谐与 Condon–Shortley 相位；
+- [第 6 章](06-isosurface.md)：用等值面上的颜色表示相位。
+
+平面切片中出现的波函数、球谐函数和相位，系统的推导见 Griffiths 的第 4 章 [@griffiths2018qm, ch. 4 (pp. 131--197)]。

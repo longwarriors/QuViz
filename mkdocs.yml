@@ -123,6 +123,8 @@ nav:
       - 3 径向分布与节点: textbook/03-radial-nodes.md
       - 4 实轨道与复轨道: textbook/04-real-complex.md
       - 5 电子云：从概率到采样: textbook/05-electron-cloud.md
+      - 6 等值面：轨道的“形状”: textbook/06-isosurface.md
+      - 7 相位与平面切片: textbook/07-phase-slices.md
   - 深入阅读:
       - 科学模型:
           - concepts/index.md

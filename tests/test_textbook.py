@@ -14,6 +14,11 @@ ways: against the lab's deep-link grammar (key order
 ``CHAPTERS`` is the registry the textbook tasks fill in. It records the exact
 level-2 section ids and figure deep links of each page, so a chapter cannot
 silently lose a figure, change a deep-link anchor or drift from the plan.
+
+Some chapters also describe what a catalogue asset looks like at the
+catalogue's own grid (a mesh artifact, which samples a phase slice masks).
+Those statements are pinned against the builders at the end of this file, so a
+builder or grid change cannot silently falsify the prose.
 """
 
 from __future__ import annotations
@@ -25,7 +30,15 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import NamedTuple
 
+import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
+
 from quviz.api.routes import superposition_catalog
+from quviz.conventions import BasisKind, PrincipalPlane, SliceObservable
+from quviz.physics.hydrogenic import hydrogenic_wavefunction
+from quviz.scene.builders import build_isosurface
+from quviz.scene.slices import build_slice
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXTBOOK = ROOT / "docs" / "textbook"
@@ -170,6 +183,42 @@ CHAPTERS: dict[str, Chapter] = {
         figures=(
             "mode=eigenstate&n=3&l=2&m=0&basis=real&rep=point_cloud",
             "mode=eigenstate&n=2&l=0&m=0&basis=real&rep=point_cloud",
+        ),
+    ),
+    "06-isosurface.md": Chapter(
+        sections=(
+            "goals",
+            "threshold",
+            "enclosed-probability",
+            "phase-colour",
+            "finite-grid",
+            "shapes",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=eigenstate&n=3&l=2&m=0&basis=real&rep=isosurface",
+            "mode=eigenstate&n=3&l=2&m=-2&basis=real&rep=isosurface",
+        ),
+    ),
+    "07-phase-slices.md": Chapter(
+        sections=(
+            "goals",
+            "planes",
+            "four-fields",
+            "colour-maps",
+            "phase-mask",
+            "global-phase",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=eigenstate&n=2&l=1&m=0&basis=real&rep=slice&plane=xz&obs=wavefunction_real",
+            "mode=eigenstate&n=3&l=2&m=2&basis=complex&rep=slice&plane=xy&obs=wavefunction_real",
+            "mode=eigenstate&n=2&l=1&m=1&basis=complex&rep=slice&plane=xy&obs=phase",
+            "mode=eigenstate&n=2&l=1&m=-1&basis=complex&rep=slice&plane=xy&obs=phase",
         ),
     ),
 }
@@ -506,3 +555,94 @@ def test_textbook_index_links_every_chapter_in_order() -> None:
     positions = [index.find(f"]({name})") for name in CHAPTERS]
     assert all(position >= 0 for position in positions), dict(zip(CHAPTERS, positions, strict=True))
     assert positions == sorted(positions)
+
+
+def _catalogue_resolution(n: int) -> int:
+    """spec.json's resolution 65, clamped up to the per-state floor 16n + 17."""
+
+    return max(65, 16 * n + 17)
+
+
+def _mesh_components(faces: np.ndarray, vertex_count: int) -> list[np.ndarray]:
+    edges = np.concatenate((faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]))
+    graph = coo_matrix(
+        (np.ones(len(edges)), (edges[:, 0], edges[:, 1])), shape=(vertex_count, vertex_count)
+    )
+    _, labels = connected_components(graph, directed=False)
+    return [np.flatnonzero(labels == label) for label in np.unique(labels[np.unique(faces)])]
+
+
+def test_chapter_6_describes_the_catalogue_isosurface_meshes() -> None:
+    """Chapter 6 describes what the catalogue meshes look like, one grid artifact included.
+
+    At the textbook grid the real 3d_z2 mesh bridges its nodal cones about
+    2-5 bohr from the nucleus, where the true sub-threshold gap is narrower than
+    a grid step; the 3d_xy nodal planes lie on grid nodes, so its four lobes stay
+    apart; and the 1s sphere sits at 2.64-2.66 bohr against the analytic 2.661.
+    If the exporter's grid or the mesh builder changes, the "finite-grid"
+    section, figure 6.1 and exercise 6.1 must be revisited.
+    """
+
+    d_z2 = build_isosurface(3, 2, 0, basis="real", resolution=_catalogue_resolution(3))
+    assert d_z2.grid_resolution == 65
+    assert round(d_z2.grid_spacing_bohr, 2) == 1.05
+    faces, vertices = np.asarray(d_z2.faces), np.asarray(d_z2.vertices)
+    negative = np.abs(np.abs(np.asarray(d_z2.phase)) - np.pi) < 1e-3
+    assert np.all(negative | (np.abs(np.asarray(d_z2.phase)) < 1e-3)), "a real state has two phases"
+    bridges = faces[negative[faces].any(axis=1) & ~negative[faces].all(axis=1)]
+    assert len(bridges) > 0, "the lobes and the ring are no longer joined across the cones"
+    bridge_radii = np.linalg.norm(vertices[bridges].mean(axis=1), axis=1)
+    assert bridge_radii.min() > 1.5 and bridge_radii.max() < 5.5
+    cone = math.acos(1 / math.sqrt(3))
+    theta = np.linspace(cone - 0.5, cone + 0.5, 20001)
+    for radius in (2.0, 3.0, 4.0, 5.0):
+        density = (
+            np.abs(
+                hydrogenic_wavefunction(
+                    3, 2, 0, np.full_like(theta, radius), theta, np.zeros_like(theta), basis="real"
+                )
+            )
+            ** 2
+        )
+        gap = theta[density < d_z2.density_level]
+        assert 0 < radius * (gap.max() - gap.min()) < 1.0 < d_z2.grid_spacing_bohr, radius
+
+    d_xy = build_isosurface(3, 2, -2, basis="real", resolution=_catalogue_resolution(3))
+    lobes = _mesh_components(np.asarray(d_xy.faces), len(d_xy.vertices))
+    assert len(lobes) == 4
+    assert all(len(np.unique(np.round(np.asarray(d_xy.phase)[lobe], 3))) == 1 for lobe in lobes)
+
+    one_s = build_isosurface(1, 0, 0, basis="real", resolution=_catalogue_resolution(1))
+    radii = np.linalg.norm(np.asarray(one_s.vertices), axis=1)
+    assert (round(float(radii.min()), 2), round(float(radii.max()), 2)) == (2.64, 2.66)
+
+
+def _masked(n: int, l: int, m: int, basis: str, plane: str) -> tuple[np.ndarray, float]:
+    payload = build_slice(
+        n,
+        l,
+        m,
+        basis=BasisKind(basis),
+        plane=PrincipalPlane(plane),
+        observable=SliceObservable.PHASE,
+        resolution=_catalogue_resolution(n),
+    )
+    size = payload.resolution
+    valid = np.asarray(payload.valid_mask, dtype=bool).reshape(size, size)
+    return np.argwhere(~valid) - size // 2, payload.max_amplitude_on_plane
+
+
+def test_chapter_7_mask_examples_match_the_slice_builder() -> None:
+    """Chapter 7's phase-mask examples, stated as offsets (row = v, col = u) from the centre."""
+
+    for m in (1, -1):
+        masked, _ = _masked(2, 1, m, "complex", "xy")
+        assert masked.tolist() == [[0, 0]], m
+    masked, _ = _masked(2, 1, 0, "real", "xz")
+    assert set(masked[:, 0].tolist()) == {0} and len(masked) == 65
+    masked, _ = _masked(3, 2, 0, "real", "xz")
+    assert masked.tolist() == [[0, 0]]
+    masked, _ = _masked(2, 0, 0, "real", "xz")
+    assert masked.size == 0
+    masked, residue = _masked(2, 1, 0, "real", "xy")
+    assert len(masked) == 65 * 65 and residue < 1e-17
