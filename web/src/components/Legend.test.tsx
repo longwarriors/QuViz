@@ -1,4 +1,5 @@
-import { createElement } from 'react'
+/** @vitest-environment jsdom */
+import { act, createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
@@ -8,6 +9,7 @@ import type {
   SliceObservable,
   SuperpositionMetadata,
 } from '../api/types'
+import { mount } from '../test/mount'
 import { Legend } from './Legend'
 
 function eigenstateMetadata(representation: string, basis: 'real' | 'complex'): OrbitalMetadata {
@@ -65,7 +67,7 @@ describe('Legend names what is actually on screen', () => {
     expect(markup).not.toContain('<strong>point_cloud</strong>')
     // A phase wheel over an empty viewport names a colour nothing is painted in.
     expect(markup).not.toContain('phase-wheel')
-    expect(markup).not.toContain('等待 asset metadata')
+    expect(markup).not.toContain('等待资产元数据')
   })
 
   it('describes streamline colour as speed, not phase', () => {
@@ -171,7 +173,7 @@ describe('Legend names what is actually on screen', () => {
   })
 
   it('waits for metadata rather than naming a representation it has not been told', () => {
-    expect(render({ loading: true })).toContain('等待 asset metadata')
+    expect(render({ loading: true })).toContain('等待资产元数据。')
   })
 })
 
@@ -293,5 +295,59 @@ describe('Legend names a slice by the field the plane actually carries', () => {
     expect(unitless).not.toContain('undefined')
     expect(masked).toContain('该平面有 — 被 mask')
     expect(masked).not.toContain('NaN')
+  })
+})
+
+describe('Legend as a pill', () => {
+  it('floats as chrome and starts open unless the shell asks for a compact pill', () => {
+    const open = render({ loading: false, metadata: eigenstateMetadata('point_cloud', 'real') })
+    expect(open).toContain('data-chrome=""')
+    expect(open).toContain('data-expanded="true"')
+
+    const compact = renderToStaticMarkup(
+      createElement(Legend, {
+        status: { loading: false, metadata: eigenstateMetadata('point_cloud', 'real') },
+        defaultExpanded: false,
+      }),
+    )
+    expect(compact).toContain('data-expanded="false"')
+    // Collapsed hides the sentences, never removes them.
+    expect(compact).toMatch(/class="legend-details"[^>]*hidden=""/)
+    expect(compact).toContain('|ψ|²d³r')
+  })
+
+  it('toggles its explanation and says which way', async () => {
+    const tree = await mount(
+      createElement(Legend, { status: { loading: false, metadata: eigenstateMetadata('isosurface', 'complex') } }),
+    )
+    try {
+      const toggle = tree.container.querySelector<HTMLButtonElement>('.legend-toggle')
+      const details = tree.container.querySelector<HTMLElement>('.legend-details')
+      expect(toggle?.getAttribute('aria-expanded')).toBe('true')
+      expect(toggle?.getAttribute('aria-controls')).toBe(details?.id)
+      const scope = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      scope.IS_REACT_ACT_ENVIRONMENT = true
+      try {
+        await act(async () => toggle?.click())
+      } finally {
+        delete scope.IS_REACT_ACT_ENVIRONMENT
+      }
+      expect(toggle?.getAttribute('aria-expanded')).toBe('false')
+      expect(toggle?.getAttribute('aria-label')).toBe('展开图例说明')
+      expect(details?.hidden).toBe(true)
+      // The colour key itself stays visible when the pill is compact.
+      expect(tree.container.querySelector('.phase-wheel')).not.toBeNull()
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('warns that Bloom breaks the byte-exact key, only where Bloom is applied', () => {
+    const slice = { ...sliceStatus('probability_density') }
+    const withBloom = renderToStaticMarkup(createElement(Legend, { status: slice, bloom: 0.3 }))
+    expect(withBloom).toContain('Bloom 已开启：屏幕颜色含光晕，不再与色带逐字一致。')
+    expect(renderToStaticMarkup(createElement(Legend, { status: slice, bloom: 0 }))).not.toContain('Bloom 已开启')
+    const cloud = { loading: false, metadata: eigenstateMetadata('point_cloud', 'complex') }
+    expect(renderToStaticMarkup(createElement(Legend, { status: cloud, bloom: 0.3 }))).not.toContain('Bloom 已开启')
   })
 })

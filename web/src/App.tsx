@@ -12,6 +12,7 @@ import { OrbitalCanvas } from './components/OrbitalCanvas'
 import { StatusChip } from './components/StatusChip'
 import { TimePill } from './components/TimePill'
 import { WebGLGate } from './components/WebGLGate'
+import { useSceneStore } from './state/useSceneStore'
 
 /** The breakpoint where the permanent analysis rail becomes an overlay. */
 const COMPACT_WORKSPACE_QUERY = '(max-width: 1180px)'
@@ -47,6 +48,7 @@ function useCompactWorkspace(): boolean {
 
 export default function App() {
   const compactWorkspace = useCompactWorkspace()
+  const bloom = useSceneStore((state) => state.bloom)
   const [status, setStatus] = useState<SceneStatus>({ loading: true })
   // The wide rail is useful on first load; a compact overlay must wait for an
   // explicit request so it does not cover the canvas merely because it exists.
@@ -135,7 +137,7 @@ export default function App() {
               <OrbitalCanvas onStatus={handleStatus} />
             </WebGLGate>
           </ErrorBoundary>
-          <Legend status={status} />
+          <Legend status={status} bloom={bloom} />
           <TimePill status={status} />
           <button
             type="button"

@@ -1,4 +1,5 @@
-import type { ReactElement } from 'react'
+import { ChevronUp } from 'lucide-react'
+import { useId, useState, type ReactNode } from 'react'
 
 import type { SceneStatus, SliceObservable } from '../api/types'
 import { representationLabel } from './sceneStatus'
@@ -36,6 +37,11 @@ const SLICE_TITLES: Record<SliceObservable, string> = {
   probability_density: '概率密度 |ψ|²',
 }
 
+interface LegendKey {
+  visual: ReactNode
+  text: ReactNode
+}
+
 /**
  * The ramp, its labels and the sentence naming what the colour means, for one
  * slice observable.
@@ -45,62 +51,133 @@ const SLICE_TITLES: Record<SliceObservable, string> = {
  * sequential map through a square root -- so the legend cannot drift into
  * describing a colouring the renderer does not perform.
  */
-function sliceKey(status: SceneStatus): ReactElement {
+function sliceKey(status: SceneStatus): LegendKey {
   const observable = status.sliceObservable
   const unit = status.sliceValueUnit ?? ''
   const extreme = amountWithUnit(status.sliceMaxAbsValue ?? Number.NaN, unit)
 
   if (observable === 'phase') {
-    return (
-      <>
-        <div className="phase-wheel" />
-        <div className="phase-labels"><span>−π</span><span>0</span><span>π</span></div>
+    return {
+      visual: (
+        <>
+          <div className="phase-wheel" />
+          <div className="phase-labels"><span>−π</span><span>0</span><span>π</span></div>
+        </>
+      ),
+      text: (
         <p>
           透明 texel 属于 mask：|ψ| 低于阈值，此处 arg ψ 未定义；这不是节点。该平面有{' '}
           {amountWithUnit((status.phaseMaskedFraction ?? Number.NaN) * 100, '%', '')} 被 mask。
         </p>
-      </>
-    )
+      ),
+    }
   }
 
   if (observable === 'wavefunction_real' || observable === 'wavefunction_imag') {
-    return (
-      <>
-        <div className="diverging-ramp" />
-        <div className="phase-labels"><span>−A</span><span>0</span><span>+A</span></div>
+    return {
+      visual: (
+        <>
+          <div className="diverging-ramp" />
+          <div className="phase-labels"><span>−A</span><span>0</span><span>+A</span></div>
+        </>
+      ),
+      text: (
         <p>
           A = {extreme}，即该平面最大的 |value|；颜色对有符号 value 线性映射并按 A
           归一化，因此青色与红色表示等振幅、反符号。
         </p>
-      </>
-    )
+      ),
+    }
   }
 
   if (observable === 'probability_density') {
-    return (
-      <>
-        <div className="density-ramp" />
-        <div className="phase-labels"><span>0</span><span>max</span></div>
+    return {
+      visual: (
+        <>
+          <div className="density-ramp" />
+          <div className="phase-labels"><span>0</span><span>max</span></div>
+        </>
+      ),
+      text: (
         <p>
           max = {extreme}；亮度 ∝ |ψ|/max|ψ|，即概率密度的平方根，不与 density 本身成正比。
         </p>
-      </>
-    )
+      ),
+    }
   }
 
   // No ramp is drawn for an observable that was never reported: a legend that
   // guessed one would name a colour scheme the texture may not be using.
-  return <p>该切片没有报告 observable，因此无法为其颜色命名。</p>
+  return { visual: null, text: <p>该切片没有报告 observable，因此无法为其颜色命名。</p> }
 }
 
 /**
- * The legend must describe the asset actually on screen. Showing a phase wheel
- * over streamlines, whose colour encodes flow speed, would misname the one
- * thing the legend exists to name.
+ * The frame every legend body shares: a floating glass pill that starts open,
+ * can be collapsed to just its title, and never removes the explanatory
+ * sentences from the DOM -- collapsing hides them, it does not discard them.
  */
-export function Legend({ status }: { status: SceneStatus }) {
+function LegendFrame({
+  title,
+  emptyFlow,
+  visual,
+  defaultExpanded,
+  children,
+}: {
+  title: string
+  emptyFlow?: string
+  visual?: ReactNode
+  defaultExpanded: boolean
+  children: ReactNode
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded)
+  const detailsId = useId()
+  return (
+    <div
+      className="legend qv-glass"
+      data-chrome=""
+      data-empty-flow={emptyFlow}
+      data-expanded={expanded ? 'true' : 'false'}
+    >
+      <div className="legend-head">
+        <div className="legend-title">{title}</div>
+        <button
+          type="button"
+          className="legend-toggle"
+          aria-expanded={expanded}
+          aria-controls={detailsId}
+          aria-label={expanded ? '收起图例说明' : '展开图例说明'}
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <ChevronUp size={16} aria-hidden="true" />
+        </button>
+      </div>
+      {visual}
+      <div className="legend-details" id={detailsId} hidden={!expanded}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+export interface LegendProps {
+  status: SceneStatus
+  /** The store's Bloom; > 0 on a slice or streamlines means the key is no longer byte-exact. */
+  bloom?: number
+  defaultExpanded?: boolean
+}
+
+/**
+ * The bottom-right legend pill. It must describe the asset actually on
+ * screen: a phase wheel over streamlines, whose colour encodes speed, would
+ * misname the one thing a legend exists to name.
+ */
+export function Legend({ status, bloom = 0, defaultExpanded = true }: LegendProps) {
   const basis = status.metadata?.state.basis ?? status.superposition?.basis
   const representation = status.metadata?.representation ?? status.superposition?.representation
+  const bloomWarning =
+    bloom > 0 && (representation === 'slice' || representation === 'streamlines') ? (
+      <p data-bloom-warning="">Bloom 已开启：屏幕颜色含光晕，不再与色带逐字一致。</p>
+    ) : null
 
   if (status.unavailable !== undefined) {
     // Nothing is drawn, so there is no colour to name. The legend says which
@@ -108,13 +185,12 @@ export function Legend({ status }: { status: SceneStatus }) {
     // here would describe a picture that does not exist, and "Waiting for asset
     // metadata" would promise one that is not coming.
     return (
-      <div className="legend">
-        <div className="legend-title">无可绘制资产</div>
+      <LegendFrame title="无可绘制资产" defaultExpanded={defaultExpanded}>
         <p>
           <strong>{representationLabel(status.unavailable.kind)}</strong> 对当前量子态不可用。{' '}
           {status.unavailable.reason}
         </p>
-      </div>
+      </LegendFrame>
     )
   }
 
@@ -123,18 +199,17 @@ export function Legend({ status }: { status: SceneStatus }) {
   // slice reaching it is shown a phase wheel over whatever field the plane
   // actually carries -- a density labelled as an angle.
   if (representation === 'slice') {
+    const key = sliceKey(status)
     return (
-      <div className="legend">
-        <div className="legend-title">
-          {status.sliceObservable === undefined
-            ? '平面切片'
-            : SLICE_TITLES[status.sliceObservable]}
-        </div>
-        {sliceKey(status)}
-        <p>
-          在过原点的 {status.plane ?? '未报告'} 平面采样；使用 nearest-sample 颜色，无插值。
-        </p>
-      </div>
+      <LegendFrame
+        title={status.sliceObservable === undefined ? '平面切片' : SLICE_TITLES[status.sliceObservable]}
+        visual={key.visual}
+        defaultExpanded={defaultExpanded}
+      >
+        {key.text}
+        <p>在过原点的 {status.plane ?? '未报告'} 平面采样；使用 nearest-sample 颜色，无插值。</p>
+        {bloomWarning}
+      </LegendFrame>
     )
   }
 
@@ -144,13 +219,12 @@ export function Legend({ status }: { status: SceneStatus }) {
     status.continuityScaleKind === 'analytic_zero_current'
   ) {
     return (
-      <div className="legend" data-empty-flow="analytic_zero_current">
-        <div className="legend-title">解析零概率流</div>
+      <LegendFrame title="解析零概率流" emptyFlow="analytic_zero_current" defaultExpanded={defaultExpanded}>
         <p>
           该叠加态的概率流经解析判据严格为零，因此服务端有意返回空流线；空视图不是加载失败，
           也没有可供颜色编码的 |j|/ρ 速率。
         </p>
-      </div>
+      </LegendFrame>
     )
   }
 
@@ -160,57 +234,69 @@ export function Legend({ status }: { status: SceneStatus }) {
     status.continuityScaleKind !== 'analytic_zero_current'
   ) {
     return (
-      <div className="legend" data-empty-flow="instantaneous_empty_current">
-        <div className="legend-title">当前时刻无可绘制流线</div>
+      <LegendFrame
+        title="当前时刻无可绘制流线"
+        emptyFlow="instantaneous_empty_current"
+        defaultExpanded={defaultExpanded}
+      >
         <p>
           服务端在该时刻没有解析出可绘制的概率流线。这是已到达的空场结果，不是加载失败；
           当前也没有可供颜色编码的 |j|/ρ 速率。
         </p>
-      </div>
+      </LegendFrame>
     )
   }
 
   if (representation === 'streamlines') {
     return (
-      <div className="legend">
-        <div className="legend-title">概率流速率 |j|/ρ</div>
-        <div className="speed-ramp" />
-        <div className="phase-labels">
-          <span>0</span>
-          <span>
-            {status.maxSpeed !== undefined ? `${status.maxSpeed.toPrecision(3)} a.u.` : 'max'}
-          </span>
-        </div>
+      <LegendFrame
+        title="概率流速率 |j|/ρ"
+        defaultExpanded={defaultExpanded}
+        visual={
+          <>
+            <div className="speed-ramp" />
+            <div className="phase-labels">
+              <span>0</span>
+              <span>{status.maxSpeed !== undefined ? `${status.maxSpeed.toPrecision(3)} a.u.` : 'max'}</span>
+            </div>
+          </>
+        }
+      >
         <p>色带横轴为 √(|j|/ρ ÷ max)：中点对应 max 的 1/4；颜色在两端色之间按线性光插值。</p>
         <p>
           <strong>j</strong>/ρ 的 streamlines 按弧长等距采样；颜色表示速率，不表示 phase。
           这些是概率流线，不是电子轨迹。
         </p>
-      </div>
+        {bloomWarning}
+      </LegendFrame>
     )
   }
 
   return (
-    <div className="legend">
-      <div className="legend-title">波函数 phase</div>
-      {basis !== 'complex' ? (
-        <div className="real-legend">
-          <span><i className="phase-dot red" /> phase 0</span>
-          <span><i className="phase-dot cyan" /> phase π</span>
-        </div>
-      ) : (
-        <>
-          <div className="phase-wheel" />
-          <div className="phase-labels"><span>−π</span><span>0</span><span>π</span></div>
-        </>
-      )}
+    <LegendFrame
+      title="波函数 phase"
+      defaultExpanded={defaultExpanded}
+      visual={
+        basis !== 'complex' ? (
+          <div className="real-legend">
+            <span><i className="phase-dot red" /> phase 0</span>
+            <span><i className="phase-dot cyan" /> phase π</span>
+          </div>
+        ) : (
+          <>
+            <div className="phase-wheel" />
+            <div className="phase-labels"><span>−π</span><span>0</span><span>π</span></div>
+          </>
+        )
+      }
+    >
       <p>
         {representation === 'point_cloud'
           ? '位置从 |ψ|²d³r 采样；每个 marker 具有相同视觉权重。'
           : representation === 'isosurface'
             ? '几何是 |ψ|² level set；颜色承载 phase。'
-            : '等待 asset metadata。'}
+            : '等待资产元数据。'}
       </p>
-    </div>
+    </LegendFrame>
   )
 }
