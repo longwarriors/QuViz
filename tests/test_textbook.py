@@ -100,6 +100,43 @@ CHAPTERS: dict[str, Chapter] = {
             "mode=eigenstate&n=1&l=0&m=0&basis=real&rep=slice&plane=xz&obs=probability_density",
         ),
     ),
+    "02-hydrogen-levels.md": Chapter(
+        sections=(
+            "goals",
+            "separation",
+            "quantum-numbers",
+            "energy-levels",
+            "reduced-mass",
+            "general-formula",
+            "orbital-labels",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=eigenstate&n=2&l=0&m=0&basis=real&rep=slice&plane=xz&obs=probability_density",
+            "mode=eigenstate&n=2&l=1&m=0&basis=real&rep=slice&plane=xz&obs=probability_density",
+        ),
+    ),
+    "03-radial-nodes.md": Chapter(
+        sections=(
+            "goals",
+            "radial-function",
+            "radial-distribution",
+            "most-probable-radius",
+            "mean-radius",
+            "radial-nodes",
+            "angular-nodes",
+            "radial-table",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=eigenstate&n=3&l=0&m=0&basis=real&rep=slice&plane=xz&obs=probability_density",
+            "mode=eigenstate&n=3&l=1&m=0&basis=real&rep=slice&plane=xz&obs=wavefunction_real",
+        ),
+    ),
 }
 
 
