@@ -28,6 +28,17 @@ npm --prefix web ci --no-audit --no-fund
 make check
 ```
 
+改动前端、教材或构建脚本时，提交前还要在本地运行以下命令（本项目不依赖 CI，本地结果即最终验证）：
+
+```bash
+uv run --locked --no-sync python scripts/build_pages.py
+npm --prefix web run test:fullstack
+npm --prefix web run test:pages
+pwsh scripts/visual-docker.ps1
+```
+
+`pwsh scripts/visual-docker.ps1 -Mode update` 只用于有意改变画面：重写的基线必须逐张人工检查后才能提交。
+
 ## 新增科学实现
 
 - 先写解析极限、不变量或统计测试；
