@@ -79,3 +79,74 @@ def doctor() -> None:
     for label, path in checks.items():
         status = "ok" if path.exists() else "missing"
         typer.echo(f"{label:20s} {status:8s} {path}")
+
+
+export_static_app = typer.Typer(
+    no_args_is_help=True,
+    help=(
+        "Precompute the backend-free scene catalogue for the GitHub Pages site: `plan` writes "
+        "the catalogues and spec.json, the web enumerator writes requests.json, `render` "
+        "replays it."
+    ),
+)
+app.add_typer(export_static_app, name="export-static")
+
+
+@export_static_app.command("plan")
+def export_static_plan(
+    out: Annotated[
+        Path, typer.Option("--out", help="Data directory for the catalogues and spec.json.")
+    ],
+) -> None:
+    """Write both catalogue responses verbatim and spec.json into --out."""
+
+    from quviz.export.static_site import StaticExportError, plan
+
+    try:
+        plan(out, log=typer.echo)
+    except StaticExportError as error:
+        typer.echo(f"export-static plan failed: {error}", err=True)
+        raise typer.Exit(code=1) from error
+
+
+@export_static_app.command("render")
+def export_static_render(
+    data: Annotated[Path, typer.Option("--data", help="Data directory written by `plan`.")],
+    requests: Annotated[
+        Path | None,
+        typer.Option("--requests", help="requests.json to replay (default: DATA/requests.json)."),
+    ] = None,
+    workers: Annotated[
+        int | None,
+        typer.Option(
+            "--workers",
+            min=1,
+            max=32,
+            help="Worker processes (default: CPU count, at most 8).",
+        ),
+    ] = None,
+) -> None:
+    """Replay every request into DATA/files/ and DATA/manifest.json.
+
+    A 5xx, a 404 or a transport failure exits with code 1, names the request
+    and leaves no manifest. The full v1 specification is about 1.2k requests:
+    an estimated 9-10 minutes in one process, 1.5-2 minutes with eight workers.
+    """
+
+    from quviz.export.static_site import (
+        REQUESTS_FILE,
+        StaticExportError,
+        default_worker_count,
+        render,
+    )
+
+    try:
+        render(
+            data,
+            requests if requests is not None else data / REQUESTS_FILE,
+            workers=workers if workers is not None else default_worker_count(),
+            log=typer.echo,
+        )
+    except StaticExportError as error:
+        typer.echo(f"export-static render failed: {error}", err=True)
+        raise typer.Exit(code=1) from error
