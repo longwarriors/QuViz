@@ -895,6 +895,44 @@ describe('SceneRoot', () => {
     await renderer.unmount()
   })
 
+  it('restores and clears the default framebuffer when Bloom alone drops to 0 on the same slice frame', async () => {
+    // D3 fix-round finding: `presentationChainActive` depends on bloom, not
+    // just the arrived asset kind, so the composer can unmount while the kind
+    // on screen never changes (a viewer drags Bloom back to 0 on a slice or
+    // streamline frame). The boundary must still fire in that case, or r3f
+    // keeps drawing every auto-rotate pose over the stale buffer.
+    useSceneStore.setState({ mode: 'eigenstate', representation: 'slice', bloom: 0.3 })
+    vi.stubGlobal('fetch', () => Promise.resolve(jsonResponse(slice())))
+    let gl: THREE.WebGLRenderer | undefined
+    const renderer = await mountScene(
+      () => undefined,
+      defaultCamera(),
+      (value) => {
+        gl = value
+      },
+    )
+    expect(gl).toBeDefined()
+
+    // postprocessing's EffectComposer constructor leaves this false. Recreate
+    // that side effect without mounting a second renderer in the test harness.
+    const clear = vi.spyOn(gl as THREE.WebGLRenderer, 'clear')
+    const setRenderTarget = vi.spyOn(gl as THREE.WebGLRenderer, 'setRenderTarget')
+    ;(gl as THREE.WebGLRenderer).autoClear = false
+
+    await act(async () => {
+      useSceneStore.setState({ bloom: 0 })
+    })
+
+    expect((gl as THREE.WebGLRenderer).autoClear).toBe(true)
+    expect(setRenderTarget).toHaveBeenCalledWith(null)
+    expect(clear).toHaveBeenCalledWith(true, true, true)
+    expect(setRenderTarget.mock.invocationCallOrder[0]).toBeLessThan(
+      clear.mock.invocationCallOrder[0],
+    )
+
+    await renderer.unmount()
+  })
+
   it('turns the store into one superposition streamline request and draws its answer', async () => {
     useSceneStore.setState({
       mode: 'superposition',
