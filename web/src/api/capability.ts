@@ -217,6 +217,21 @@ export function playbackFrameTime(frame: number, frames: number, periodAu: numbe
   return Number((ticks * TIME_GRID_STEP_AU).toFixed(12))
 }
 
+/**
+ * What the static (GitHub Pages) site says about a combination its precomputed
+ * catalogue does not hold (contracts, "B produces"). It is the ONE user-visible
+ * wording for that case: the static transport answers a miss with it
+ * (staticCatalog.ts), and every `not_precomputed` refusal of the capability
+ * overlay below begins with it verbatim, so the textbook can quote it and the
+ * status line always shows it.
+ *
+ * Defined here rather than in staticCatalog.ts, which re-exports it where the
+ * contract names it: staticCatalog.ts imports this module at runtime, so this
+ * module may import staticCatalog.ts only for types.
+ */
+export const NOT_PRECOMPUTED_DETAIL =
+  '静态教材版未预计算这一组合。本地运行 quviz serve 可实时计算任意参数。'
+
 const A_MU_CONSTRAINT: RouteParameterConstraint = {
   wireName: 'a_mu',
   uiBound: { min: 0.005, max: 20, step: 0.005 },
