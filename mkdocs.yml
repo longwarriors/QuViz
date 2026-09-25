@@ -179,6 +179,7 @@ nav:
           - ADR-0002 浏览器原生 3D: adr/0002-browser-native-3d.md
           - ADR-0003 引用单一真值源: adr/0003-reference-index.md
           - ADR-0004 qmsolve 定位: adr/0004-qmsolve-boundary.md
+          - ADR-0005 静态托管与预计算目录: adr/0005-static-hosting.md
   - 信源与审计:
       - references/index.md
       - 信源与引用政策: references/source-policy.md

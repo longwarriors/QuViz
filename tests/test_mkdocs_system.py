@@ -274,3 +274,14 @@ def test_google_sans_flex_is_self_hosted_with_its_licence_and_spec_tokens() -> N
             text = path.read_text(encoding="utf-8")
             assert "fonts.googleapis.com" not in text, path
             assert "fonts.gstatic.com" not in text, path
+
+
+def test_every_adr_is_indexed_and_listed_under_decision_records() -> None:
+    nav = _raw_config()["nav"]
+    decisions = _nav_paths(_section(_section(nav, "开发者"), "决策记录"))
+    adrs = sorted(path.relative_to(DOCS).as_posix() for path in (DOCS / "adr").glob("0*.md"))
+    assert "adr/0005-static-hosting.md" in adrs
+    assert decisions == ["adr/index.md", *adrs]
+    index = (DOCS / "adr" / "index.md").read_text(encoding="utf-8")
+    for adr in adrs:
+        assert f"]({Path(adr).name})" in index, adr
