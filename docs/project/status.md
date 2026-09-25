@@ -38,7 +38,7 @@
 - 流线材质不再经过色调映射与雾；
 - 数据切片不再经过 Vignette，Bloom 默认为 0；
 - 删除残留的 `DEFAULT_PLAYBACK_PERIOD_AU` 默认实参；
-- Pages 构建不再发布 sourcemap。
+- 实验室的 Pages 构建不再发布 sourcemap（`learn/` 下只剩 Material 主题包自带的 `.map`）。
 
 **尚未执行的对外动作**（需维护者确认）：推送分支；在仓库设置中启用 GitHub Pages，构建来源设为 GitHub Actions；合并到 master 以触发首次部署。另有两项待维护者决定：是否在首次发布前改正仓库名里的 `Atmoic`（站点地址会随之改变）；是否在公开站点保留指向私有 claude.ai artifact 的 `claude-fable-audit` 引用。
 
