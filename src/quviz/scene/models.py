@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from itertools import pairwise
 from math import isfinite
 from types import MappingProxyType
 from typing import Final, Literal, Self
@@ -150,6 +151,78 @@ class SliceDetail(BaseModel):
 
     plane: PrincipalPlane
     slice_observable: SliceObservable
+
+
+class RadialProfile(BaseModel):
+    """Radial probability distribution ``P(r) = r^2 |R_nl(r)|^2`` of one eigenstate.
+
+    Computed in Python from the analytic hydrogenic radial function with the
+    same ``Z`` and ``a_mu`` as the metadata it is attached to; the browser only
+    draws it. ``radial_density`` integrates to one over ``[0, inf)``; the
+    sampled range stops once at least 99.9 % of that mass is inside.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    r_bohr: list[float] = Field(
+        description=(
+            "Ascending radii in bohr, r_bohr[0] == 0; the last radius encloses at least "
+            "99.9% of the radial probability. Denser near the nucleus (quadratic spacing)."
+        )
+    )
+    radial_density: list[float] = Field(
+        description="P(r) = r^2 |R_nl(r)|^2 in bohr^-1 at each radius, 9 significant digits."
+    )
+    nodes_bohr: list[float] = Field(
+        description="The n - l - 1 radial node radii in bohr (Laguerre roots), ascending."
+    )
+    expectation_r_bohr: float = Field(
+        gt=0.0, description="<r> = (a_mu / (2 Z)) [3 n^2 - l (l + 1)] in bohr, analytic."
+    )
+    most_probable_r_bohr: float = Field(
+        gt=0.0, description="Radius of the global maximum of P(r) in bohr, grid-refined."
+    )
+    energy_levels_hartree: list[float] = Field(
+        min_length=1,
+        description=(
+            "E_k = -(Z^2 / a_mu) / (2 k^2) in hartree for k = 1 .. max(n + 2, 5), the same "
+            "reduced-mass convention as energy_hartree."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_profile(self) -> Self:
+        radius, density = self.r_bohr, self.radial_density
+        if len(radius) < 2:
+            raise ValueError("r_bohr must hold at least two radii")
+        if len(density) != len(radius):
+            raise ValueError(
+                f"radial_density must have one value per radius, got {len(density)} "
+                f"for {len(radius)} radii"
+            )
+        if radius[0] != 0.0:
+            raise ValueError("r_bohr must start at the nucleus, r = 0")
+        values = [
+            *radius,
+            *density,
+            *self.nodes_bohr,
+            *self.energy_levels_hartree,
+            self.expectation_r_bohr,
+            self.most_probable_r_bohr,
+        ]
+        if not all(isfinite(value) for value in values):
+            raise ValueError("a radial profile must contain only finite numbers")
+        if any(later <= earlier for earlier, later in pairwise(radius)):
+            raise ValueError("r_bohr must be strictly ascending")
+        if any(value < 0.0 for value in density):
+            raise ValueError("radial_density is a probability density and cannot be negative")
+        if any(later <= earlier for earlier, later in pairwise(self.nodes_bohr)):
+            raise ValueError("nodes_bohr must be strictly ascending")
+        if any(not 0.0 < node < radius[-1] for node in self.nodes_bohr):
+            raise ValueError("every radial node must lie inside the sampled range")
+        if any(later < earlier for earlier, later in pairwise(self.energy_levels_hartree)):
+            raise ValueError("energy_levels_hartree must rise toward the ionization limit")
+        return self
 
 
 class OrbitalMetadata(BaseModel):
