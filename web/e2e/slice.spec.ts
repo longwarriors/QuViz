@@ -35,30 +35,32 @@
  * ---------------------------------------------------------------------------
  * HOW THE BASELINES GET HERE. Read this before changing or adding one.
  *
- * Five Linux/SwiftShader PNGs are committed in `e2e/__screenshots__/`. The
- * canvas is full-bleed: every file is 1280 x 800 = 1024000 pixels, so the
- * 0.001 ratio budget is 1024 pixels. Every floating panel carries
- * `data-chrome`; `hideChrome` hides all of them immediately before each
- * capture, so a panel's glass and text can never leak into a canvas pixel.
+ * Five Linux/SwiftShader PNGs are committed in `e2e/__screenshots__/`. Every
+ * file is 1280 x 800 = 1024000 pixels -- the full-bleed canvas IS the
+ * viewport, and every floating panel carries `data-chrome` and is hidden
+ * before capture -- so the 0.001 ratio budget is 1024 pixels. Panel content,
+ * fonts and backdrop blur therefore never reach a baseline, and adding a
+ * diagnostic to a panel cannot change the camera aspect ratio.
  *
  * playwright.config.ts refuses to load off Linux because any other graphics
- * stack renders different pixels. Committing a PNG drawn elsewhere would make
- * the suite permanently red in CI and permanently meaningless everywhere
- * else. A new baseline therefore enters through two CI runs:
+ * stack renders different pixels. The one supported environment is the
+ * Playwright image pinned by digest in scripts/visual-docker.ps1 (POSIX:
+ * scripts/visual-docker.sh). A baseline enters the tree in three steps:
  *
- *   1. Its first run FAILS, by design. `updateSnapshots: 'none'` makes a
- *      missing baseline an error rather than a silently written answer key, so
- *      the new assertion reports "A snapshot doesn't exist at ...". The
- *      run's failure artifact carries what it actually rendered, as
- *      `test-results/<test>/<name>-actual.png`.
- *   2. A human looks at those images -- that is the whole point of step 1;
- *      the node line has to be horizontal, the winding counter-clockwise, the
- *      masked disc a hole -- and commits them to
- *      `e2e/__screenshots__/slice.spec.ts/<name>.png`.
- *   3. The second run must pass. If it does not, the renderer is not
- *      deterministic and the suite has found a real defect before it ever had
- *      a baseline: a picture that differs from the one drawn minutes earlier in
- *      the same environment is not something to paper over with a threshold.
+ *   1. `pwsh scripts/visual-docker.ps1 -Mode update` rewrites the PNGs from
+ *      what the container just rendered and immediately runs the ordinary
+ *      comparison against them. A comparison that fails right after the
+ *      rewrite is a nondeterministic renderer, not a baseline problem.
+ *   2. A human reviews every rewritten PNG before committing it -- the node
+ *      line of 2p_z horizontal with the positive (red) lobe on top, the
+ *      2p(+1) phase winding once counter-clockwise from red at -u with the
+ *      masked origin a hole, the degenerate section identical at both
+ *      instants, the 1s + 2p_z lobe displaced towards +z at t = 0 and towards
+ *      -z at t = 8.4, no DOM chrome in any frame -- and re-measures the
+ *      calibration tables below from the committed files.
+ *   3. `pwsh scripts/visual-docker.ps1` (check mode) must pass on the
+ *      committed PNGs, and scripts/assert-visual-run.mjs must accept the
+ *      report.
  *
  * STEP 3 USED TO BE EXPECTED TO FAIL, and the measurement is kept here because
  * it is what the fix has to be judged against. The scene as first written did
@@ -136,10 +138,11 @@
  * margin while making its mechanism control harder to pass than a positive
  * baseline.
  *
- * `npm run test:visual:update` is not part of this procedure. It writes every
- * baseline from whatever was just rendered, which is how a bug becomes the
- * answer key; scripts/assert-visual-run.mjs refuses the report such a run
- * produces.
+ * `npm run test:visual:update` on a host is not part of this procedure: the
+ * config refuses to load there, and inside the container it only ever runs as
+ * step 1 above, followed by a human review. scripts/assert-visual-run.mjs
+ * refuses the report an update run produces, so an update can never stand in
+ * for the comparison.
  * ---------------------------------------------------------------------------
  *
  * Three rules the tests below follow, each because the alternative silently
@@ -212,13 +215,11 @@ test.describe.configure({ timeout: 120_000 })
  * equal; `maxDiffPixelRatio` is the share of the frame allowed to exceed it.
  * The old content-sized shell produced different frame heights for eigenstates
  * and superpositions; on its taller frame a 0.1 threshold once let the wrong
- * half-period image fit under the spatial budget. On the fixed 672 x 704 frame,
- * the same mutation leaves 6186 differing pixels at 0.02 (13.08x the 473.088
- * pixel budget). Repeated same-scene captures pass the positive gate. That
- * measured separation is why 0.02 remains the acceptance threshold, not a
- * special setting reserved for `.not`. (Measured on the retired 672 x 704
- * frame; Part E re-measures these numbers on the 1280 x 800 frame in the
- * pinned Docker image before regenerating the baselines.)
+ * half-period image fit under the spatial budget. On the full-bleed 1280 x 800
+ * frame, the same mutation leaves 8912 differing pixels at 0.02 (8.70x the
+ * 1024 pixel budget). Repeated same-scene captures pass the positive gate.
+ * That measured separation is why 0.02 remains the acceptance threshold, not a
+ * special setting reserved for `.not`.
  *
  * Do not widen either value to make a red test pass. A same-scene render above
  * this budget means the environment is no longer deterministic enough to
@@ -262,28 +263,27 @@ function rejectionComparison<const Threshold extends number>(threshold: Threshol
  * MEASURED, on the two committed baselines, through Playwright's own comparator
  * (`getComparator('image/png')`, i.e. pixelmatch with antialiased pixels
  * excluded, which is what its call site leaves at the default). The frame is
- * 672 x 704, so `maxDiffPixelRatio` 0.001 is a budget of 473.088 pixels and an
- * assertion fires only above it. (Measured on the retired 672 x 704 frame;
- * Part E re-measures these numbers on the 1280 x 800 frame in the pinned
- * Docker image before regenerating the baselines.)
+ * 1280 x 800, so `maxDiffPixelRatio` 0.001 is a budget of 1024 pixels and an
+ * assertion fires only above it:
  *
  *   threshold   surviving px   x budget
- *   0.2                    7       0.01
- *   0.1                  896       1.89
- *   0.05 (reject)       3180       6.72   <- chosen: harder, with margin
- *   0.03                4623       9.77
- *   0.02 (accept)       6186      13.08   <- positive mutation sensitivity
- *   0.01                8705      18.40
- *   0                  25408      53.71
+ *   0.2                    0       0.00
+ *   0.1                 1232       1.20
+ *   0.05 (reject)       4648       4.54   <- chosen: harder, with margin
+ *   0.03                6736       6.58
+ *   0.02 (accept)       8912       8.70   <- positive mutation sensitivity
+ *   0.01               12616      12.32
+ *   0                  36608      35.75
  *
  * 0.05 is higher than the positive 0.02 and is therefore the stronger negated
  * assertion, but the physical displacement still clears its unchanged ratio
- * budget by 6.72x. The transposition control retains the still-harder 0.1 bar
- * and the geometry control also uses 0.1: its two-percent
- * scale error moves each edge of the 456-pixel quad by 4.56 pixels, leaving a
- * solid non-AA band after pixelmatch excludes the one-pixel
- * antialiased fringe. All three share the positive test's timeout and pixel
- * ratio, so none gets a second, looser spatial allowance.
+ * budget by 4.54x. The transposition control retains the still-harder 0.1
+ * bar (measured: 31524 px, 30.79x the budget) and the geometry control also
+ * uses 0.1 (measured: 8686 px, 8.48x): its two-percent scale error moves each
+ * edge of the ~542-pixel quad by ~5.42 pixels, leaving a solid non-AA band
+ * after pixelmatch excludes the one-pixel antialiased fringe. All three share
+ * the positive test's timeout and pixel ratio, so none gets a second, looser
+ * spatial allowance.
  */
 const HALF_PERIOD_REJECTION = rejectionComparison(0.05)
 const TRANSPOSE_REJECTION = rejectionComparison(0.1)
@@ -857,11 +857,10 @@ test('the comparison rejects a two-percent plane-extent error beyond the AA frin
   // Playwright's pixelmatch keeps includeAA=false internally, and its screenshot
   // options do not expose an override. This assertion therefore does not claim
   // that a one-pixel antialiased fringe is visible. The 2% scale error moves
-  // each edge of this 456px quad (on the retired 672 x 704 frame) by 4.56
-  // pixels, leaving a multi-pixel solid band plus displaced interior contours
-  // after that fringe is excluded. The 0.1 threshold is five times the
-  // positive test's 0.02 and therefore harder under `.not`; the ratio budget
-  // remains exactly 0.001.
+  // each edge of this ~542px quad by ~5.42 pixels, leaving a multi-pixel solid
+  // band plus displaced interior contours after that fringe is excluded. The
+  // 0.1 threshold is five times the positive test's 0.02 and therefore harder
+  // under `.not`; the ratio budget remains exactly 0.001.
   await hideChrome(page)
   await expect(canvasOf(page)).not.toHaveScreenshot(
     'degenerate-stationary-xz.png',
@@ -929,8 +928,8 @@ test('1s + 2p_z at t=8.4: half a Bohr period later, the lobe has swung over', as
   // is what makes either of them mean anything.
   //
   // The displacement here is a deep-blue lobe crossing a dark ground. At the
-  // 0.05 boundary leaves 3180 pixels, or 6.72x the retired 672 x 704 frame's
-  // 473.088-pixel budget. HALF_PERIOD_REJECTION uses that measured boundary.
+  // 0.05 boundary 4648 pixels survive, or 4.54x the 1280 x 800 frame's
+  // 1024-pixel budget. HALF_PERIOD_REJECTION uses that measured boundary.
   // It is deliberately higher (harder under `.not`) than the positive tests'
   // 0.02.
   await expect(canvasOf(page)).not.toHaveScreenshot(
@@ -981,10 +980,10 @@ test('the comparison can see a transposed slice: the apparatus is not vacuous', 
   // the original 0.1 bar, which is harder to clear under `.not` than either the
   // positive 0.02 or half-period 0.05 bar. The committed 1280 x 800 baseline
   // has 1024000 pixels and therefore a 1024-pixel ratio budget. This control
-  // clears that budget at threshold 0.1 after antialiased edge pixels are
-  // excluded. A lower threshold counts MORE pixels and so makes a `.not`
-  // easier to satisfy; on the reject side the tolerant bar is the stronger
-  // claim, and this assertion can afford it.
+  // clears that budget at threshold 0.1 (measured: 31524 px, 30.79x) after
+  // antialiased edge pixels are excluded. A lower threshold counts MORE pixels
+  // and so makes a `.not` easier to satisfy; on the reject side the tolerant
+  // bar is the stronger claim, and this assertion can afford it.
   await hideChrome(page)
   await expect(canvasOf(page)).not.toHaveScreenshot(
     '2pz-real-xz.png',
