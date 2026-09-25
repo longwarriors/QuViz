@@ -502,6 +502,55 @@ describe('Inspector reports every measured diagnostic', () => {
   })
 })
 
+/** Two diagnostics of the kind the server sends, verbatim (builders.py). */
+const DIAGNOSTICS = [
+  'finite-grid density integral is 0.991112: time-invariant quadrature error exceeds the reporting ' +
+    'tolerance even after accounting for the conservative finite-box tail bound; terms span n=[1, 2], ' +
+    'so the uniform cube under-resolves the compact scales.',
+  'grid resolution was increased from 65 to 81 to resolve the radial-node topology',
+]
+
+describe('Inspector numerical diagnostics', () => {
+  it('folds the server warnings into a closed 数值诊断 disclosure, each one verbatim in a warning card', async () => {
+    const tree = await mount(
+      createElement(Inspector, { status: { ...eigenstateStatus(-0.125), warnings: DIAGNOSTICS } }),
+    )
+    try {
+      const disclosure = tree.container.querySelector<HTMLDetailsElement>('details.qv-diagnostics')
+      if (disclosure === null) throw new Error('no diagnostics disclosure')
+      expect(disclosure.open).toBe(false)
+      expect(disclosure.querySelector('summary')?.textContent).toBe('数值诊断（2 条）')
+      const cards = [...disclosure.querySelectorAll('.warning-card')]
+      expect(cards.map((card) => card.textContent)).toEqual(DIAGNOSTICS)
+      // Every warning card is inside it: none is left filling the tab.
+      expect(tree.container.querySelectorAll('.warning-card')).toHaveLength(2)
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('keeps a scene error in plain sight, outside the folded diagnostics', async () => {
+    const tree = await mount(
+      createElement(Inspector, {
+        status: { ...eigenstateStatus(-0.125), error: 'stream ended early', warnings: DIAGNOSTICS.slice(1) },
+      }),
+    )
+    try {
+      const error = tree.container.querySelector('.warning-card.error')
+      expect(error?.textContent).toBe('场景错误 · stream ended early')
+      expect(error?.closest('details')).toBeNull()
+      expect(tree.container.querySelector('details.qv-diagnostics summary')?.textContent).toBe('数值诊断（1 条）')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('shows no disclosure when the server reported nothing to diagnose', () => {
+    expect(render({ ...eigenstateStatus(-0.125), warnings: [] })).not.toContain('qv-diagnostics')
+    expect(render(eigenstateStatus(-0.125))).not.toContain('数值诊断')
+  })
+})
+
 describe('Inspector disclosure', () => {
   it('associates every tab with its panel and supports the complete roving keyboard pattern', async () => {
     const onClose = vi.fn()

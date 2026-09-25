@@ -722,6 +722,8 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
 .warning-card.error { border-left-color: var(--qv-danger); background: rgba(242,139,130,.08); }
 .warning-card svg { flex: 0 0 auto; color: var(--qv-warn); }
 .warning-card.error svg { color: var(--qv-danger); }
+.qv-diagnostics { margin-top: 10px; }
+.qv-diagnostics > summary { color: var(--qv-text-2); font-size: 12px; cursor: pointer; }
 .qv-detail-toggle {
   position: fixed;
   top: calc(var(--qv-header-h) + var(--qv-edge) + 56px);

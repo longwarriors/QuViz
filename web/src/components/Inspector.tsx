@@ -553,9 +553,21 @@ export function Inspector({
         {status.error ? (
           <div className="warning-card error"><AlertTriangle size={16} /><span>场景错误 · {status.error}</span></div>
         ) : null}
-        {status.warnings?.map((warning) => (
-          <div className="warning-card" key={warning}><AlertTriangle size={16} /><span>{warning}</span></div>
-        ))}
+        {/*
+          The server's warnings are numerical diagnostics (quadrature, grid
+          refinement, empty flow), in its own English; a refusal never arrives
+          here -- it is the legend's `unavailable` -- and an error stays above,
+          in plain sight. Folded by default so they no longer fill the tab, with
+          every sentence kept verbatim inside.
+        */}
+        {status.warnings !== undefined && status.warnings.length > 0 ? (
+          <details className="qv-diagnostics">
+            <summary>{`数值诊断（${status.warnings.length} 条）`}</summary>
+            {status.warnings.map((warning) => (
+              <div className="warning-card" key={warning}><AlertTriangle size={16} /><span>{warning}</span></div>
+            ))}
+          </details>
+        ) : null}
       </div>
     </aside>
   )
