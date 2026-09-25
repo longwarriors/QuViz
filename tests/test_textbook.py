@@ -40,6 +40,7 @@ from scipy.sparse.csgraph import connected_components
 
 from quviz.api.routes import _parse_superposition, superposition_catalog
 from quviz.conventions import BasisKind, PrincipalPlane, SliceObservable
+from quviz.export.catalog_spec import DEFAULT_SPEC
 from quviz.physics.hydrogenic import hydrogenic_wavefunction
 from quviz.physics.superposition import SuperpositionState
 from quviz.scene.builders import (
@@ -66,13 +67,19 @@ DEEP_LINK_KEY_ORDER = (
     "plane",
     "obs",
 )
-OBSERVABLES = ("probability_density", "wavefunction_real", "wavefunction_imag", "phase")
-EIGEN_N_MAX = 4
-EIGEN_BASES = ("real", "complex")
-EIGEN_REPRESENTATIONS = ("point_cloud", "isosurface", "slice", "streamlines")
-EIGEN_PLANES = ("xy", "xz", "yz")
-SUPERPOSITION_REPRESENTATIONS = ("isosurface", "slice", "streamlines")
-SUPERPOSITION_PLANES = ("xz",)
+# What the static site precomputes: the exporter's own catalogue specification
+# (quviz.export.catalog_spec.DEFAULT_SPEC, written out as spec.json), not a copy.
+EIGEN = DEFAULT_SPEC.eigenstates
+SUPERPOSITIONS = DEFAULT_SPEC.superpositions
+EIGEN_N_MAX = EIGEN.n_max
+EIGEN_BASES = tuple(basis.value for basis in EIGEN.bases)
+EIGEN_REPRESENTATIONS = tuple(kind.value for kind in EIGEN.representations)
+EIGEN_PLANES = tuple(plane.value for plane in EIGEN.planes)
+EIGEN_OBSERVABLES = tuple(observable.value for observable in EIGEN.observables)
+SUPERPOSITION_PRESETS = SUPERPOSITIONS.presets
+SUPERPOSITION_REPRESENTATIONS = tuple(kind.value for kind in SUPERPOSITIONS.representations)
+SUPERPOSITION_PLANES = tuple(plane.value for plane in SUPERPOSITIONS.planes)
+SUPERPOSITION_OBSERVABLES = tuple(observable.value for observable in SUPERPOSITIONS.observables)
 # nextTimeAu in web/src/components/sceneRequest.ts: ceil(T / 0.6) frames per
 # period, each snapped to the 0.2 a.u. time lattice (capability.ts).
 TARGET_TIME_STEP_AU = 0.6
@@ -402,13 +409,15 @@ def _eigenstate_problems(state: dict[str, str], rep: str | None) -> list[str]:
     if n is None or l is None or m is None:
         return [*problems, "eigenstate figures spell integer n, l and m"]
     if not (1 <= n <= EIGEN_N_MAX and 0 <= l < n and -l <= m <= l):
-        problems.append(f"(n, l, m) = ({n}, {l}, {m}) is not a precomputed eigenstate (n <= 4)")
+        problems.append(
+            f"(n, l, m) = ({n}, {l}, {m}) is not a precomputed eigenstate (n <= {EIGEN_N_MAX})"
+        )
     basis = state.get("basis")
     if basis not in EIGEN_BASES:
         problems.append(f"basis must be one of {EIGEN_BASES}, not {basis!r}")
     if rep not in EIGEN_REPRESENTATIONS:
         problems.append(f"rep must be one of {EIGEN_REPRESENTATIONS}, not {rep!r}")
-    problems.extend(_slice_problems(state, rep, EIGEN_PLANES))
+    problems.extend(_slice_problems(state, rep, EIGEN_PLANES, EIGEN_OBSERVABLES))
     if rep == "streamlines" and (basis != "complex" or m == 0):
         problems.append("only complex-basis m != 0 eigenstates carry a probability current")
     return problems
@@ -420,9 +429,9 @@ def _superposition_problems(state: dict[str, str], rep: str | None) -> list[str]
         if key in state:
             problems.append(f"{key} belongs to eigenstate figures")
     preset = state.get("preset")
+    if preset not in SUPERPOSITION_PRESETS:
+        return [*problems, f"preset must be one of {SUPERPOSITION_PRESETS}, not {preset!r}"]
     periods = superposition_periods()
-    if preset not in periods:
-        return [*problems, f"preset must be one of {sorted(periods)}, not {preset!r}"]
     # A missing t means the lab's own default of 0, exactly like an explicit
     # t=0 (contracts Part C controller ruling 4).
     raw_time = state.get("t")
@@ -440,7 +449,7 @@ def _superposition_problems(state: dict[str, str], rep: str | None) -> list[str]
         problems.append(f"t={raw_time!r} must be spelled {js_number(time)!r} like the lab")
     if rep not in SUPERPOSITION_REPRESENTATIONS:
         problems.append(f"rep must be one of {SUPERPOSITION_REPRESENTATIONS}, not {rep!r}")
-    problems.extend(_slice_problems(state, rep, SUPERPOSITION_PLANES))
+    problems.extend(_slice_problems(state, rep, SUPERPOSITION_PLANES, SUPERPOSITION_OBSERVABLES))
     if (preset, rep) in KNOWN_REFUSED:
         problems.append(f"{preset} {rep} is a known server refusal at the catalogue defaults")
     if rep == "streamlines" and (periods[preset] <= 0 or time == 0):
@@ -448,15 +457,20 @@ def _superposition_problems(state: dict[str, str], rep: str | None) -> list[str]
     return problems
 
 
-def _slice_problems(state: dict[str, str], rep: str | None, planes: tuple[str, ...]) -> list[str]:
+def _slice_problems(
+    state: dict[str, str],
+    rep: str | None,
+    planes: tuple[str, ...],
+    observables: tuple[str, ...],
+) -> list[str]:
     plane, obs = state.get("plane"), state.get("obs")
     if rep != "slice":
         return ["plane/obs only belong to slice figures"] if plane or obs else []
     problems = []
     if plane not in planes:
         problems.append(f"plane must be one of {planes}, not {plane!r}")
-    if obs not in OBSERVABLES:
-        problems.append(f"obs must be one of {OBSERVABLES}, not {obs!r}")
+    if obs not in observables:
+        problems.append(f"obs must be one of {observables}, not {obs!r}")
     return problems
 
 
@@ -961,10 +975,27 @@ def test_quoted_deep_links_are_catalogue_states_in_the_lab_key_order() -> None:
     assert order in (TEXTBOOK / appendix).read_text(encoding="utf-8")
 
 
-def _catalogue_resolution(n: int) -> int:
-    """spec.json's resolution 65, clamped up to the per-state floor 16n + 17."""
+def test_chapter_0_quotes_the_labs_not_precomputed_sentence_verbatim() -> None:
+    """Chapter 0 quotes the one sentence every static "未预计算" reason opens with.
 
-    return max(65, 16 * n + 17)
+    That sentence is ``NOT_PRECOMPUTED_DETAIL`` in ``web/src/api/capability.ts``
+    (contracts, Amendment 3); rewording it there must not leave the textbook
+    quoting a sentence the lab no longer shows.
+    """
+
+    source = (ROOT / "web" / "src" / "api" / "capability.ts").read_text(encoding="utf-8")
+    match = re.search(r"export const NOT_PRECOMPUTED_DETAIL =\s*'([^'\\\n]+)'", source)
+    assert match is not None, "NOT_PRECOMPUTED_DETAIL is no longer a one-line string literal"
+    sentence = match.group(1)
+    assert "未预计算" in sentence
+    chapter = (TEXTBOOK / "00-how-to-use.md").read_text(encoding="utf-8")
+    assert f"「{sentence}」" in chapter
+
+
+def _catalogue_resolution(n: int) -> int:
+    """spec.json's resolution (65), clamped up to the per-state floor 16n + 17."""
+
+    return max(EIGEN.resolution, 16 * n + 17)
 
 
 def _mesh_components(faces: np.ndarray, vertex_count: int) -> list[np.ndarray]:
@@ -1064,7 +1095,9 @@ def test_chapter_8_streamline_figures_match_the_current_field_builder() -> None:
     """
 
     fields = {
-        (n, l, m): build_current_field(n, l, m, basis=BasisKind.COMPLEX, seed_count=48)
+        (n, l, m): build_current_field(
+            n, l, m, basis=BasisKind.COMPLEX, seed_count=EIGEN.seed_count
+        )
         for n, l, m in ((2, 1, 1), (2, 1, -1), (3, 2, 2))
     }
     for (_, _, m), field in fields.items():
@@ -1090,8 +1123,9 @@ def _preset(preset: str) -> tuple[SuperpositionState, int, int]:
 
     entry = next(entry for entry in superposition_catalog() if entry["id"] == preset)
     state = _parse_superposition(str(entry["terms"]), BasisKind.COMPLEX)
-    resolution = max(65, int(str(entry["slice_resolution_floor"])))
-    return state, resolution, min(48, int(str(entry["streamline_seed_count_max"])))
+    resolution = max(SUPERPOSITIONS.resolution, int(str(entry["slice_resolution_floor"])))
+    seeds = min(SUPERPOSITIONS.seed_count, int(str(entry["streamline_seed_count_max"])))
+    return state, resolution, seeds
 
 
 def _xz_slice(

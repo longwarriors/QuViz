@@ -136,11 +136,12 @@
   - 同一页只保留一个活动交互图；`document$` 重复触发不会重复升级；
   - 缺失 meta、非 http(s) 地址或带 `embed=` 的深链接一律禁用按钮并显示原因。
 - ✅ 教材章节契约 — `tests/test_textbook.py` 对 `docs/textbook/` 做两类检查：
-  - 每个 `quviz-figure` 的 `data-lab` 必须同时满足实验室深链接语法，并落在静态预计算目录之内：
+  - 每个 `quviz-figure` 的 `data-lab` 必须同时满足实验室深链接语法，并落在静态预计算目录之内（目录的 $n$ 上限、基、表示法、平面、场与预设直接取自导出器的 `quviz.export.catalog_spec.DEFAULT_SPEC`，不另抄一份）：
     - 本征态 $n\le4$，量子数合法；
     - 叠加态只用服务端目录的四个预设，时刻必须是与 `nextTimeAu` 相同的播放帧，并按 JavaScript 的数字写法拼写；
     - 流线只用于复基 $m\ne0$ 的本征态，或 $t\ne0$ 时的振荡叠加态；
-    - 已知会被服务端拒绝的组合不得入图。
+    - 已知会被服务端拒绝的组合不得入图；
+    - 第 0 章引用的「未预计算」原因句必须与 `web/src/api/capability.ts` 的 `NOT_PRECOMPUTED_DETAIL` 逐字一致。
   - 每章的二级标题 id 与图的深链接必须和注册表逐字一致；每一页（含附录）至少一张交互图，图注以“图 章号.序号”（附录用字母）开头；编号章节必须包含学习目标、常见误区、至少 3 道带答案的思考题与延伸阅读，且不得出现 `/api/`、测试路径等开发者术语。
 - 🔗 MkDocs 在真实 Chromium 中完成渲染 — `npm run test:fullstack` 同时启动生产应用与 `mkdocs serve --strict`，并逐项检查：
     - 直达页面和 `navigation.instant` 换页后的全部 `.arithmatex` 都必须生成 `mjx-container`；
