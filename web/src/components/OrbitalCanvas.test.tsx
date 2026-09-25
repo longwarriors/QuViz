@@ -1339,6 +1339,21 @@ describe('OrbitalCanvas', () => {
   const composerOf = (props: Record<string, unknown>): ReactElement | undefined =>
     childrenOf(props).find((child) => child.type === EffectComposer)
 
+  /**
+   * The gizmo's `presentationChain`, checked against the composer of the SAME
+   * commit. drei's Hud renders the scene itself only at priority 1 and draws
+   * nothing but its overlay at 2, so the flag must be true exactly when an
+   * EffectComposer is mounted: true without one leaves the canvas blank,
+   * false with one draws the scene twice.
+   */
+  const gizmoChainOf = (props: Record<string, unknown>): boolean => {
+    const gizmo = childrenOf(props).find((child) => child.type === AxisGizmo)
+    expect(gizmo).toBeDefined()
+    const chain = (gizmo?.props as { presentationChain: boolean }).presentationChain
+    expect(composerOf(props) !== undefined).toBe(chain)
+    return chain
+  }
+
   it('asks for the renderer the scene needs, and says so explicitly', async () => {
     useSceneStore.setState({ representation: 'isosurface' })
     answerWith(isosurface())
@@ -1417,23 +1432,35 @@ describe('OrbitalCanvas', () => {
   })
 
   it.each([
-    [0.42, true],
-    [0, false],
+    ['superposition_streamlines', 0.42, true],
+    ['superposition_streamlines', 0, false],
+    // Bloom is on, but the arrived frame keeps its phase palette out of the
+    // post chain: no composer, so the Hud must render the scene itself. A flag
+    // wired to Bloom alone would hand it priority 2 and leave the canvas blank.
+    ['isosurface', 0.42, false],
+    ['superposition_isosurface', 0.42, false],
   ] as const)(
-    'draws the axis triad inside the one scene canvas (bloom %s -> post chain %s)',
-    async (bloom, chain) => {
-      useSceneStore.setState({
-        mode: 'superposition',
-        bloom,
-        representation: 'streamlines',
-        superpositionStreamlineSeedCountMax: 40,
-      })
-      answerWith(superpositionCurrent())
+    'draws the axis triad inside the one scene canvas (%s, bloom %s -> post chain %s)',
+    async (kind, bloom, chain) => {
+      if (kind === 'isosurface') {
+        useSceneStore.setState({ mode: 'eigenstate', representation: 'isosurface', bloom })
+        answerWith(isosurface())
+      } else {
+        useSceneStore.setState({
+          mode: 'superposition',
+          bloom,
+          representation: kind === 'superposition_isosurface' ? 'isosurface' : 'streamlines',
+          superpositionStreamlineSeedCountMax: 40,
+        })
+        answerWith(
+          kind === 'superposition_isosurface' ? superpositionIsosurface() : superpositionCurrent(),
+        )
+      }
       const { props, unmount } = await mountShell()
 
-      const gizmo = childrenOf(props).find((child) => child.type === AxisGizmo)
-      expect(gizmo).toBeDefined()
-      expect((gizmo?.props as { presentationChain: boolean }).presentationChain).toBe(chain)
+      // The arrived frame decides, so check each row really reached it.
+      expect(assetOf(props)?.kind).toBe(kind)
+      expect(gizmoChainOf(props)).toBe(chain)
 
       await unmount()
     },
@@ -1519,6 +1546,18 @@ describe('OrbitalCanvas', () => {
     const scientificFrame = canvasProps.current as Record<string, unknown>
     expect(assetOf(scientificFrame)?.kind).toBe('superposition_isosurface')
     expect(composerOf(scientificFrame)).toBeUndefined()
+
+    // The gizmo follows the same arrived frame in every commit (each call
+    // checks its flag against that commit's composer): the old streamlines
+    // frame after the store already asks for an isosurface (chain on), the
+    // empty viewport while the response is pending (off, Bloom 0.3
+    // notwithstanding), and the isosurface once it lands (off).
+    canvasProps.history.forEach((props) => gizmoChainOf(props))
+    expect(gizmoChainOf(oldFrameCommit as Record<string, unknown>)).toBe(true)
+    expect(gizmoChainOf(scientificFrame)).toBe(false)
+    expect(
+      canvasProps.history.some((props) => assetOf(props) === null && !gizmoChainOf(props)),
+    ).toBe(true)
 
     await unmount()
   })
