@@ -1,0 +1,135 @@
+/*
+  QuViz lab visual system -- layout language inspired by map "lab" tools:
+  data first, chrome recedes into glass panels floating over a full-bleed
+  canvas. No third-party branding. The --qv-* tokens are spec §4.4 verbatim
+  and src/styleContract.test.ts reads them back.
+
+  Data colours are NOT here. The phase wheel, the slice ramps and the speed
+  ramp live in styles.css, where color.test.ts, SliceField.test.tsx and
+  speedColor.test.ts compare them byte-for-byte against the renderer.
+
+  Never force a [data-chrome] descendant back to being shown via CSS: the
+  visual suite hides chrome with inline visibility:hidden before every
+  capture, and any rule undoing that below it would leak into a screenshot.
+*/
+:root {
+  color-scheme: dark;
+  --qv-bg: #0e0f11;
+  --qv-glass: rgba(0,0,0,.6);
+  --qv-glass-strong: rgba(16,17,20,.86);
+  --qv-border: rgba(255,255,255,.15);
+  --qv-border-strong: rgba(255,255,255,.3);
+  --qv-glow: 0 0 12px rgba(100,160,255,.2);
+  --qv-blur: blur(16px);
+  --qv-radius-panel: 24px;
+  --qv-radius-pill: 100px;
+  --qv-radius-tag: 4px;
+  --qv-text: #fff;
+  --qv-text-2: rgba(255,255,255,.62);
+  --qv-text-3: rgba(255,255,255,.4);
+  --qv-band: rgba(255,255,255,.045);
+  --qv-accent: #8ab4f8;
+  --qv-accent-strong: #1a73e8;
+  --qv-ok: #81c995;
+  --qv-warn: #fdd663;
+  --qv-danger: #f28b82;
+  --qv-font: "Google Sans Flex", system-ui, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --qv-card: #1b1c1f;
+  --qv-header-h: 56px;
+  --qv-edge: 16px;
+  --qv-panel-w: 320px;
+  --qv-detail-w: 360px;
+  --qv-bottom-band: 128px;
+  --qv-drawer-h: 56dvh;
+  font-family: var(--qv-font);
+  font-variant-numeric: tabular-nums;
+  font-synthesis: none;
+  color: var(--qv-text);
+  background: var(--qv-bg);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+body {
+  overflow: hidden;
+  background: var(--qv-bg);
+  color: var(--qv-text);
+  font-family: var(--qv-font);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, output { font: inherit; color: inherit; }
+a { color: var(--qv-accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1, h2, h3, p, dl, dd, figure { margin: 0; }
+::selection { color: #0e0f11; background: var(--qv-accent); }
+:focus-visible { outline: 2px solid var(--qv-accent); outline-offset: 2px; }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.qv-glass {
+  border: 1px solid var(--qv-border);
+  background: var(--qv-glass);
+  box-shadow: var(--qv-glow);
+  backdrop-filter: var(--qv-blur);
+  -webkit-backdrop-filter: var(--qv-blur);
+}
+.qv-glass-strong {
+  border: 1px solid var(--qv-border);
+  background: var(--qv-glass-strong);
+  box-shadow: var(--qv-glow);
+  backdrop-filter: var(--qv-blur);
+  -webkit-backdrop-filter: var(--qv-blur);
+}
+
+/* ---- App shell ---- */
+.qv-app { position: relative; width: 100%; height: 100%; }
+.qv-stage { position: fixed; inset: 0; z-index: 0; background: var(--qv-bg); }
+.qv-overlay { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
+.qv-overlay [data-chrome] { pointer-events: auto; }
+
+.qv-fallback {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  background: var(--qv-bg);
+}
+.qv-stage .qv-fallback { position: absolute; z-index: 0; }
+.qv-fallback h1 { font-size: 22px; font-weight: 500; }
+.qv-fallback p { max-width: 520px; color: var(--qv-text-2); }
+.qv-fallback-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.qv-fallback-actions button {
+  height: 40px;
+  padding: 0 18px;
+  border: 1px solid var(--qv-border-strong);
+  border-radius: var(--qv-radius-pill);
+  background: transparent;
+  cursor: pointer;
+}
+.qv-fallback-actions button:first-child { border-color: transparent; background: var(--qv-accent-strong); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
