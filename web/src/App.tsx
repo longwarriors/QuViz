@@ -92,7 +92,9 @@ function LabShell() {
   useEffect(() => {
     if (!detailOpen || guideOpen) return undefined
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
+      // An Escape some chrome already consumed (the search pill's combobox
+      // closing itself, say) was that control's, not a request to close details.
+      if (event.key !== 'Escape' || event.defaultPrevented) return
       event.preventDefault()
       closeDetail()
     }

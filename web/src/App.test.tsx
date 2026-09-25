@@ -324,6 +324,29 @@ describe('App: panels on desktop, compact and phone widths', () => {
       await tree.unmount()
     }
   })
+
+  it('lets Escape in the open search close the search alone, focus back on its pill', async () => {
+    // The real SearchPill: its input consumes Escape (preventDefault) and the
+    // native event still bubbles to the document, where the page's own Escape
+    // must not treat it as a second, unhandled press.
+    stubMedia({ '(max-width: 1180px)': false, '(max-width: 820px)': false })
+    const tree = await shell()
+    try {
+      await interact(() => q<HTMLButtonElement>(tree, '.qv-search-pill')?.click())
+      const input = q<HTMLInputElement>(tree, '.qv-search input[role="combobox"]')
+      expect(input).not.toBeNull()
+      expect(document.activeElement).toBe(input)
+      await interact(() => {
+        input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+      })
+      expect(q(tree, '.qv-search input')).toBeNull()
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('true')
+      expect(q(tree, '.qv-detail-toggle')).toBeNull()
+      expect(document.activeElement).toBe(q(tree, '.qv-search-pill'))
+    } finally {
+      await tree.unmount()
+    }
+  })
 })
 
 describe('App: embed mode and the guide', () => {
