@@ -169,7 +169,7 @@ export function sceneIdentityKey(inputs: SceneIdentityInputs): string {
  * again. Counting frames instead means a lap revisits bit-identical values.
  *
  * `periodAu` is required: it is the selected catalogue entry's period scaled by
- * a_mu/Z^2 (ControlPanel.tsx:457-464). The old 39.6 a.u. default walked a
+ * a_mu/Z^2 (usePlaybackModel in usePlayback.ts). The old 39.6 a.u. default walked a
  * lattice no catalogue period produces, and on the static site those times are
  * requests nobody exported (spec section 5). A missing or invalid period fails
  * closed at t = 0, like a degenerate preset.

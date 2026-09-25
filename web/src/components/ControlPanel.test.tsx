@@ -15,7 +15,7 @@ import { resetCatalogs } from '../state/catalogs'
 import { useSceneStore, type SceneMode } from '../state/useSceneStore'
 import { mount, type MountedTree } from '../test/mount'
 import { ControlPanel } from './ControlPanel'
-import { nextTimeAu, selectSceneRequestInputs } from './sceneRequest'
+import { selectSceneRequestInputs } from './sceneRequest'
 
 /**
  * The panel's answer to "can this cell be drawn?" must come from
@@ -119,7 +119,6 @@ const EVERY_PARAMETER: ParameterId[] = [
   'resolution',
   'probabilityMass',
   'seedCount',
-  'timeAu',
 ]
 
 /** Every representation the panel offers a button for. */
@@ -545,21 +544,13 @@ describe('ControlPanel sliders are the capability matrix bounds', () => {
     }
   })
 
-  it('offers a clock only where the matrix declares one', async () => {
-    const stationary = await panel('eigenstate', 'point_cloud')
+  it.each(CELLS)('%s / %s: never renders the clock itself (it lives in the time pill)', async (mode, representation, orbital) => {
+    const tree = await panel(mode, representation, orbital)
     try {
-      expect(parameterInput(stationary, 'timeAu')).toBeNull()
-      expect(stationary.container.querySelector('[data-control="playback"]')).toBeNull()
+      expect(parameterInput(tree, 'timeAu')).toBeNull()
+      expect(tree.container.querySelector('[data-control="playback"]')).toBeNull()
     } finally {
-      await stationary.unmount()
-    }
-
-    const timeDependent = await panel('superposition', 'isosurface')
-    try {
-      expect(parameterInput(timeDependent, 'timeAu')).not.toBeNull()
-      expect(timeDependent.container.querySelector('[data-control="playback"]')).not.toBeNull()
-    } finally {
-      await timeDependent.unmount()
+      await tree.unmount()
     }
   })
 })
@@ -899,7 +890,7 @@ describe('ControlPanel controls write to the store', () => {
     }
   })
 
-  it('switches state kind, picks a mixture and toggles playback', async () => {
+  it('switches state kind and picks a mixture', async () => {
     const tree = await panel('eigenstate', 'point_cloud')
     try {
       const kind = (): NodeListOf<HTMLButtonElement> =>
@@ -914,13 +905,6 @@ describe('ControlPanel controls write to the store', () => {
       expect(mixtures[0].className).toContain('active')
       await press(mixtures[1], 'the second mixture')
       expect(useSceneStore.getState().superpositionTerms).toBe(CATALOGUE.mixtures[1].terms)
-
-      const playback = (): HTMLButtonElement | null =>
-        tree.container.querySelector<HTMLButtonElement>('[data-control="playback"]')
-      await press(playback(), 'the playback toggle')
-      expect(useSceneStore.getState().playing).toBe(true)
-      await press(playback(), 'the playback toggle')
-      expect(useSceneStore.getState().playing).toBe(false)
 
       await press(kind()[0], 'the eigenstate button')
       expect(useSceneStore.getState().mode).toBe('eigenstate')
@@ -1084,14 +1068,6 @@ describe('ControlPanel controls write to the store', () => {
       expect(useSceneStore.getState().resolution).toBe(73)
       await setValue(parameterInput(surface, 'probabilityMass'), 'mass', '0.75')
       expect(useSceneStore.getState().probabilityMass).toBe(0.75)
-      const clock = parameterInput(surface, 'timeAu')
-      expect(clock?.step).toBe('0.2')
-      expect(clock?.value).toBe('0')
-      expect(clock?.validity.stepMismatch).toBe(false)
-      await setValue(clock, 'time', '8.4')
-      expect(clock?.value).toBe('8.4')
-      expect(clock?.validity.stepMismatch).toBe(false)
-      expect(useSceneStore.getState().timeAu).toBe(8.4)
     } finally {
       await surface.unmount()
     }
@@ -1289,97 +1265,6 @@ describe('ControlPanel controls write to the store', () => {
     }
   })
 
-  it('advances the clock on its own while playback is on', async () => {
-    vi.useFakeTimers()
-    try {
-      useSceneStore.setState({ mode: 'superposition', representation: 'isosurface', timeAu: 0 })
-      const tree = await mount(createElement(ControlPanel))
-      try {
-        await press(tree.container.querySelector('[data-control="playback"]'), 'playback')
-        expect(useSceneStore.getState().playing).toBe(true)
-        await vi.advanceTimersByTimeAsync(900)
-        // Two ticks of the 0.6 a.u. frame grid, landing exactly on the grid.
-        expect(useSceneStore.getState().timeAu).toBe(1.2)
-      } finally {
-        await tree.unmount()
-      }
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('uses the selected catalogue period for playback', async () => {
-    vi.useFakeTimers()
-    try {
-      useSceneStore.setState({ mode: 'superposition', representation: 'isosurface', timeAu: 0 })
-      const tree = await mount(createElement(ControlPanel))
-      try {
-        const mixtures = tree.container.querySelectorAll<HTMLButtonElement>('.mixture-list .preset')
-        await press(mixtures[1], 'the second mixture')
-        await press(tree.container.querySelector('[data-control="playback"]'), 'playback')
-        await vi.advanceTimersByTimeAsync(5 * 420 + 1)
-
-        let expected = 0
-        let oldFixedPeriod = 0
-        for (let frame = 0; frame < 5; frame += 1) {
-          expected = nextTimeAu(expected, CATALOGUE.mixtures[1].period_au)
-          oldFixedPeriod = nextTimeAu(oldFixedPeriod, 39.6)
-        }
-        expect(expected).toBe(2.8)
-        expect(oldFixedPeriod).toBe(3)
-        expect(useSceneStore.getState().timeAu).toBe(expected)
-        expect(useSceneStore.getState().timeAu).not.toBe(oldFixedPeriod)
-        const clock = parameterInput(tree, 'timeAu')
-        expect(clock?.validity.stepMismatch).toBe(false)
-        expect(clock?.closest('label')?.querySelector('.control-value')?.textContent).toMatch(
-          /^\d+(?:\.\d)? a\.u\.$/,
-        )
-      } finally {
-        await tree.unmount()
-      }
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('does not offer motion for a degenerate catalogue state', async () => {
-    const mixture = CATALOGUE.mixtures[0]
-    const originalPeriod = mixture.period_au
-    mixture.period_au = 0
-    useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
-    const tree = await mount(createElement(ControlPanel))
-    try {
-      const playback = tree.container.querySelector<HTMLButtonElement>('[data-control="playback"]')
-      expect(playback?.disabled).toBe(false)
-      expect(playback?.getAttribute('aria-disabled')).toBe('true')
-      expect(playback?.title).toContain('能量简并')
-      playback?.focus()
-      expect(document.activeElement).toBe(playback)
-      const notice = tree.container.querySelector('[data-playback-notice]')
-      expect(notice?.textContent).toContain('能量简并')
-      expect(playback?.getAttribute('aria-describedby')).toBe(notice?.id)
-      await press(playback, 'the inert degenerate playback control')
-      expect(useSceneStore.getState().playing).toBe(false)
-
-      // Force a real React rerender: the inert click above intentionally does
-      // not write state, so checking only that moment would not prove the
-      // explanation remains in the DOM across later panel updates.
-      await interact(() => useSceneStore.getState().setBloom(0.31))
-      const rerenderedPlayback = tree.container.querySelector<HTMLButtonElement>(
-        '[data-control="playback"]',
-      )
-      const rerenderedNotice = tree.container.querySelector('[data-playback-notice]')
-      expect(rerenderedNotice?.textContent).toContain('能量简并')
-      expect(rerenderedPlayback?.getAttribute('aria-disabled')).toBe('true')
-      expect(rerenderedPlayback?.getAttribute('aria-describedby')).toBe(
-        rerenderedNotice?.id,
-      )
-    } finally {
-      await tree.unmount()
-      mixture.period_au = originalPeriod
-    }
-  })
-
   it('opens a mixture on the representation its catalogue entry publishes', async () => {
     const mixture = CATALOGUE.mixtures[1]
     const original = mixture.default_representation
@@ -1416,22 +1301,6 @@ describe('ControlPanel controls write to the store', () => {
     } finally {
       await tree.unmount()
       mixture.default_representation = original
-    }
-  })
-
-  it('runs no clock for a cell the matrix gives no time parameter', async () => {
-    vi.useFakeTimers()
-    try {
-      useSceneStore.setState({ mode: 'eigenstate', representation: 'point_cloud', playing: true })
-      const tree = await mount(createElement(ControlPanel))
-      try {
-        await vi.advanceTimersByTimeAsync(2000)
-        expect(useSceneStore.getState().timeAu).toBe(0)
-      } finally {
-        await tree.unmount()
-      }
-    } finally {
-      vi.useRealTimers()
     }
   })
 })

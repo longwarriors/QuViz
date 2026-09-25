@@ -104,7 +104,7 @@ export function enumerateStaticRequests(
     if (preset === undefined) {
       throw new Error(`静态目录规格引用了服务端目录中不存在的叠加态预设 ${id}。`)
     }
-    // ControlPanel's playback period: catalogue period x a_mu / Z^2 (ControlPanel.tsx:457-464).
+    // The time pill's playback period: catalogue period x a_mu / Z^2 (usePlaybackModel).
     const frames = playbackFrames((preset.period_au * STATIC_A_MU) / eigen.z ** 2)
     for (const representation of spec.superpositions.representations) {
       for (const timeAu of frames) {

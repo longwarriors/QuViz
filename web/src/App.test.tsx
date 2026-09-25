@@ -76,6 +76,16 @@ vi.mock('./components/Inspector', () => ({
     ),
 }))
 
+vi.mock('./state/catalogs', () => ({
+  useCatalogs: () => ({
+    orbitals: [],
+    superpositions: [],
+    orbitalStatus: 'ready',
+    superpositionStatus: 'ready',
+  }),
+  ensureCatalogsLoaded: () => undefined,
+}))
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })

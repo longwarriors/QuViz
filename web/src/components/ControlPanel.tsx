@@ -13,7 +13,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import {
   capabilityFor,
@@ -25,7 +25,7 @@ import {
 import type { PrincipalPlane, RepresentationKind, SliceObservable } from '../api/types'
 import { useCatalogs } from '../state/catalogs'
 import { useSceneStore } from '../state/useSceneStore'
-import { nextTimeAu, selectSceneRequestInputs } from './sceneRequest'
+import { selectSceneRequestInputs } from './sceneRequest'
 import { REPRESENTATION_LABELS } from './sceneStatus'
 
 /**
@@ -254,7 +254,9 @@ const MIXTURE_COPY: Readonly<Record<string, { label: string; note: string }>> = 
  *
  * The ORDER is this list's; the MEMBERSHIP is the capability matrix's. A row
  * renders exactly when the cell declares a bound for it, so a route that stops
- * taking `seed_count` removes the Seeds slider by itself.
+ * taking `seed_count` removes the Seeds slider by itself. `timeAu` is not a
+ * row: the clock and playback live in the time pill (TimePill.tsx), which
+ * reads the same bound.
  */
 const PARAMETER_ROWS: {
   id: ParameterId
@@ -266,7 +268,6 @@ const PARAMETER_ROWS: {
   { id: 'resolution', label: '网格' },
   { id: 'probabilityMass', label: '概率质量' },
   { id: 'seedCount', label: '流线种子' },
-  { id: 'timeAu', label: 't', suffix: ' a.u.' },
 ]
 
 export type ControlContext = 'state' | 'representation' | 'display'
@@ -312,7 +313,7 @@ export function ControlPanel({
   // fail-closed catalogue side effects now live in state/catalogs.ts.
   const { orbitals: presets, superpositions: mixtures } = useCatalogs()
 
-  const { mode, playing } = store
+  const { mode } = store
 
   // Exactly the inputs `useSceneAsset` plans from, so the panel and the fetch
   // layer cannot describe two different requests.
@@ -402,57 +403,6 @@ export function ControlPanel({
     timeAu: store.setTimeAu,
     aMu: store.setAMu,
   }
-
-  /**
-   * A clock exists for this cell iff the route takes a time. Derived rather
-   * than tested as `mode === 'superposition'`, so a stationary route that grew
-   * a time parameter would get playback without an edit here -- and, more to
-   * the point, so playback can never be offered for a request that would send
-   * the same query on every tick.
-   */
-  const hasClock = bounds.timeAu !== undefined
-  const selectedMixture = mixtures.find(
-    (mixture) => mixture.terms === store.superpositionTerms,
-  )
-  const plannedZ =
-    plan.status === 'available' && typeof plan.params.z === 'number' ? plan.params.z : null
-  const plannedAMu =
-    plan.status === 'available' && typeof plan.params.a_mu === 'number'
-      ? plan.params.a_mu
-      : null
-  const playbackPeriodAu =
-    selectedMixture === undefined
-      ? null
-      : selectedMixture.period_au === 0
-        ? 0
-        : plannedZ === null || plannedAMu === null
-          ? null
-          : (selectedMixture.period_au * plannedAMu) / plannedZ ** 2
-  const canPlay = hasClock && playbackPeriodAu !== null && playbackPeriodAu > 0
-  const playbackUnavailableReason =
-    playbackPeriodAu === 0
-      ? '该叠加态的能量简并，概率密度严格不随时间变化。'
-      : canPlay
-        ? null
-        : '等待叠加态目录提供物理周期。'
-
-  // Stepping time re-requests the asset. A round trip slower than the interval
-  // does not pile requests up: the canvas keeps only the newest pending time.
-  //
-  // The tick reads the clock from the store rather than from this render's
-  // closure, so the only things that can restart the interval are the two that
-  // decide whether it runs at all. Depending on `store` (a fresh object on
-  // every write) and on `store.timeAu` tore the timer down and rebuilt it on
-  // every unrelated store write -- time stopped advancing for as long as the
-  // user held any slider, and each tick restarted the interval it ran in.
-  useEffect(() => {
-    if (!playing || !canPlay || playbackPeriodAu === null) return undefined
-    const timer = window.setInterval(() => {
-      const state = useSceneStore.getState()
-      state.setTimeAu(nextTimeAu(state.timeAu, playbackPeriodAu))
-    }, 420)
-    return () => window.clearInterval(timer)
-  }, [playing, canPlay, playbackPeriodAu])
 
   return (
     <div
@@ -654,39 +604,6 @@ export function ControlPanel({
               </dl>
             ) : null}
           </>
-        ) : null}
-
-        {hasClock ? (
-          <button
-            type="button"
-            className="toggle-row"
-            data-control="playback"
-            aria-pressed={store.playing}
-            aria-disabled={!canPlay}
-            aria-describedby={!canPlay ? 'playback-availability-notice' : undefined}
-            title={
-              canPlay
-                ? `按物理周期 ${playbackPeriodAu?.toPrecision(6)} a.u. 循环`
-                : (playbackUnavailableReason ?? undefined)
-            }
-            onClick={() => {
-              if (canPlay) store.setPlaying(!store.playing)
-            }}
-          >
-            {store.playing ? <Pause size={15} /> : <Play size={15} />}
-            <span>随 t 演化</span>
-            <span className={store.playing ? 'switch on' : 'switch'} />
-          </button>
-        ) : null}
-        {hasClock && playbackUnavailableReason !== null ? (
-          <p
-            id="playback-availability-notice"
-            className="capability-notice"
-            role="note"
-            data-playback-notice
-          >
-            {playbackUnavailableReason}
-          </p>
         ) : null}
       </section>
 

@@ -9,6 +9,7 @@ import { Legend } from './components/Legend'
 import { LoadingOverlay } from './components/LoadingOverlay'
 import { OrbitalCanvas } from './components/OrbitalCanvas'
 import { representationLabel } from './components/sceneStatus'
+import { TimePill } from './components/TimePill'
 
 /** A clock reading, always with its unit and always to the same precision. */
 const timeText = (timeAu: number): string => `t=${timeAu.toFixed(1)} a.u.`
@@ -200,6 +201,7 @@ export default function App() {
           </div>
           <OrbitalCanvas onStatus={handleStatus} />
           <Legend status={status} />
+          <TimePill status={status} />
           <button
             type="button"
             className="stage-inspector-toggle"
