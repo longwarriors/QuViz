@@ -362,7 +362,7 @@ def test_registered_chapters_match_their_sections_and_figures() -> None:
         links = tuple(attrs.get("data-lab") or "" for attrs, _ in figures)
         if links != chapter.figures:
             problems.append(f"{name}: figures {links} != registered {chapter.figures}")
-        # Spec §1 success criterion 2: every page, appendices included, embeds the lab.
+        # Amendment 11: chapters 0-11 need >= 1 figure; the plan also gives each appendix one.
         if not chapter.figures:
             problems.append(f"{name}: every textbook page needs at least one interactive figure")
         label = _figure_label(name)
