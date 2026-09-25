@@ -7,6 +7,13 @@ const read = (relative: string): string =>
   readFileSync(new URL(relative, import.meta.url), 'utf-8')
 
 /**
+ * lab.css with comments stripped, so prose (e.g. the file-level header
+ * comment) can never satisfy or defeat a regex assertion below. Every
+ * lab.css-matching assertion in this file reads through this helper.
+ */
+const labCss = (): string => read('./lab.css').replace(/\/\*[\s\S]*?\*\//g, '')
+
+/**
  * Spec §4.4's token table, transcribed once. lab.css is the only place these
  * values are written; this list is the review copy the design is held to.
  */
@@ -48,24 +55,22 @@ export function declaredTokens(css: string): Map<string, string> {
 
 describe('lab.css design tokens', () => {
   it('declares every spec token with the spec value', () => {
-    const tokens = declaredTokens(read('./lab.css'))
+    const tokens = declaredTokens(labCss())
     for (const [name, value] of Object.entries(SPEC_TOKENS)) {
       expect(tokens.get(name), name).toBe(value)
     }
   })
 
   it('sets tabular numerals on the root, so readouts do not jitter', () => {
-    expect(read('./lab.css')).toMatch(/:root\s*\{[^}]*font-variant-numeric:\s*tabular-nums/)
+    expect(labCss()).toMatch(/:root\s*\{[^}]*font-variant-numeric:\s*tabular-nums/)
   })
 
   it('draws one visible focus ring in the accent colour', () => {
-    expect(read('./lab.css')).toMatch(
-      /:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--qv-accent\)/,
-    )
+    expect(labCss()).toMatch(/:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--qv-accent\)/)
   })
 
   it('honours prefers-reduced-motion for every transition and animation', () => {
-    expect(read('./lab.css')).toMatch(
+    expect(labCss()).toMatch(
       /@media \(prefers-reduced-motion: reduce\)\s*\{[^@]*animation-duration:\s*0\.01ms !important/,
     )
   })
@@ -73,7 +78,9 @@ describe('lab.css design tokens', () => {
   it('never re-shows a descendant of hidden chrome', () => {
     // e2e/slice.spec.ts hides [data-chrome] with inline visibility:hidden;
     // an explicit visibility:visible below it would leak into a screenshot.
-    expect(read('./lab.css')).not.toMatch(/visibility:\s*visible/)
+    // Comments are stripped first so the file's own prose warning about this
+    // rule (which necessarily contains the phrase) cannot trip the check.
+    expect(labCss()).not.toMatch(/visibility:\s*visible/)
   })
 })
 

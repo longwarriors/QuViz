@@ -8,9 +8,9 @@
   ramp live in styles.css, where color.test.ts, SliceField.test.tsx and
   speedColor.test.ts compare them byte-for-byte against the renderer.
 
-  Never force a [data-chrome] descendant back to being shown via CSS: the
+  Never set `visibility: visible` below a [data-chrome] element: the
   visual suite hides chrome with inline visibility:hidden before every
-  capture, and any rule undoing that below it would leak into a screenshot.
+  capture.
 */
 :root {
   color-scheme: dark;
