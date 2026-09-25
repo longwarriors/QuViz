@@ -805,13 +805,20 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
     # Step 7 re-verification findings 07-7 ... 07-11.
     ReviewPin("07-phase-slices.md", "为偶数时虚部处处为零。", "$xy$ 平面本身就是节面"),
     ReviewPin("07-phase-slices.md", "图例上的数值：$A$ 只有", "残差与真实的场按同一比例"),  # noqa: RUF001
+    # 07-9's correction was reworded by F1 below, which limits the uniform slice to t = 0.
     ReviewPin(
         "07-phase-slices.md",
         "两张切片始终保持同一图案，只有",  # noqa: RUF001
-        "因子为零的时刻那张切片是一片均匀的中性色",
+        "那张切片是一片均匀的中性色",
     ),
     ReviewPin("07-phase-slices.md", "会改变同一组系数给出的密度", "有的 $m$ 是正奇数、有的不是"),
     ReviewPin("07-phase-slices.md", "振幅已经很小的几个样本", "网格上有一百多个"),
+    # Re-verification of 980306a, finding F1: only t = 0 gives an exactly zero factor.
+    ReviewPin(
+        "07-phase-slices.md",
+        "因子为零的时刻那张切片是一片均匀的中性色",
+        "在其他理论上因子为零的时刻",
+    ),
     ReviewPin("08-probability-current.md", "给出实数", "乘上 $\\psi^*$ 后是实数"),
     ReviewPin("08-probability-current.md", "线速率是 $m/s=1$ a.u.", "$\\hbar m/(\\mu s)=2/2=1$"),
     ReviewPin(
@@ -854,10 +861,12 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
     ),
     ReviewPin("10-experiment.md", "直接算出的内禀的量", "会随全局相位的约定转动"),
     ReviewPin("10-experiment.md", "哪些画面是内禀的物理量", "哪些画面是由量子态直接算出的量"),
-    # 10-6 named spin; 10-7 (Step 7) widened the qualifier, so its correction
-    # is now "忽略自旋、精细结构等更小修正".
-    ReviewPin("10-experiment.md", "在本书忽略精细结构的模型里", "忽略自旋、精细结构"),
-    ReviewPin("10-experiment.md", "忽略自旋与精细结构的模型里", "精细结构等更小修正的模型里"),
+    # 10-6 named spin; 10-7 (Step 7) widened the qualifier; F2 (re-verification of
+    # 980306a) keeps spin, a degree of freedom, apart from the energy corrections.
+    # The qualifier now reads "不计自旋并忽略精细结构、Lamb 位移等更小能量修正".
+    ReviewPin("10-experiment.md", "在本书忽略精细结构的模型里", "在本书不计自旋"),
+    ReviewPin("10-experiment.md", "忽略自旋与精细结构的模型里", "Lamb 位移等更小能量修正"),
+    ReviewPin("10-experiment.md", "忽略自旋、精细结构等更小修正", "不计自旋并忽略"),
     ReviewPin("11-symmetry-hybridization.md", "杂化轨道不是新的量子态", "并不是子空间之外的新态"),
     ReviewPin(
         "11-symmetry-hybridization.md",
