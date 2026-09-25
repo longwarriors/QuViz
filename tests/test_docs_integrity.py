@@ -283,6 +283,20 @@ def test_capability_summaries_do_not_regress_to_pre_slice_status() -> None:
         assert "平面切片" in summary
 
 
+def test_home_page_leads_into_the_textbook_and_keeps_the_browser_smoke_targets() -> None:
+    home = (ROOT / "docs/index.md").read_text(encoding="utf-8")
+
+    assert '<span class="quviz-pill">教学预览</span>' in home
+    assert "[开始学习](textbook/index.md){ .md-button .md-button--primary }" in home
+    assert '<a class="md-button" data-quviz-lab="" hidden>打开实验室</a>' in home
+    assert home.index("[教材](textbook/index.md)") < home.index("[Phase 0 交互工作流]")
+    # web/fullstack-e2e/app.spec.ts:260-316 typesets display math on the home
+    # page, follows an article link to the model map and clicks a citation.
+    assert "$$" in home
+    assert "(concepts/model-map.md)" in home
+    assert "[@" in home
+
+
 def test_live_installation_instructions_consume_committed_lockfiles() -> None:
     installation = (ROOT / "docs/getting-started/installation.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -367,6 +381,36 @@ def test_probability_flow_docs_cover_scale_covariance_and_discovery() -> None:
     assert "`aria-disabled`" in frontend
     assert "`aria-describedby`" in frontend
     assert "`slice_resolution_floor`" in frontend
+
+
+def test_ui_docs_follow_the_redesigned_lab_and_the_static_textbook() -> None:
+    frontend = (ROOT / "docs/tutorials/frontend-rendering.md").read_text(encoding="utf-8")
+    first_orbital = (ROOT / "docs/getting-started/first-orbital.md").read_text(encoding="utf-8")
+    walkthrough = (ROOT / "docs/tutorials/phase-0-walkthrough.md").read_text(encoding="utf-8")
+    development = (ROOT / "docs/getting-started/development.md").read_text(encoding="utf-8")
+    installation = (ROOT / "docs/getting-started/installation.md").read_text(encoding="utf-8")
+
+    # The old "no glassmorphism" paragraph would contradict the redesigned lab.
+    assert "不再使用蓝紫玻璃拟态" not in frontend
+    assert "`data-chrome`" in frontend
+    assert "$z$ 轴朝上" in frontend
+    for page in (first_orbital, walkthrough):
+        assert "态制备" not in page
+    assert "**量子态**" in first_orbital
+    assert "检查器" not in walkthrough
+    assert "未预计算" in walkthrough
+    assert "(../adr/0005-static-hosting.md)" in walkthrough
+    # mkdocs serve on 8000 would collide with the lab that textbook figures embed.
+    assert "uv run --locked --no-sync mkdocs serve -a 127.0.0.1:8001" in development
+    assert "extra.quviz.lab_url" in installation
+    # Embed mode (#embed=1) is a redesigned-lab feature: a stale `web/dist` built
+    # before the redesign, or a missing one, will not serve it. Point at the
+    # section that builds a current one, not at "启动开发模式" (--reload, no build).
+    assert "按上一节运行 `quviz serve`" not in installation
+    assert (
+        "按“单服务源码预览”一节依次运行 `npm --prefix web run build` 与 `quviz serve`"
+        in installation
+    )
 
 
 # --- red/green cases for the gate itself --------------------------------------

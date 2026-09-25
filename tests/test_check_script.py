@@ -1567,6 +1567,10 @@ def test_fullstack_browser_gate_also_starts_and_exercises_mkdocs() -> None:
         "quviz.scene.streamlines",
         "__quvizInstantNavigation",
         ".quviz-citation__link",
+        'meta[name="quviz-lab"]',
+        ".quviz-figure__open",
+        'a[href$="textbook/01-wavefunction/"]',
+        "textbook-document-swap",
     ):
         assert browser_contract in spec, (
             f"the full-stack browser smoke no longer asserts {browser_contract!r}; "

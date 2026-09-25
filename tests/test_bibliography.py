@@ -127,3 +127,24 @@ def test_every_bibliography_entry_is_cited_or_marked_tooling() -> None:
 # tests/test_citation_gates.py (quviz.docs.pins.validate_source_pins); the
 # github-only "non-empty commit or version" check that used to sit here let
 # ``commit = {latest}`` through.
+
+
+PRIVATE_SOURCES = ("claude-fable-audit",)
+PRIVATE_SOURCE_PAGES = ["project/status.md", "references/source-audit.md"]
+
+
+def test_private_sources_are_labelled_and_cited_only_on_developer_pages() -> None:
+    bibliography = parse_bibtex_file(ROOT / "references.bib")
+    docs = ROOT / "docs"
+    for key in PRIVATE_SOURCES:
+        assert "私有链接" in bibliography.entries[key].fields.get("note", "")
+        citing = sorted(
+            path.relative_to(docs).as_posix()
+            for path in docs.rglob("*.md")
+            if f"@{key}" in path.read_text(encoding="utf-8")
+        )
+        assert citing == PRIVATE_SOURCE_PAGES
+        for page in citing:
+            for line in (docs / page).read_text(encoding="utf-8").splitlines():
+                if f"@{key}" in line:
+                    assert "私有链接" in line, (page, line)

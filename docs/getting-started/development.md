@@ -9,7 +9,7 @@ uv run --locked ruff format .
 uv run --locked mypy
 uv run --locked --no-sync python scripts/render_reference_index.py --check
 uv run --locked --no-sync python scripts/render_openapi_reference.py --check
-uv run --locked --no-sync mkdocs serve
+uv run --locked --no-sync mkdocs serve -a 127.0.0.1:8001
 npm --prefix web run build
 ```
 

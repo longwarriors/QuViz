@@ -130,11 +130,24 @@
 - 🕒 引用内容漂移检查（当前没有任何门禁比对页面内容）；
 - ✅ `references.bib` 中未被正文引用的孤儿键 — `tests/test_bibliography.py::test_every_bibliography_entry_is_cited_or_marked_tooling`；代码块、行内代码与块级 HTML 注释里的引用不算正文，正文行内的注释按 python-markdown 的行为计入（`tests/test_citation_gates.py`）；
 - ✅ `source-audit` 条目的 `commit` 与 URL 中 SHA 一致、tag 或无法与 tag 区分的 ref 需要与之相等的 `version`、明确的分支 URL 一律拒绝、非代码托管来源带访问日期（完整规则见[添加和维护引用](../how-to/cite-sources.md#enforced-rules)） — `test_repository_bibliography_has_coherent_source_pins`；
-- 🔗 MkDocs 在真实 Chromium 中完成渲染 — `npm run test:fullstack` 同时启动生产应用与
-  `mkdocs serve --strict`：直达页面和 `navigation.instant` 换页后的全部 `.arithmatex` 都必须
-  生成 `mjx-container`，架构页 Mermaid 必须生成 SVG，Python API 必须出现 Phase 0 的
-  superposition / planes / models / slices / streamlines 模块；本地请求、console 或 page error
-  任一非空即失败，并由 `web-fullstack` CI 作业执行；
+- ✅ 教材交互图脚本 — `tests/test_quviz_figure_js.py` 在 Node 中用最小假 DOM 执行真实的 `docs/assets/javascripts/quviz-figure.js`，逐条检查以下行为：
+  - `extra.quviz.lab_url` 相对教材站点根（Material `__config.base`，只在首次整页加载时解析）而不是相对当前页解析；
+  - 点击前不产生任何 iframe；iframe 带 `loading="lazy"`、`sandbox`、`allow="fullscreen"` 与图注标题；
+  - 同一页只保留一个活动交互图；`document$` 重复触发不会重复升级；
+  - 缺失 meta、非 http(s) 地址或带 `embed=` 的深链接一律禁用按钮并显示原因。
+- ✅ 教材章节契约 — `tests/test_textbook.py` 对 `docs/textbook/` 做两类检查：
+  - 每个 `quviz-figure` 的 `data-lab` 必须同时满足实验室深链接语法，并落在静态预计算目录之内：
+    - 本征态 $n\le4$，量子数合法；
+    - 叠加态只用服务端目录的四个预设，时刻必须是与 `nextTimeAu` 相同的播放帧，并按 JavaScript 的数字写法拼写；
+    - 流线只用于复基 $m\ne0$ 的本征态，或 $t\ne0$ 时的振荡叠加态；
+    - 已知会被服务端拒绝的组合不得入图。
+  - 每章的二级标题 id 与图的深链接必须和注册表逐字一致；每一页（含附录）至少一张交互图，图注以“图 章号.序号”（附录用字母）开头；编号章节必须包含学习目标、常见误区、至少 3 道带答案的思考题与延伸阅读，且不得出现 `/api/`、测试路径等开发者术语。
+- 🔗 MkDocs 在真实 Chromium 中完成渲染 — `npm run test:fullstack` 同时启动生产应用与 `mkdocs serve --strict`，并逐项检查：
+    - 直达页面和 `navigation.instant` 换页后的全部 `.arithmatex` 都必须生成 `mjx-container`；
+    - 架构页 Mermaid 必须生成 SVG；
+    - Python API 必须出现 Phase 0 的 superposition / planes / models / slices / streamlines 模块；
+    - 从参考文献页即时导航进入教材第 1 章后：页头仍带 `<meta name="quviz-lab">`；交互图占位卡已由 `document$` 重新升级；“在实验室中打开”指向 `extra.quviz.lab_url` 下的正确深链接；页面没有自动加载任何 iframe；
+    - 本地请求、console 或 page error 任一非空即失败；这些检查由 `web-fullstack` CI 作业执行。
 - 🧑 已知纠错不可被旧教程重新引入；
 - 🧑 引用是否真正支持正文声明；
 - 🧑 “已实现”“已验证”“计划中”三个状态不得混写。

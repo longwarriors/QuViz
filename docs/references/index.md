@@ -217,6 +217,7 @@ renders them as author-year labels.
 | **Year** | 2026 |
 | **Accessed** | 2026-08-22 |
 | **Source URL** | [https://claude.ai/code/artifact/e9c58805-458b-446a-9913-b80e9c108bc4](https://claude.ai/code/artifact/e9c58805-458b-446a-9913-b80e9c108bc4) |
+| **Notes** | 私有链接：该 claude.ai artifact 只有项目维护者登录后可见，公开读者无法打开；这里仅作为开发审计留痕引用，其中的结论已在 docs/project/status.md 逐条复核。 |
 | **Keywords** | `source-audit`, `software`, `project-audit` |
 
 <a id="comenius2025-quantum-theory-ps03"></a>
