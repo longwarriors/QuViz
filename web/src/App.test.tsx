@@ -161,64 +161,6 @@ function stubCompactWorkspace(matches: boolean): CompactWorkspaceStub {
 }
 
 describe('App wires the canvas status to the shell', () => {
-  it('routes the arrived stationary or superposition label into the compact header', async () => {
-    const stationary = await shell({
-      loading: false,
-      metadata: {
-        state: { n: 2, l: 1, m: 0, z: 1, a_mu: 1, basis: 'real' },
-        label: '2p_z',
-        energy_hartree: -0.125,
-        length_unit: 'bohr',
-        observable: 'probability_density',
-        representation: 'point_cloud',
-        normalization: 'integral(|psi|^2 dV)=1',
-        coordinate_convention: 'theta=polar, phi=azimuth',
-        spherical_harmonic_convention: 'Condon-Shortley',
-        geometry_semantics: 'independent samples',
-        color_semantics: 'wave-function phase',
-        references: [],
-        warnings: [],
-      },
-    })
-    try {
-      expect(stationary.container.querySelector('.topbar-context-compact')?.textContent).toBe('2p_z')
-    } finally {
-      await stationary.unmount()
-    }
-
-    const superposition = await shell({
-      loading: false,
-      superposition: {
-        terms: [],
-        label: '1s + 2p_z',
-        basis: 'real',
-        z: 1,
-        a_mu: 1,
-        reduced_mass_ratio: 1,
-        time_au: 0,
-        energy_expectation_hartree: -0.3125,
-        is_stationary: false,
-        length_unit: 'bohr',
-        observable: 'probability_density',
-        representation: 'point_cloud',
-        normalization: 'integral(|psi|^2 dV)=1',
-        coordinate_convention: 'theta=polar, phi=azimuth',
-        spherical_harmonic_convention: 'Condon-Shortley',
-        geometry_semantics: 'independent samples',
-        color_semantics: 'wave-function phase',
-        references: [],
-        warnings: [],
-      },
-    })
-    try {
-      expect(superposition.container.querySelector('.topbar-context-compact')?.textContent).toBe(
-        '1s + 2p_z',
-      )
-    } finally {
-      await superposition.unmount()
-    }
-  })
-
   it('coordinates the mobile control sheet, detail sheet, and compact inspector trigger', async () => {
     const tree = await shell({ loading: false })
     try {

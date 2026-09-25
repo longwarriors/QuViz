@@ -117,7 +117,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Header stateLabel={status.metadata?.label ?? status.superposition?.label} />
+      <Header />
       <main className="workspace" data-inspector-open={inspectorOpen}>
         <ControlPanel />
         <section className="viewport-card" aria-label="量子态三维视口">
