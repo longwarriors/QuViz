@@ -40,8 +40,8 @@ npm --prefix web run test:fullstack
 临时解析或改写依赖。
 Playwright 成功退出后，`assert-fullstack-run.mjs` 还会审计 JSON 报告，要求固定 spec 与标题
 恰好运行一次且通过；0 tests、全 skip、重复/额外执行、重试掩盖或错误 testDir 都会失败。
-这条门禁由 CI 的 `web-fullstack` job 执行，不在 `make check` / `check.ps1` 内。它验证源码
-checkout 的生产挂载路径；当前 wheel 是否携带静态前端仍是独立的发布验证项。
+本地运行即判据（本项目不依赖 CI）；CI 的 `web-fullstack` job 另行重跑。它不在 `make check` / `check.ps1` 内，
+验证的是源码 checkout 的生产挂载路径；当前 wheel 是否携带静态前端仍是独立的发布验证项。
 
 `npm run test` 不只是 vitest，而是一条以 `&&` 串起、逐段被 `tests/test_check_script.py`
 按精确元组钉住的链（少一段、多一段、换顺序都会变红）：
@@ -88,6 +88,14 @@ uv run --locked --no-sync python scripts/build_pages.py --skip-data --serve 4180
 - Material 的 instant navigation 按 sitemap 重定位链接时只替换协议与主机名、不替换端口，所以在本地端口上退化为整页跳转，在 Pages 上正常。
 
 `.github/workflows/pages.yml` 在 master 更新时用同一脚本完整重建站点，`site_url` 取自 `actions/configure-pages`，然后部署。它是发布器而不是门禁：可发布的判据仍是本地的完整构建与浏览器门禁。首次使用前，需要维护者在仓库设置中把 Pages 的构建来源设为 GitHub Actions。
+
+静态站的浏览器门禁在一次完整构建之后运行，每次只重建实验室与教材：
+
+```bash
+npm --prefix web run test:pages
+```
+
+它在上面的子路径下验证开场场景、表示法切换、未预计算提示、叠加态播放、深链接、嵌入模式与教材页（教材页需要网络以加载 MathJax），然后由 `assert-pages-run.mjs` 审计报告，只有恰好 8 项测试各运行一次且全部通过才算绿。
 
 ## 提交前门禁
 

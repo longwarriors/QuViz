@@ -11,7 +11,7 @@
     - ✅ **已门禁**：由 `make check` / `check.ps1` 在每次提交上自动强制，并指明测试位置；`check.ps1` 的每一步都在脚本自身所在的仓库根目录执行（启动时打印该路径），与调用者当前目录无关，因此从另一个 checkout 以绝对路径调用也不会混用两棵树（`tests/test_check_script.py`）；
     - 🌐 **仅 CI、需网络**：只由 GitHub Actions 执行，因为要访问网络，**不在** `make check` / `check.ps1` 内，本地提交不会触发；触发时机见各条目说明；
     - 🖥️ **仅 CI、需 Linux/SwiftShader**：只由 GitHub Actions 的 Linux runner 执行，因为判据是像素，而像素由那台机器的图形栈决定，**不在** `make check` / `check.ps1` 内；与 🌐 的区别不是“需要网络”而是“需要那一个渲染环境”——它在别的平台上不是变慢或变不准，而是**根本不允许运行**；
-    - 🔗 **仅 CI、全栈集成**：由 CI 把真实后端、生产前端构建和浏览器接在同一进程树中执行，**不在** `make check` / `check.ps1` 内；可在准备好锁定依赖与 Chromium 的本地 checkout 手动复现，但本地通过不替代 CI runner 的结果；
+    - 🔗 **本地浏览器集成**：把真实后端或真实构建产物、生产前端构建和 Chromium 接在同一进程树中执行，耗时长且需要先构建，所以**不在** `make check` / `check.ps1` 内；按项目原则（不依赖 CI）以本地运行结果为判据，CI 若也运行（`web-fullstack`）只作复核；
     - 🧑 **人工门禁**：必须人工复核，无法自动化，评审时逐条确认；
     - 🕒 **计划中**：已列入[路线图](../project/roadmap.md)，当前**没有**任何自动检查。
 
@@ -132,6 +132,26 @@
     - 任何步骤不得带 `if:` / `continue-on-error:`；action 只能引用版本 tag。
 
     Node 版本由 `tests/test_declared_versions.py` 对**所有** workflow 的 `actions/setup-node` 步骤统一钉为 `.node-version`；锁定安装与 setup-uv 版本由 `tests/test_ci_workflows.py` 对所有 workflow 统一检查。该 workflow 是发布器而不是门禁：可发布的判据是本地的完整构建与 `npm run test:pages`；
+- 🔗 静态站浏览器门禁 — `npm --prefix web run test:pages`。
+
+    **前提与服务器**：`web/playwright.pages.config.ts` 要求先有一次完整构建；缺少 `build/pages/data/manifest.json` 时在加载阶段直接报错。随后以 `build_pages.py --skip-data --serve 4180` 重建实验室与教材、保留预计算数据，并严格按 Pages 子路径托管。
+
+    **覆盖范围**：`web/pages-e2e/site.spec.ts` 的 8 项测试覆盖：
+
+    - 开场场景只来自 `data/`（零 `/api` 请求、零离站请求）；
+    - 切换表示法；
+    - 未预计算的组合显示中文原因；
+    - `1s + 2p_z` 按预计算帧格点播放并显示时间；
+    - 深链接往返，且不产生历史记录；
+    - embed 模式；
+    - `learn/` 教材的公式排版，以及嵌入图 iframe 就绪；
+    - 子路径外一律 404。
+
+    教材页只允许 `mkdocs.yml` 固定的 jsDelivr 前缀作为离站请求，因此需要网络。
+
+    **运行后审计**：Playwright 之后，`web/scripts/assert-pages-run.mjs` 以闭合集合审计 JSON 报告：固定 spec 与 8 个标题各恰好一次通过，拒绝 0 tests、skip、flaky、重复或额外测试。其正/负控在 `web/src/pagesGate.test.ts`；`web/src/guards.test.ts` 的零 skip 源码扫描同样覆盖 `web/pages-e2e/`。
+
+    **未断言的部分**：Material 的 instant navigation 在本地端口上退化为整页跳转，所以不在这里断言；它由全栈门禁在 `mkdocs serve` 下断言；
 
 ## 文档与引用 { #docs-and-citations }
 
