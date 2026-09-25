@@ -279,7 +279,8 @@ let knownSuperpositionCatalog: readonly SuperpositionPreset[] | null = null
  * The URL-state binding needs it to spell a preset id into the hash. Fetching
  * the catalogue again for that would put a second /api/superposition/catalog
  * request on every page load, which the visual gate's exact request ledger
- * (web/e2e/slice.spec.ts:559-562) would rightly reject.
+ * (the `served` list `expectProvenance` asserts in web/e2e/slice.spec.ts)
+ * would rightly reject.
  */
 export function lastSuperpositionCatalog(): readonly SuperpositionPreset[] | null {
   return knownSuperpositionCatalog

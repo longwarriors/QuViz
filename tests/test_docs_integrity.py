@@ -290,8 +290,9 @@ def test_home_page_leads_into_the_textbook_and_keeps_the_browser_smoke_targets()
     assert "[开始学习](textbook/index.md){ .md-button .md-button--primary }" in home
     assert '<a class="md-button" data-quviz-lab="" hidden>打开实验室</a>' in home
     assert home.index("[教材](textbook/index.md)") < home.index("[Phase 0 交互工作流]")
-    # web/fullstack-e2e/app.spec.ts:260-316 typesets display math on the home
-    # page, follows an article link to the model map and clicks a citation.
+    # The MkDocs half of web/fullstack-e2e/app.spec.ts (from `page.goto(DOCS_ORIGIN)`)
+    # typesets display math on the home page, follows an article link to the
+    # model map and clicks a citation.
     assert "$$" in home
     assert "(concepts/model-map.md)" in home
     assert "[@" in home

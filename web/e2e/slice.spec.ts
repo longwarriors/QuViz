@@ -35,11 +35,11 @@
  * ---------------------------------------------------------------------------
  * HOW THE BASELINES GET HERE. Read this before changing or adding one.
  *
- * Five Linux/SwiftShader PNGs are committed in `e2e/__screenshots__/`. Every
- * file is 672 x 704 = 473088 pixels, so the 0.001 ratio budget is 473.088
- * pixels. The fixed desktop shell is part of that contract: canvas height no
- * longer follows the intrinsic height of the controls or Inspector, so adding
- * a diagnostic cannot silently change the camera aspect ratio and every pixel.
+ * Five Linux/SwiftShader PNGs are committed in `e2e/__screenshots__/`. The
+ * canvas is full-bleed: every file is 1280 x 800 = 1024000 pixels, so the
+ * 0.001 ratio budget is 1024 pixels. Every floating panel carries
+ * `data-chrome`; `hideChrome` hides all of them immediately before each
+ * capture, so a panel's glass and text can never leak into a canvas pixel.
  *
  * playwright.config.ts refuses to load off Linux because any other graphics
  * stack renders different pixels. Committing a PNG drawn elsewhere would make
@@ -145,13 +145,13 @@
  * Three rules the tests below follow, each because the alternative silently
  * weakens the evidence:
  *
- * **Only the canvas is compared.** The scene is WebGL; the headline, legend and
- * command deck are DOM siblings drawn on top of it. They are hidden after the
- * controls have been driven, while their text remains in the DOM for the
- * semantic assertions below. Playwright masks are deliberately not used: a
- * mask paints its locator's live bounding box into the PNG, so font-metric
- * differences make the mask itself a cross-platform pixel diff and also erase
- * the canvas underneath it.
+ * **Only the canvas is compared.** The scene is WebGL; every panel is a DOM
+ * element floating over it and carries `data-chrome`. `hideChrome` hides them
+ * all (inline visibility, so layout and text stay in the DOM for the semantic
+ * assertions) right before a capture, and `revealChrome` restores them when a
+ * test drives the controls again. Playwright masks are deliberately not used:
+ * a mask paints its locator's live bounding box into the PNG, so font-metric
+ * differences make the mask itself a cross-platform pixel diff.
  *
  * **Nothing waits on a timer.** The scene says when it has stopped moving
  * (`data-scene-ready`, see src/scene/SceneReady.tsx) and the status bar says
@@ -159,12 +159,13 @@
  * here would be choosing between a race and a tax on every green run.
  *
  * **The clock is set through the panel, not waited on.** The instant under test
- * is t = 8.4 a.u. `TIME_BOUND` (src/api/capability.ts) gives the range input a
- * 0.2 a.u. increment from min = -1000, so both the initial t = 0 and t = 8.4
- * are points on the browser's native step grid. `advanceToHalfPeriod` asserts
- * that contract on the real DOM before it fills the input; no attribute or
- * store bypass is permitted. Everything downstream is the app's own path:
- * React's onChange, the store, the query and the returned texture.
+ * is t = 8.4 a.u. `TIME_BOUND` (src/api/capability.ts) gives the time pill's
+ * number input a 0.2 a.u. increment from min = -1000, so both the initial
+ * t = 0 and t = 8.4 are points on the browser's native step grid.
+ * `advanceToHalfPeriod` asserts that contract on the real DOM before it fills
+ * the input; no attribute or store bypass is permitted. Everything downstream
+ * is the app's own path: React's onChange, the store, the query and the
+ * returned texture.
  *
  * WHY NOT PLAYBACK, AND WHY NOT A FAKE CLOCK. Playback reaches 8.4 honestly --
  * it steps 0.6 a.u. every 420 ms from the store's initial 0, and the fourteenth
@@ -196,7 +197,7 @@ import {
 /**
  * Every test drives a full scene setup and, in the time-dependent cases, a
  * half-period advance against a software rasteriser. Playwright's 30 s default
- * is a budget for a DOM test; these canvases are 672 x 704, with repeated
+ * is a budget for a DOM test; these canvases are 1280 x 800, with repeated
  * positive and negative comparisons.
  * Generous rather than tuned: a timeout is a safety net here, not a performance
  * assertion, and a tight one would turn a loaded CI box into a red suite that
@@ -215,7 +216,9 @@ test.describe.configure({ timeout: 120_000 })
  * the same mutation leaves 6186 differing pixels at 0.02 (13.08x the 473.088
  * pixel budget). Repeated same-scene captures pass the positive gate. That
  * measured separation is why 0.02 remains the acceptance threshold, not a
- * special setting reserved for `.not`.
+ * special setting reserved for `.not`. (Measured on the retired 672 x 704
+ * frame; Part E re-measures these numbers on the 1280 x 800 frame in the
+ * pinned Docker image before regenerating the baselines.)
  *
  * Do not widen either value to make a red test pass. A same-scene render above
  * this budget means the environment is no longer deterministic enough to
@@ -260,7 +263,9 @@ function rejectionComparison<const Threshold extends number>(threshold: Threshol
  * (`getComparator('image/png')`, i.e. pixelmatch with antialiased pixels
  * excluded, which is what its call site leaves at the default). The frame is
  * 672 x 704, so `maxDiffPixelRatio` 0.001 is a budget of 473.088 pixels and an
- * assertion fires only above it:
+ * assertion fires only above it. (Measured on the retired 672 x 704 frame;
+ * Part E re-measures these numbers on the 1280 x 800 frame in the pinned
+ * Docker image before regenerating the baselines.)
  *
  *   threshold   surviving px   x budget
  *   0.2                    7       0.01
@@ -298,13 +303,16 @@ const GEOMETRY_SCALE = 1.02
  */
 const SETTLE = { timeout: 30_000 } as const
 
+/** The key the lab remembers a dismissed guide under (src/components/GuideDialog.tsx). */
+const GUIDE_SEEN_KEY = 'quviz.guide.v1'
+
 /** The WebGL surface, which is the only thing any baseline here is of. */
 const canvasOf = (page: Page): Locator => page.locator('canvas')
 
 /**
  * The option helpers stay separate because the source gate pins which strength
  * every positive and negative comparison uses. DOM chrome is hidden by
- * `showPlaneSection`; the screenshot therefore needs no font-shaped mask and
+ * `hideChrome`; the screenshot therefore needs no font-shaped mask and
  * retains every underlying canvas pixel.
  */
 const screenshotOptions = () => ({ ...COMPARISON })
@@ -399,6 +407,11 @@ async function openApp(
   ).toBeDefined()
   const origin = baseURL as string
   const ledger = await installApiHarness(page, { origin, ...options })
+  // The guide dialog opens on a first visit and is modal. Every test here is a
+  // returning visitor, so the controls under it stay clickable.
+  await page.addInitScript((key) => {
+    window.localStorage.setItem(key, 'seen')
+  }, GUIDE_SEEN_KEY)
   await page.goto('/')
   await expect(page.locator('span[data-status]')).toHaveAttribute('data-status', 'error', SETTLE)
 
@@ -429,55 +442,81 @@ async function settled(page: Page): Promise<void> {
   await expect(page.locator('span[data-status]')).toHaveAttribute('data-status', 'ready', SETTLE)
 }
 
-async function openControlContext(
-  page: Page,
-  label: '态制备' | '表示法' | '显示',
-): Promise<void> {
-  const context = page.locator('.context-rail button').filter({ hasText: label })
+async function revealControls(page: Page, group: '量子态' | '表示法' | '显示'): Promise<void> {
+  const context = page
+    .getByRole('navigation', { name: '控制上下文' })
+    .getByRole('button', { name: group, exact: true })
   await expect(context).toBeVisible()
   await context.click()
 }
 
-/** Switch to a plane section and remove non-deterministic post-process bloom. */
+/**
+ * Hide every floating panel before a canvas capture. Inline visibility keeps
+ * the layout boxes and text nodes, so the contract and legend assertions can
+ * still read them.
+ *
+ * The hide is not synchronous here. Under `reducedMotion: 'reduce'` the
+ * lab.css reduced-motion block gives every element a 0.01 ms transition of
+ * every property, visibility included, and a visibility transition away from
+ * `visible` stays visible until it ends -- one animation frame per level of a
+ * panel's tree (measured: the header hidden two frames later, its icons
+ * later still). So wait until nothing inside the chrome still computes as
+ * visible. The same wait fails if any descendant overrides the inherited
+ * `hidden`, which is the leak the no-`visibility: visible` rule forbids.
+ */
+async function hideChrome(page: Page): Promise<void> {
+  const chrome = page.locator('[data-chrome]')
+  await expect(chrome.first()).toBeAttached()
+  await chrome.evaluateAll((elements) => {
+    for (const element of elements) (element as HTMLElement).style.visibility = 'hidden'
+  })
+  await expect
+    .poll(
+      () =>
+        chrome.evaluateAll(
+          (elements) =>
+            elements
+              .flatMap((element) => [element, ...element.querySelectorAll('*')])
+              .filter((node) => getComputedStyle(node).visibility !== 'hidden').length,
+        ),
+      { message: 'a chrome element still computes as visible after hideChrome', ...SETTLE },
+    )
+    .toBe(0)
+}
+
+/** Undo `hideChrome` before driving the controls again. */
+async function revealChrome(page: Page): Promise<void> {
+  await page.locator('[data-chrome]').evaluateAll((elements) => {
+    for (const element of elements) (element as HTMLElement).style.visibility = ''
+  })
+}
+
+/**
+ * Switch to a plane section and hold Bloom at zero. Bloom now defaults to 0
+ * and mounts no post chain at all; asserting the default through the real
+ * control keeps a regressed default from passing silently. `Home` on the
+ * focused range input is the platform's own minimum gesture.
+ */
 async function showPlaneSection(page: Page): Promise<void> {
   await page.locator('button[data-representation="slice"]').click()
-
-  // Bloom exists only where the active renderer consumes it. `Home` on the
-  // focused range input is the platform's own minimum gesture, so React sees
-  // the same change as a drag instead of an assigned value its tracker may
-  // swallow. Disabling the halo keeps the visual gate about the slice itself.
-  // Selecting a representation intentionally opens the representation context;
-  // enter the visible Display context before driving its control. Focusing an
-  // attached-but-hidden range input is a no-op and used to leave bloom at 12.
-  await openControlContext(page, '显示')
+  await revealControls(page, '显示')
   const bloom = page.locator('input[data-display="bloom"]')
   await expect(bloom).toBeVisible()
+  await expect(bloom).toHaveValue('0')
   await bloom.focus()
   await page.keyboard.press('Home')
   await expect(bloom).toHaveValue('0')
-
-  // Locator screenshots include overlapping siblings. Hide all three pieces of
-  // DOM chrome while leaving their layout boxes and text nodes intact, so the
-  // assertions below can still read them and the oracle keeps every canvas
-  // pixel. A Playwright mask is not equivalent: its magenta rectangle is part
-  // of the PNG, and its font-dependent bounds caused the visual job to fail on
-  // the same underlying SwiftShader frame.
-  for (const selector of ['.representation-command-switch', '.viewport-copy', '.legend']) {
-    await page.locator(selector).evaluate((element) => {
-      ;(element as HTMLElement).style.visibility = 'hidden'
-    })
-  }
 }
 
 async function chooseObservable(page: Page, observable: string): Promise<void> {
-  await openControlContext(page, '表示法')
+  await revealControls(page, '表示法')
   await page
     .locator(`[data-choice="observable"] button[data-choice-value="${observable}"]`)
     .click()
 }
 
 async function choosePlane(page: Page, plane: string): Promise<void> {
-  await openControlContext(page, '表示法')
+  await revealControls(page, '表示法')
   await page.locator(`[data-choice="plane"] button[data-choice-value="${plane}"]`).click()
 }
 
@@ -489,13 +528,13 @@ async function choosePlane(page: Page, plane: string): Promise<void> {
 const HALF_PERIOD_AU = '8.4'
 
 /**
- * The time slider's declared increment, asserted rather than assumed. This is
+ * The time entry's declared increment, asserted rather than assumed. This is
  * `TIME_BOUND.step` reaching the DOM, and it must divide both the half-period
  * target and every 0.6 a.u. playback tick from the initial value.
  */
 const DECLARED_TIME_STEP = '0.2'
 
-/** The panel's clock: `ParameterRow`'s range input for `timeAu`. */
+/** The time pill's exact entry: `input[type=number][data-parameter="timeAu"]`, bounded by TIME_BOUND. */
 const timeSlider = (page: Page): Locator => page.locator('input[data-parameter="timeAu"]')
 
 /**
@@ -510,7 +549,6 @@ const timeSlider = (page: Page): Locator => page.locator('input[data-parameter="
  * and it replaces the fourteen-tick walk with one request for one instant.
  */
 async function advanceToHalfPeriod(page: Page, ledger: RequestLedger): Promise<void> {
-  await openControlContext(page, '表示法')
   const status = page.locator('span[data-status]')
   const clock = timeSlider(page)
 
@@ -615,6 +653,7 @@ test('2p_z on xz: the nodal line lies across the plane, not down it', async ({ p
   // 2p_z changes sign across z = 0. Reading the grid transposed puts that line
   // down the middle of the frame instead, which is the single most likely
   // renderer bug and the one nothing else in this repo can see.
+  await hideChrome(page)
   await expect(canvasOf(page)).toHaveScreenshot('2pz-real-xz.png', screenshotOptions())
   expect(ledger.offOrigin, 'a request escaped while the frame was being compared').toEqual([])
 })
@@ -622,9 +661,10 @@ test('2p_z on xz: the nodal line lies across the plane, not down it', async ({ p
 test('2p(+1) on xy: one winding around a masked disc', async ({ page, baseURL }) => {
   const ledger = await openApp(page, baseURL)
   await showPlaneSection(page)
-  await openControlContext(page, '态制备')
-  await page.locator('.segmented.two button:has-text("复基 · Lz")').click()
-  await page.locator('.quantum-grid label:has-text("m") select').selectOption('1')
+  await revealControls(page, '量子态')
+  await page.locator('button[data-action="more-orbitals"]').click()
+  await page.locator('button[data-basis="complex"]').click()
+  await page.locator('select[data-quantum="m"]').selectOption('1')
   await choosePlane(page, 'xy')
   await chooseObservable(page, 'phase')
   await settled(page)
@@ -674,6 +714,7 @@ test('2p(+1) on xy: one winding around a masked disc', async ({ page, baseURL })
   // right-handedness (u x v = +z here), which the pi offset shifts but cannot
   // reverse. A mirrored normal winds it the other way and passes every numeric
   // check in the repo; the masked origin must be a hole, not a coloured pixel.
+  await hideChrome(page)
   await expect(canvasOf(page)).toHaveScreenshot('2p+1-phase-xy.png', screenshotOptions())
   expect(ledger.offOrigin, 'a request escaped while the frame was being compared').toEqual([])
 })
@@ -685,10 +726,10 @@ test('2s + 2p_z are degenerate: the same picture at t=0 and at t=8.4', async ({ 
   const held = superpositionSliceQuestion({ terms, time: HALF_PERIOD_AU })
   const ledger = await openApp(page, baseURL, { hold: held })
   await showPlaneSection(page)
-  await openControlContext(page, '态制备')
-  await page.locator('.representation-switch button:has-text("叠加态")').click()
+  await revealControls(page, '量子态')
+  await page.locator('button[data-state-kind="superposition"]').click()
   await settled(page)
-  await page.locator('.mixture-list button:has-text("2s + 2p_z")').click()
+  await page.locator('button[data-mixture="2s-2pz"]').click()
   await settled(page)
 
   // The claim the control rests on, in the payload's own words: the terms share
@@ -709,11 +750,13 @@ test('2s + 2p_z are degenerate: the same picture at t=0 and at t=8.4', async ({ 
     declared: [EIGENSTATE_DENSITY_XZ],
   })
 
+  await hideChrome(page)
   await expect(canvasOf(page)).toHaveScreenshot(
     'degenerate-stationary-xz.png',
     screenshotOptions(),
   )
 
+  await revealChrome(page)
   await advanceToHalfPeriod(page, ledger)
 
   // Same state, same energy, a different instant -- and, because the phase is
@@ -738,6 +781,7 @@ test('2s + 2p_z are degenerate: the same picture at t=0 and at t=8.4', async ({ 
     declared: [EIGENSTATE_DENSITY_XZ],
   })
 
+  await hideChrome(page)
   await expect(canvasOf(page)).toHaveScreenshot(
     'degenerate-stationary-xz.png',
     screenshotOptions(),
@@ -756,10 +800,10 @@ test('the comparison rejects a two-percent plane-extent error beyond the AA frin
     transform: { 'degenerate-stationary-xz-t8.4': enlargeSliceGeometry },
   })
   await showPlaneSection(page)
-  await openControlContext(page, '态制备')
-  await page.locator('.representation-switch button:has-text("叠加态")').click()
+  await revealControls(page, '量子态')
+  await page.locator('button[data-state-kind="superposition"]').click()
   await settled(page)
-  await page.locator('.mixture-list button:has-text("2s + 2p_z")').click()
+  await page.locator('button[data-mixture="2s-2pz"]').click()
   await settled(page)
 
   // Establish the unmodified t=0 frame and its camera against the real positive
@@ -771,11 +815,13 @@ test('the comparison rejects a two-percent plane-extent error beyond the AA frin
     served: [...CATALOGS, '1s2pz-t0-xz', 'degenerate-stationary-xz-t0'],
     declared: [EIGENSTATE_DENSITY_XZ],
   })
+  await hideChrome(page)
   await expect(canvasOf(page)).toHaveScreenshot(
     'degenerate-stationary-xz.png',
     screenshotOptions(),
   )
 
+  await revealChrome(page)
   await advanceToHalfPeriod(page, ledger)
   await expect(contractValue(page, '⟨H⟩')).toHaveText('-0.125000 Ha · 定态 density')
   // The transform changes only these two mutually constrained geometry fields;
@@ -794,10 +840,12 @@ test('the comparison rejects a two-percent plane-extent error beyond the AA frin
   // Playwright's pixelmatch keeps includeAA=false internally, and its screenshot
   // options do not expose an override. This assertion therefore does not claim
   // that a one-pixel antialiased fringe is visible. The 2% scale error moves
-  // each edge of this 456px quad by 4.56 pixels, leaving a
-  // multi-pixel solid band plus displaced interior contours after that fringe
-  // is excluded. The 0.1 threshold is five times the positive test's 0.02 and
-  // therefore harder under `.not`; the ratio budget remains exactly 0.001.
+  // each edge of this 456px quad (on the retired 672 x 704 frame) by 4.56
+  // pixels, leaving a multi-pixel solid band plus displaced interior contours
+  // after that fringe is excluded. The 0.1 threshold is five times the
+  // positive test's 0.02 and therefore harder under `.not`; the ratio budget
+  // remains exactly 0.001.
+  await hideChrome(page)
   await expect(canvasOf(page)).not.toHaveScreenshot(
     'degenerate-stationary-xz.png',
     geometryRejectionOptions(),
@@ -808,8 +856,8 @@ test('the comparison rejects a two-percent plane-extent error beyond the AA frin
 test('1s + 2p_z at t=0: the dipole in its first lobe', async ({ page, baseURL }) => {
   const ledger = await openApp(page, baseURL)
   await showPlaneSection(page)
-  await openControlContext(page, '态制备')
-  await page.locator('.representation-switch button:has-text("叠加态")').click()
+  await revealControls(page, '量子态')
+  await page.locator('button[data-state-kind="superposition"]').click()
   await settled(page)
 
   await expect(contractValue(page, 't')).toHaveText('0.00 a.u.')
@@ -826,6 +874,7 @@ test('1s + 2p_z at t=0: the dipole in its first lobe', async ({ page, baseURL })
     declared: [EIGENSTATE_DENSITY_XZ],
   })
 
+  await hideChrome(page)
   await expect(canvasOf(page)).toHaveScreenshot('1s2pz-t0-xz.png', screenshotOptions())
   expect(ledger.offOrigin, 'a request escaped while the frame was being compared').toEqual([])
 })
@@ -840,8 +889,8 @@ test('1s + 2p_z at t=8.4: half a Bohr period later, the lobe has swung over', as
   })
   const ledger = await openApp(page, baseURL, { hold: held })
   await showPlaneSection(page)
-  await openControlContext(page, '态制备')
-  await page.locator('.representation-switch button:has-text("叠加态")').click()
+  await revealControls(page, '量子态')
+  await page.locator('button[data-state-kind="superposition"]').click()
   await settled(page)
   await expect(contractValue(page, 't')).toHaveText('0.00 a.u.')
 
@@ -853,6 +902,7 @@ test('1s + 2p_z at t=8.4: half a Bohr period later, the lobe has swung over', as
     declared: [EIGENSTATE_DENSITY_XZ],
   })
 
+  await hideChrome(page)
   await expect(canvasOf(page)).toHaveScreenshot('1s2pz-t8.4-xz.png', screenshotOptions())
 
   // ... and it is a DIFFERENT picture from the one half a period earlier. Both
@@ -862,9 +912,10 @@ test('1s + 2p_z at t=8.4: half a Bohr period later, the lobe has swung over', as
   // is what makes either of them mean anything.
   //
   // The displacement here is a deep-blue lobe crossing a dark ground. At the
-  // 0.05 boundary leaves 3180 pixels, or 6.72x the fixed frame's 473.088-pixel
-  // budget. HALF_PERIOD_REJECTION uses that measured boundary. It is
-  // deliberately higher (harder under `.not`) than the positive tests' 0.02.
+  // 0.05 boundary leaves 3180 pixels, or 6.72x the retired 672 x 704 frame's
+  // 473.088-pixel budget. HALF_PERIOD_REJECTION uses that measured boundary.
+  // It is deliberately higher (harder under `.not`) than the positive tests'
+  // 0.02.
   await expect(canvasOf(page)).not.toHaveScreenshot(
     '1s2pz-t0-xz.png',
     halfPeriodRejectionOptions(),
@@ -911,12 +962,13 @@ test('the comparison can see a transposed slice: the apparatus is not vacuous', 
 
   // The nodal line is vertical here and horizontal in the baseline. This keeps
   // the original 0.1 bar, which is harder to clear under `.not` than either the
-  // positive 0.02 or half-period 0.05 bar. The committed 672 x 704 baseline
-  // has 473088 pixels and therefore a 473.088-pixel ratio budget. This control
+  // positive 0.02 or half-period 0.05 bar. The committed 1280 x 800 baseline
+  // has 1024000 pixels and therefore a 1024-pixel ratio budget. This control
   // clears that budget at threshold 0.1 after antialiased edge pixels are
   // excluded. A lower threshold counts MORE pixels and so makes a `.not`
   // easier to satisfy; on the reject side the tolerant bar is the stronger
   // claim, and this assertion can afford it.
+  await hideChrome(page)
   await expect(canvasOf(page)).not.toHaveScreenshot(
     '2pz-real-xz.png',
     transposeRejectionOptions(),
