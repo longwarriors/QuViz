@@ -189,6 +189,34 @@ interface RouteConstraint {
 /** Client lattice for the continuous server-side `time` parameter. */
 export const TIME_GRID_STEP_AU = 0.2
 
+/** Target spacing of the playback clock; one physical period is divided into whole frames. */
+export const TARGET_TIME_STEP_AU = 0.6
+
+/**
+ * Frames per period on the playback lattice, or 0 when there is nothing to
+ * play: a degenerate preset (period 0) or a period that is not a positive
+ * finite number. Shared by `nextTimeAu` (src/components/sceneRequest.ts) and
+ * `playbackFrames` (src/api/staticCatalog.ts), so the frames the static
+ * catalogue exports are the frames playback visits.
+ */
+export function playbackFrameCount(periodAu: number): number {
+  if (!Number.isFinite(periodAu) || periodAu <= 0) return 0
+  return Math.max(1, Math.ceil(periodAu / TARGET_TIME_STEP_AU))
+}
+
+/**
+ * Frame `frame` of `frames`, evenly spaced across the exact physical period
+ * and snapped to the same 0.2 a.u. lattice the time slider shows; otherwise a
+ * catalogue period such as 16.755... produces long binary decimals, range-step
+ * mismatches and cache keys the UI cannot reproduce. Rounding each absolute
+ * frame independently distributes the small timing error instead of
+ * accumulating it.
+ */
+export function playbackFrameTime(frame: number, frames: number, periodAu: number): number {
+  const ticks = Math.round((frame * periodAu) / frames / TIME_GRID_STEP_AU)
+  return Number((ticks * TIME_GRID_STEP_AU).toFixed(12))
+}
+
 const A_MU_CONSTRAINT: RouteParameterConstraint = {
   wireName: 'a_mu',
   uiBound: { min: 0.005, max: 20, step: 0.005 },

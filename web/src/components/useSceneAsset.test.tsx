@@ -41,6 +41,9 @@ import {
 import { requestsForPlan } from '../api/requests'
 import { requestKey } from '../api/transport'
 
+/** A valid catalogue period for the playback host: 66 frames of 0.6 a.u. */
+const PLAYBACK_PERIOD_AU = 39.6
+
 /* ------------------------------------------------------------------ fetch */
 
 interface StubbedCall {
@@ -318,7 +321,7 @@ function PlaybackHost({
   const [timeAu, setTimeAu] = useState(0)
   useEffect(() => {
     const id = setInterval(() => {
-      setTimeAu((previous) => nextTimeAu(previous))
+      setTimeAu((previous) => nextTimeAu(previous, PLAYBACK_PERIOD_AU))
     }, tickMs)
     return () => {
       clearInterval(id)
@@ -742,7 +745,7 @@ describe('useSceneAsset', () => {
     let time = 0
     for (let frame = 0; frame < 66; frame += 1) {
       canonical.push(String(time))
-      time = nextTimeAu(time)
+      time = nextTimeAu(time, PLAYBACK_PERIOD_AU)
     }
     expect(new Set(canonical).size).toBe(66)
     expect(time).toBe(0)
