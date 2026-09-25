@@ -137,6 +137,41 @@ CHAPTERS: dict[str, Chapter] = {
             "mode=eigenstate&n=3&l=1&m=0&basis=real&rep=slice&plane=xz&obs=wavefunction_real",
         ),
     ),
+    "04-real-complex.md": Chapter(
+        sections=(
+            "goals",
+            "complex-harmonics",
+            "real-harmonics",
+            "basis-change",
+            "meaning-of-m",
+            "phase-colour",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=eigenstate&n=2&l=1&m=1&basis=complex&rep=isosurface",
+            "mode=eigenstate&n=2&l=1&m=1&basis=real&rep=isosurface",
+            "mode=superposition&preset=2pplus-2pminus&t=0&rep=isosurface",
+        ),
+    ),
+    "05-electron-cloud.md": Chapter(
+        sections=(
+            "goals",
+            "samples",
+            "separable-sampling",
+            "density-and-counts",
+            "finite-samples",
+            "superposition-sampling",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=eigenstate&n=3&l=2&m=0&basis=real&rep=point_cloud",
+            "mode=eigenstate&n=2&l=0&m=0&basis=real&rep=point_cloud",
+        ),
+    ),
 }
 
 

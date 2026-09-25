@@ -20,6 +20,8 @@
 | 1 | [波函数与 Born 规则](01-wavefunction.md) | 为什么 $\lvert\psi\rvert^2$ 是概率密度，而 $\psi$ 本身不是？ |
 | 2 | [氢原子：量子数与能级](02-hydrogen-levels.md) | 三个量子数从哪里来，能量为什么只依赖 $n$？ |
 | 3 | [径向分布与节点](03-radial-nodes.md) | 电子最可能在哪个半径，节点有几个、在哪里？ |
+| 4 | [实轨道与复轨道](04-real-complex.md) | $p_x$ 和 $m=+1$ 是同一个态吗？ |
+| 5 | [电子云：从概率到采样](05-electron-cloud.md) | 点云里的每个点代表什么？ |
 
 ## 与站点其他部分的关系 {#other-parts}
 
