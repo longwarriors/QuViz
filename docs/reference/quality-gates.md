@@ -28,7 +28,7 @@
 - ✅ `SuperpositionState`→scene/API 链路中的约化质量只有一个真源：`a_mu=m_e/μ` 同时决定 $a_\mu/Z$ 空间尺度、`reduced_mass_ratio=1/a_mu` 能量/相位、概率流 prefactor 与 scene extent — `test_energy_scales_with_reduced_mass_ratio` 及 `tests/test_pr7_mass_hamiltonian.py`；低层 energy primitive 保留显式 ratio 参数；
 - ✅ $\theta\in[0,\pi]$、$\phi\in[0,2\pi)$ 角度范围约定 — `test_cartesian_to_spherical_uses_documented_angle_ranges`；
 - ✅ Condon–Shortley 相位与实轨道 Cartesian 形式（$\ell=1,2$） — `test_real_p_harmonics_match_cartesian_directions`、`test_real_d_harmonics_match_cartesian_closed_forms`；
-- ✅ 径向分布 `radial_profile`：256 点梯形积分与 1 相差不超过 $10^{-3}$，末点外解析尾概率不超过 $10^{-3}$，节点数为 $n-\ell-1$ 且 2s/3s/3p 节点等于闭式根、每个节点两侧 $R_{n\ell}$ 变号，$\langle r\rangle$ 为解析值且与数值积分相差小于 0.5%，1s/2p/3d/4f/2s 的最可几半径分别对照 $a/Z$、$4a/Z$、$9a/Z$、$16a/Z$、$(3+\sqrt5)a/Z$，能级梯与 metadata 同一约化质量约定，$a_\mu/Z$ 缩放逐位协变；缩放溢出时为 `null` 并附 warning — `tests/test_radial_profile.py`。
+- ✅ 径向分布 `radial_profile`：256 点梯形积分与 1 相差不超过 $10^{-3}$，末点外解析尾概率不超过 $10^{-3}$，节点数为 $n-\ell-1$ 且 2s/3s/3p 节点等于闭式根、每个节点两侧 $R_{n\ell}$ 变号，$\langle r\rangle$ 为解析值且与数值积分相差小于 0.5%，1s/2p/3d/4f/2s 的最可几半径分别对照 $a/Z$、$4a/Z$、$9a/Z$、$16a/Z$、$(3+\sqrt5)a/Z$，能级梯与 metadata 同一约化质量约定，按 $a_\mu/Z$ 缩放时 `r_bohr` 逐位协变，`radial_density` 与 `most_probable_r_bohr` 在 9 位有效数字内协变；缩放溢出时为 `null` 并附 warning — `tests/test_radial_profile.py`。
 
 !!! info "为什么这些门禁要用独立参照"
 
