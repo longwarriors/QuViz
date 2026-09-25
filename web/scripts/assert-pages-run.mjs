@@ -8,6 +8,10 @@
  * collects nothing. The JSON report must therefore contain exactly the reviewed spec
  * and titles, each exactly once with one passing execution, and no skipped, flaky,
  * unexpected, or extra work.
+ *
+ * Structural twin of assert-fullstack-run.mjs, scoped to web/pages-e2e/ (see
+ * REQUIRED_PAGES_TESTS/TEST_DIR below) instead of web/fullstack-e2e/. The
+ * duplication is deliberate, not an oversight -- keep the two in step by hand.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { posix, resolve, sep } from 'node:path'

@@ -7,6 +7,9 @@
  * so its exit code is not enough: the JSON report must contain exactly the
  * reviewed spec/title, exactly once, with one passing execution and no skipped,
  * flaky, unexpected, or extra work.
+ *
+ * assert-pages-run.mjs is a structural twin of this file, scoped to
+ * web/pages-e2e/ instead of web/fullstack-e2e/ -- keep the two in step by hand.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { posix, resolve, sep } from 'node:path'
