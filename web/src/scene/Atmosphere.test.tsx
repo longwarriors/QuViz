@@ -23,7 +23,7 @@ import { createElement } from 'react'
 import * as THREE from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { Atmosphere } from './Atmosphere'
+import { Atmosphere, groundGrid } from './Atmosphere'
 import { cameraDirectionFor, cameraDirectionForPlane, DEFAULT_CAMERA_DIRECTION } from './camera'
 
 /* ------------------------------------------------------------- act scope */
@@ -273,6 +273,87 @@ describe('Atmosphere', () => {
     await renderer.unmount()
 
     disposals.forEach((dispose) => expect(dispose).toHaveBeenCalled())
+  })
+})
+
+describe('groundGrid: the floor scaled to the scene', () => {
+  // Extents the lab actually shows: the 4-bohr floor, 1s, 2p_z (18.67), 3d
+  // (33.53), and the n = 6-8 point clouds D22 measured with 1-bohr cells
+  // "close to one pixel apart".
+  const EXTENTS = [0.5, 4, 5.9, 8, 18.67, 33.53, 60, 150, 400]
+
+  it('keeps the n = 2 floor it had: 1-bohr cells in 5-bohr sections', () => {
+    expect(groundGrid(18.67)).toMatchObject({ cellSize: 1, sectionSize: 5 })
+  })
+
+  it.each(EXTENTS)('rules a few round sections across the object at extent %s', (extent) => {
+    const { cellSize, sectionSize } = groundGrid(extent)
+    const scale = Math.max(extent, 4)
+    // Two and a half to six and a half sections per extent: a floor, not a
+    // mesh that closes up into a grey sheet as the state grows.
+    expect(scale / sectionSize).toBeGreaterThanOrEqual(2.5)
+    expect(scale / sectionSize).toBeLessThanOrEqual(6.5)
+    expect(sectionSize / cellSize).toBeCloseTo(5, 12)
+    // A round 1, 2 or 5 times a power of ten, so a line falls on a round radius.
+    const mantissa = sectionSize / 10 ** Math.floor(Math.log10(sectionSize) + 1e-9)
+    expect([1, 2, 5].some((round) => Math.abs(mantissa - round) < 1e-9), String(sectionSize)).toBe(true)
+  })
+
+  it('scales every length with the scene, so a ten-times-larger state gets the same floor', () => {
+    for (const extent of [4.5, 18.67, 33.53]) {
+      const small = groundGrid(extent)
+      const large = groundGrid(10 * extent)
+      for (const key of ['drop', 'fadeDistance', 'size', 'cellSize', 'sectionSize'] as const) {
+        expect(large[key] / small[key], `${key} at ${extent}`).toBeCloseTo(10, 9)
+      }
+    }
+  })
+
+  it('keeps the floor just under the object, fading out where the plane ends (D22)', () => {
+    for (const extent of EXTENTS) {
+      const scale = Math.max(extent, 4)
+      const grid = groundGrid(extent)
+      expect(grid.drop).toBeCloseTo(1.05 * scale, 9)
+      expect(grid.fadeDistance).toBeCloseTo(4 * scale, 9)
+      expect(grid.size).toBeCloseTo(floorWidth(extent), 9)
+    }
+  })
+
+  it.each([18.67, 150])('draws the grid the function describes at extent %s', async (extent) => {
+    const renderer = await render(true, extent)
+    const mesh = gridMesh(renderer)
+    const uniforms = (mesh.material as THREE.ShaderMaterial).uniforms
+    const grid = groundGrid(extent)
+    expect(uniforms.cellSize.value).toBe(grid.cellSize)
+    expect(uniforms.sectionSize.value).toBe(grid.sectionSize)
+    expect(uniforms.fadeDistance.value).toBe(grid.fadeDistance)
+    expect(mesh.position.z).toBe(-grid.drop)
+    await renderer.unmount()
+  })
+
+  it('is drawn from above only, so it can never lie over the data or a slice', async () => {
+    const renderer = await render(true, 20)
+    const mesh = gridMesh(renderer)
+    mesh.updateMatrixWorld(true)
+    // drei's vertex shader draws `position.xzy` (Grid.js: `localPosition =
+    // position.xzy`), so a front face of the drawn plane is the swizzled
+    // triangle; with the +90° turn about x it faces down, and drei's default
+    // BackSide draws only the upper face. Seen from above, the floor lies under
+    // everything (1.05 extents below the object); seen from below it is culled.
+    expect((mesh.material as THREE.Material).side).toBe(THREE.BackSide)
+    const geometry = mesh.geometry as THREE.BufferGeometry
+    const index = geometry.getIndex()
+    const position = geometry.getAttribute('position')
+    if (index === null) throw new Error('the grid plane is not indexed')
+    const [a, b, c] = [0, 1, 2].map((corner) => {
+      const vertex = index.getX(corner)
+      return new THREE.Vector3(position.getX(vertex), position.getZ(vertex), position.getY(vertex)).applyMatrix4(
+        mesh.matrixWorld,
+      )
+    })
+    const frontNormal = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a))
+    expect(frontNormal.z).toBeLessThan(0)
+    await renderer.unmount()
   })
 })
 
