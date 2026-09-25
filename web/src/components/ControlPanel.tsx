@@ -1,820 +1,131 @@
-import {
-  Atom,
-  Clock,
-  Cloud,
-  Eye,
-  Grid2x2,
-  Layers3,
-  Pause,
-  Play,
-  RotateCcw,
-  SlidersHorizontal,
-  Waves,
-  X,
-  type LucideIcon,
-} from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Atom, Layers3, RotateCcw, SlidersHorizontal, X, type LucideIcon } from 'lucide-react'
+import { useRef, useState } from 'react'
 
-import {
-  capabilityFor,
-  planSceneRequest,
-  Z_CONSTRAINT,
-  type ParameterBound,
-  type ParameterId,
-} from '../api/capability'
-import type { PrincipalPlane, RepresentationKind, SliceObservable } from '../api/types'
 import { useCatalogs } from '../state/catalogs'
 import { useSceneStore } from '../state/useSceneStore'
-import { selectSceneRequestInputs } from './sceneRequest'
-import { REPRESENTATION_LABELS } from './sceneStatus'
+import { ControlGroup } from './controls/ControlGroup'
+import { DisplaySection } from './controls/DisplaySection'
+import { RepresentationSection } from './controls/RepresentationSection'
+import { StateSection } from './controls/StateSection'
 
-/**
- * A slider bound to a request parameter.
- *
- * `min`, `max` and `step` are NOT arguments: they come from the
- * `ParameterBound` the capability matrix declares for this cell, so a slider
- * cannot offer a value the route rejects and cannot withhold one it accepts.
- * The panel used to spell its own numbers here (`max={160}` for a route that
- * takes 96, `max={40}` for a clock that runs to 1000) and each of those was a
- * second, quieter statement about what the server can do.
- */
-function ParameterRow({
-  parameter,
-  label,
-  bound,
-  value,
-  suffix,
-  onChange,
-}: {
-  parameter: ParameterId
-  label: string
-  bound: ParameterBound
-  value: number
-  suffix?: string
-  onChange: (value: number) => void
-}) {
-  const displayedValue =
-    bound.step === undefined
-      ? String(value)
-      : String(Number(value.toFixed(Math.min(12, Math.max(0, -Math.floor(Math.log10(bound.step)))))))
-  return (
-    <label className="range-row">
-      <span className="control-label">{label}</span>
-      <input
-        type="range"
-        data-parameter={parameter}
-        min={bound.min}
-        max={bound.max}
-        step={bound.step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      <span className="control-value">{displayedValue}{suffix ?? ''}</span>
-    </label>
-  )
-}
+export type ControlGroupId = 'state' | 'representation' | 'display'
 
-/**
- * A slider over a purely local rendering choice -- opacity, exposure, fog.
- *
- * Deliberately a different component from `ParameterRow`: nothing here is sent
- * to a route, so there is no bound in the capability matrix to read and no
- * `data-parameter` for a test to confuse with one. Keeping the two kinds
- * visually alike but structurally distinct is what stops a display knob from
- * quietly acquiring the authority of a request parameter.
- */
-function DisplayRow({
-  control,
-  label,
-  value,
-  min,
-  max,
-  step,
-  suffix,
-  onChange,
-}: {
-  control: string
-  label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  suffix?: string
-  onChange: (value: number) => void
-}) {
-  return (
-    <label className="range-row">
-      <span className="control-label">{label}</span>
-      <input
-        type="range"
-        data-display={control}
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
-      />
-      <span className="control-value">{value}{suffix ?? ''}</span>
-    </label>
-  )
-}
-
-/**
- * A picker over an ENUMERATED request choice -- which plane, which field.
- *
- * The counterpart of `ParameterRow`, and deliberately built on the same rule:
- * `options` is not written here, it is the list the capability declares for this
- * cell, so a choice the route does not offer cannot be pressed and one it does
- * offer cannot be withheld. `planes` and `observables` are the matrix making the
- * same kind of statement a `ParameterBound` makes, with a list instead of an
- * interval, and treating them any other way would put a second opinion about
- * the routes back into the panel.
- */
-function ChoiceRow<T extends string>({
-  choice,
-  label,
-  options,
-  labels,
-  value,
-  onChange,
-}: {
-  choice: string
-  label: string
-  options: readonly T[]
-  labels: Readonly<Record<T, string>>
-  value: T
-  onChange: (value: T) => void
-}) {
-  return (
-    // `range-row` is reused rather than duplicated: this is the same
-    // label-then-control line a slider draws, and only the control differs.
-    <div className="range-row">
-      <span className="control-label">{label}</span>
-      <div className="slice-choices" data-choice={choice} role="group" aria-label={label}>
-        {options.map((option) => (
-          <button
-            type="button"
-            key={option}
-            data-choice-value={option}
-            className={value === option ? 'active' : ''}
-            aria-pressed={value === option}
-            onClick={() => onChange(option)}
-          >
-            {labels[option]}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-/**
- * How each plane and each observable is spelled on screen.
- *
- * Total records rather than a formatter, so a fifth observable added to the
- * contract stops this file compiling instead of rendering a raw wire name.
- */
-const PLANE_LABEL: Readonly<Record<PrincipalPlane, string>> = {
-  xy: 'xy',
-  xz: 'xz',
-  yz: 'yz',
-}
-
-const OBSERVABLE_LABEL: Readonly<Record<SliceObservable, string>> = {
-  probability_density: '|ψ|²',
-  wavefunction_real: 'Re ψ',
-  wavefunction_imag: 'Im ψ',
-  phase: 'arg ψ',
-}
-
-/**
- * The four representations, with the sentence each one is *for*.
- *
- * `purpose` is the title of an AVAILABLE button only. A refused button's title
- * is the matrix's own `reason`, verbatim -- not a paraphrase written here,
- * which is how "Isosurfaces are validated for n <= 4" came to be shown for a
- * state refused because l > 3.
- */
-const REPRESENTATIONS: {
-  id: RepresentationKind
-  label: string
-  icon: LucideIcon
-  purpose: string
-}[] = [
-  {
-    id: 'point_cloud',
-    label: REPRESENTATION_LABELS.point_cloud,
-    icon: Cloud,
-    purpose: '从 |ψ|² d³r 采样位置；每个 marker 具有相同视觉权重',
-  },
-  {
-    id: 'isosurface',
-    label: REPRESENTATION_LABELS.isosurface,
-    icon: Layers3,
-    purpose: '包围指定概率质量的 |ψ|² level set',
-  },
-  {
-    id: 'slice',
-    label: REPRESENTATION_LABELS.slice,
-    // A 2-D sampled section, which is what this icon says and what the route
-    // returns: `resolution**2` samples on one principal plane.
-    icon: Grid2x2,
-    purpose: '在过原子核的主平面上采样一个标量场',
-  },
-  {
-    id: 'streamlines',
-    label: REPRESENTATION_LABELS.streamlines,
-    icon: Waves,
-    purpose: 'j/ρ 的 streamlines（概率流，不是电子轨迹）',
-  },
+const GROUPS: readonly { id: ControlGroupId; label: string; icon: LucideIcon }[] = [
+  { id: 'state', label: '量子态', icon: Atom },
+  { id: 'representation', label: '表示法', icon: Layers3 },
+  { id: 'display', label: '显示', icon: SlidersHorizontal },
 ]
 
-/** Chinese UI copy for the fixed server catalogue; formulas stay untouched. */
-const MIXTURE_COPY: Readonly<Record<string, { label: string; note: string }>> = {
-  '1s-2pz': {
-    label: '1s + 2p_z · Bohr 振荡',
-    note: 'ω = 3/8 Ha；偶极矩随 t 振荡。',
-  },
-  '2s-2pz': {
-    label: '2s + 2p_z · 简并定态',
-    note: '两项能量相同，density 不随 t 变化。',
-  },
-  '1s-3dz2': {
-    label: '1s + 3d_z²',
-    note: 'ω = 4/9 Ha；无 dipole coupling，呈 quadrupole 呼吸。',
-  },
-  '2pplus-2pminus': {
-    label: '2p(+1) + 2p(−1)',
-    note: '简并叠加；等价于实 p orbital，净 current 为 0。',
-  },
+export interface ControlPanelProps {
+  /** Expanded panel, or the single round "调节" button. Uncontrolled default: open. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 /**
- * How each request parameter is labelled and where its value lives.
- *
- * The ORDER is this list's; the MEMBERSHIP is the capability matrix's. A row
- * renders exactly when the cell declares a bound for it, so a route that stops
- * taking `seed_count` removes the Seeds slider by itself. `timeAu` is not a
- * row: the clock and playback live in the time pill (TimePill.tsx), which
- * reads the same bound.
+ * The floating "控制" panel. `nav[aria-label=控制上下文]` survives from the old
+ * context rail: its three buttons reveal (expand and scroll to) their group.
  */
-const PARAMETER_ROWS: {
-  id: ParameterId
-  label: string
-  suffix?: string
-}[] = [
-  { id: 'samples', label: '样本数' },
-  { id: 'seed', label: '随机 seed' },
-  { id: 'resolution', label: '网格' },
-  { id: 'probabilityMass', label: '概率质量' },
-  { id: 'seedCount', label: '流线种子' },
-]
-
-export type ControlContext = 'state' | 'representation' | 'display'
-
-interface ControlPanelProps {
-  activeContext?: ControlContext
-  onContextChange?: (context: ControlContext) => void
-  mobileOpen?: boolean
-  onRequestClose?: () => void
-}
-
-const CONTROL_CONTEXTS: {
-  id: ControlContext
-  label: string
-  icon: LucideIcon
-}[] = [
-  { id: 'state', label: '态制备', icon: Atom },
-  { id: 'representation', label: '表示法', icon: Waves },
-  { id: 'display', label: '显示', icon: Eye },
-]
-
-export function ControlPanel({
-  activeContext: controlledContext,
-  onContextChange,
-  mobileOpen = true,
-  onRequestClose,
-}: ControlPanelProps) {
-  const store = useSceneStore()
-  const [localContext, setLocalContext] = useState<ControlContext>('state')
-  const activeContext = controlledContext ?? localContext
-  const setActiveContext = onContextChange ?? setLocalContext
-  const [representationNotice, setRepresentationNotice] =
-    useState<RepresentationKind | null>(null)
-  const lOptions = useMemo(
-    () => Array.from({ length: store.orbital.n }, (_, index) => index),
-    [store.orbital.n],
-  )
-  const mOptions = useMemo(
-    () => Array.from({ length: 2 * store.orbital.l + 1 }, (_, index) => index - store.orbital.l),
-    [store.orbital.l],
-  )
-  // One load per page, shared with the time pill and the search pill: the
-  // fail-closed catalogue side effects now live in state/catalogs.ts.
-  const { orbitals: presets, superpositions: mixtures } = useCatalogs()
-
-  const { mode } = store
-
-  // Exactly the inputs `useSceneAsset` plans from, so the panel and the fetch
-  // layer cannot describe two different requests.
-  const requestInputs = selectSceneRequestInputs(store)
-
-  const current = capabilityFor(requestInputs)
-  const bounds = current.status === 'available' ? current.parameters : {}
-  /**
-   * The enumerated choices this cell declares, on exactly the terms `bounds`
-   * is on: undefined means the route reads no such choice, and the picker for
-   * it is not rendered at all.
-   */
-  const planes = current.status === 'available' ? current.planes : undefined
-  const observables = current.status === 'available' ? current.observables : undefined
-  /** What the request will actually carry, or a refusal that carries nothing. */
-  const plan = planSceneRequest(requestInputs)
-  const noticedCapability =
-    representationNotice === null
-      ? null
-      : capabilityFor({
-          mode,
-          orbital: requestInputs.orbital,
-          representation: representationNotice,
-          superpositionSliceResolutionFloor: requestInputs.superpositionSliceResolutionFloor,
-          superpositionStreamlineSeedCountMax:
-            requestInputs.superpositionStreamlineSeedCountMax,
-        })
-  const representationNoticeText =
-    noticedCapability !== null && noticedCapability.status !== 'available'
-      ? noticedCapability.reason
-      : null
-  const currentServerValidation =
-    current.status === 'available' ? current.serverValidation : undefined
-  const streamlineCapability = capabilityFor({
-    mode,
-    orbital: requestInputs.orbital,
-    representation: 'streamlines',
-    superpositionStreamlineSeedCountMax:
-      requestInputs.superpositionStreamlineSeedCountMax,
+export function ControlPanel({ open: controlledOpen, onOpenChange }: ControlPanelProps) {
+  const [localOpen, setLocalOpen] = useState(true)
+  const open = controlledOpen ?? localOpen
+  const setOpen = onOpenChange ?? setLocalOpen
+  const [expanded, setExpanded] = useState<Record<ControlGroupId, boolean>>({
+    state: true,
+    representation: true,
+    display: false,
   })
-  const flowExample = presets.find((preset) => preset.id === '3d-complex')
-  const flowExampleOrbital =
-    flowExample === undefined ? undefined : { ...requestInputs.orbital, ...flowExample }
-  const flowExampleCapability =
-    flowExampleOrbital === undefined
-      ? undefined
-      : capabilityFor({
-          mode: 'eigenstate',
-          orbital: flowExampleOrbital,
-          representation: 'streamlines',
-        })
-  const offerFlowExample =
-    mode === 'eigenstate' &&
-    streamlineCapability.status !== 'available' &&
-    flowExample !== undefined &&
-    flowExampleCapability?.status === 'available'
+  const [active, setActive] = useState<ControlGroupId>('state')
+  const sections = useRef<Partial<Record<ControlGroupId, HTMLElement | null>>>({})
+  const applyPreset = useSceneStore((state) => state.applyPreset)
+  // The panel alone (tests, and pages without the App shell) still loads the catalogues.
+  useCatalogs()
 
-  const loadFlowExample = (): void => {
-    // This is deliberately a separate, plainly labelled action. Pressing the
-    // unavailable representation button itself never rewrites the quantum
-    // state. The example is the server catalogue entry, not a second local
-    // copy that could drift from it.
-    if (flowExample === undefined) return
-    store.applyPreset(flowExample)
-    useSceneStore.getState().setRepresentation('streamlines')
-    setRepresentationNotice(null)
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="qv-controls-fab qv-glass"
+        data-chrome=""
+        data-action="open-controls"
+        aria-label="调节"
+        title="展开控制面板"
+        onClick={() => setOpen(true)}
+      >
+        <SlidersHorizontal size={22} aria-hidden="true" />
+      </button>
+    )
   }
 
-  const parameterValue: Record<ParameterId, number> = {
-    samples: store.samples,
-    seed: store.seed,
-    resolution: store.resolution,
-    probabilityMass: store.probabilityMass,
-    seedCount: store.seedCount,
-    timeAu: store.timeAu,
-    // Not in PARAMETER_ROWS on purpose: a_mu has no slider (changing it makes
-    // the state not-hydrogen while every label still says hydrogenic); the map
-    // stays total so a request can still carry the store's value.
-    aMu: store.aMu,
+  const reveal = (id: ControlGroupId): void => {
+    setActive(id)
+    setExpanded((current) => ({ ...current, [id]: true }))
+    sections.current[id]?.scrollIntoView?.({ block: 'nearest' })
   }
-  const parameterSetter: Record<ParameterId, (value: number) => void> = {
-    samples: store.setSamples,
-    seed: store.setSeed,
-    resolution: store.setResolution,
-    probabilityMass: store.setProbabilityMass,
-    seedCount: store.setSeedCount,
-    timeAu: store.setTimeAu,
-    aMu: store.setAMu,
+  const toggle = (id: ControlGroupId): void => {
+    setActive(id)
+    setExpanded((current) => ({ ...current, [id]: !current[id] }))
   }
 
   return (
-    <div
-      className={`controls-shell${mobileOpen ? ' mobile-open' : ''}`}
-      data-context={activeContext}
-    >
-      <nav className="context-rail" aria-label="控制上下文">
-        {CONTROL_CONTEXTS.map(({ id, label, icon: Icon }) => (
-          <button
-            type="button"
-            key={id}
-            className={activeContext === id ? 'active' : ''}
-            aria-pressed={activeContext === id}
-            onClick={() => setActiveContext(id)}
-          >
-            <Icon size={21} strokeWidth={1.55} />
-            <span>{label}</span>
+    <aside className="qv-controls qv-glass" data-chrome="" aria-label="控制面板">
+      <div className="qv-controls-head">
+        <h2>控制</h2>
+        <button
+          type="button"
+          className="qv-icon-button"
+          data-action="collapse-controls"
+          aria-label="收起控制面板"
+          title="收起为“调节”按钮"
+          onClick={() => setOpen(false)}
+        >
+          <X size={18} aria-hidden="true" />
+        </button>
+      </div>
+      <nav className="qv-context-nav" aria-label="控制上下文">
+        {GROUPS.map(({ id, label }) => (
+          <button type="button" key={id} aria-pressed={active === id} onClick={() => reveal(id)}>
+            {label}
           </button>
         ))}
       </nav>
-      <aside className="panel controls-panel">
-        <div className="mobile-sheet-handle" aria-hidden="true" />
-        <div className="panel-heading">
-          <div>
-            <span className="panel-context-label">
-              {activeContext === 'state' ? '态制备' : activeContext === 'representation' ? '表示法' : '显示'}
-            </span>
-            <h2>
-              {activeContext === 'state'
-                ? '轨道与表示设置'
-                : activeContext === 'representation'
-                  ? '观测映射与采样'
-                  : '场景渲染'}
-            </h2>
-          </div>
-          <div className="panel-heading-actions">
-            {activeContext === 'state' ? (
-              <button
-                type="button"
-                className="round-button reset-state-button"
-                title="恢复 2p_z 默认值"
-                aria-label="恢复 2p_z 默认值"
-                onClick={() => store.applyPreset({ n: 2, l: 1, m: 0, z: 1, basis: 'real' })}
-              >
-                <RotateCcw size={16} />
-              </button>
-            ) : null}
-            {onRequestClose === undefined ? null : (
-              <button
-                type="button"
-                className="round-button mobile-sheet-close"
-                title="关闭控制面板"
-                aria-label="关闭控制面板"
-                onClick={onRequestClose}
-              >
-                <X size={17} />
-              </button>
-            )}
-          </div>
-        </div>
-
-      <div className="preset-strip state-context-content">
-        {presets.map((preset) => {
-          const active =
-              preset.n === store.orbital.n &&
-              preset.l === store.orbital.l &&
-              preset.m === store.orbital.m &&
-              preset.basis === store.orbital.basis
-          return (
-            <button
-              type="button"
-              key={preset.id}
-              onClick={() => store.applyPreset(preset)}
-              className={active ? 'preset active' : 'preset'}
-              aria-pressed={active}
-            >
-              {preset.label}
-            </button>
-          )
-        })}
-      </div>
-
-      {store.mode === 'eigenstate' ? (
-        <section className="control-section state-context-content" data-control-section="eigenstate-quantum-numbers">
-          <div className="section-title"><Atom size={15} /> 量子数</div>
-          <div className="quantum-grid">
-            <label>
-              <span>n</span>
-              <select value={store.orbital.n} onChange={(event) => store.setOrbital({ n: Number(event.target.value) })}>
-                {Array.from({ length: 8 }, (_, index) => index + 1).map((value) => <option key={value}>{value}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>ℓ</span>
-              <select value={store.orbital.l} onChange={(event) => store.setOrbital({ l: Number(event.target.value) })}>
-                {lOptions.map((value) => <option key={value}>{value}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>m</span>
-              <select value={store.orbital.m} onChange={(event) => store.setOrbital({ m: Number(event.target.value) })}>
-                {mOptions.map((value) => <option key={value}>{value}</option>)}
-              </select>
-            </label>
-            <label>
-              <span>Z</span>
-              <input
-                type="number"
-                min={Z_CONSTRAINT.uiBound.min}
-                max={Z_CONSTRAINT.uiBound.max}
-                step={Z_CONSTRAINT.uiBound.step}
-                value={store.orbital.z}
-                onChange={(event) => store.setOrbital({ z: Number(event.target.value) })}
-              />
-            </label>
-          </div>
-          <div className="segmented two">
-            {(['real', 'complex'] as const).map((basis) => (
-              <button
-                type="button"
-                key={basis}
-                className={store.orbital.basis === basis ? 'active' : ''}
-                aria-pressed={store.orbital.basis === basis}
-                onClick={() => store.setOrbital({ basis })}
-              >
-                {basis === 'real' ? '实基 · chemistry' : '复基 · Lz'}
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section className="control-section state-context-content state-composition-section">
-        <div className="section-title"><Clock size={15} /> 态构成</div>
-        <div className="representation-switch">
-          <button
-            type="button"
-            className={store.mode === 'eigenstate' ? 'active' : ''}
-            aria-pressed={store.mode === 'eigenstate'}
-            onClick={() => store.setMode('eigenstate')}
-          >
-            <Atom size={17} /> 本征态
-          </button>
-          <button
-            type="button"
-            className={store.mode === 'superposition' ? 'active' : ''}
-            aria-pressed={store.mode === 'superposition'}
-            title="解析含时 eigenstate 叠加"
-            onClick={() => store.setMode('superposition')}
-          >
-            <Clock size={17} /> 叠加态
-          </button>
-        </div>
-
-        {store.mode === 'superposition' ? (
-          <>
-            <div className="mixture-list">
-              {mixtures.map((mixture) => (
+      <div className="qv-controls-body">
+        {GROUPS.map(({ id, label, icon }) => (
+          <ControlGroup
+            key={id}
+            id={id}
+            title={label}
+            icon={icon}
+            expanded={expanded[id]}
+            onToggle={() => toggle(id)}
+            sectionRef={(node) => {
+              sections.current[id] = node
+            }}
+            actions={
+              id === 'state' ? (
                 <button
-                  key={mixture.id}
                   type="button"
-                  title={MIXTURE_COPY[mixture.id]?.note ?? mixture.note}
-                  className={`preset${store.superpositionTerms === mixture.terms ? ' active' : ''}`}
-                  aria-pressed={store.superpositionTerms === mixture.terms}
-                  onClick={() =>
-                    store.setSuperposition(
-                      mixture.terms,
-                      mixture.label,
-                      mixture.slice_resolution_floor,
-                      mixture.streamline_seed_count_max,
-                      mixture.default_representation,
-                    )
-                  }
+                  className="qv-icon-button"
+                  data-action="reset-state"
+                  aria-label="恢复 2p_z 默认值"
+                  title="恢复 2p_z 默认值"
+                  onClick={() => applyPreset({ n: 2, l: 1, m: 0, z: 1, basis: 'real' })}
                 >
-                  {MIXTURE_COPY[mixture.id]?.label ?? mixture.label}
+                  <RotateCcw size={16} aria-hidden="true" />
                 </button>
-              ))}
-            </div>
-            {plan.status === 'available' ? (
-              /*
-               * The two fields the superposition request states explicitly so
-               * the server cannot default them. Read from the PLAN, not from
-               * the store, so this read-out cannot name a basis or a charge
-               * different from the one the query carries.
-               *
-               * a_mu used to be the third entry here, and being HERE was its
-               * only gate -- see the read-out below, which is gated on the plan
-               * carrying the parameter instead.
-               */
-              <dl className="readout" data-readonly-group="superposition">
-                <div>
-                  <dt>basis</dt>
-                  <dd data-readonly="basis">{String(plan.params.basis)}</dd>
-                </div>
-                <div>
-                  <dt>Z</dt>
-                  <dd data-readonly="z">{String(plan.params.z)}</dd>
-                </div>
-              </dl>
-            ) : null}
-          </>
-        ) : null}
-      </section>
-
-      <section className="control-section representation-control-section">
-        <div className="section-title representation-dock-title"><Layers3 size={15} /> 表示法</div>
-        <div className="representation-switch representation-command-switch">
-          {REPRESENTATIONS.map(({ id, label, icon: Icon, purpose }) => {
-            const capability = capabilityFor({
-              mode,
-              orbital: requestInputs.orbital,
-              representation: id,
-              superpositionSliceResolutionFloor:
-                requestInputs.superpositionSliceResolutionFloor,
-              superpositionStreamlineSeedCountMax:
-                requestInputs.superpositionStreamlineSeedCountMax,
-            })
-            const available = capability.status === 'available'
-            const serverValidation = available ? capability.serverValidation : undefined
-            return (
-              <button
-                type="button"
-                key={id}
-                data-representation={id}
-                data-unavailable={available ? undefined : 'true'}
-                data-server-validation={serverValidation === undefined ? undefined : 'required'}
-                className={store.representation === id ? 'active' : ''}
-                aria-pressed={store.representation === id}
-                aria-label={
-                  !available
-                    ? `${label}暂不可用：${capability.reason}`
-                    : serverValidation === undefined
-                      ? label
-                      : `${label}；需服务端数值验证：${serverValidation.reason}`
-                }
-                aria-describedby={
-                  !available && representationNotice === id
-                    ? 'representation-availability-notice'
-                    : available && store.representation === id && serverValidation !== undefined
-                      ? 'representation-server-validation-notice'
-                    : undefined
-                }
-                title={
-                  !available
-                    ? capability.reason
-                    : serverValidation === undefined
-                      ? purpose
-                      : `${purpose}；需服务端数值验证：${serverValidation.reason}`
-                }
-                onFocus={() => {
-                  if (!available) setRepresentationNotice(id)
-                }}
-                onClick={() => {
-                  setActiveContext('representation')
-                  if (available) {
-                    setRepresentationNotice(null)
-                    store.setRepresentation(id)
-                  } else {
-                    setRepresentationNotice(id)
-                  }
-                }}
-              >
-                <Icon size={17} /> {label}
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="representation-settings">
-          <div className="section-title representation-settings-title">
-            <SlidersHorizontal size={15} /> 当前表示参数
-          </div>
-
-        {representationNoticeText === null ? null : (
-          <p
-            id="representation-availability-notice"
-            className="capability-notice"
-            role="status"
-            data-representation-notice={representationNotice}
+              ) : undefined
+            }
           >
-            {representationNoticeText}
-          </p>
-        )}
-
-        {currentServerValidation === undefined ? null : (
-          <p
-            id="representation-server-validation-notice"
-            className="capability-notice server-validation-notice"
-            role="note"
-            data-server-validation-notice={store.representation}
-          >
-            <strong>需服务端数值验证：</strong>
-            {currentServerValidation.reason}
-          </p>
-        )}
-
-        {offerFlowExample && flowExample !== undefined ? (
-          <button
-            type="button"
-            className="flow-example-action"
-            data-flow-example
-            onClick={loadFlowExample}
-          >
-            <Waves size={14} /> 载入并显示概率流示例 · {flowExample.label} ·{' '}
-            {flowExample.basis}
-          </button>
-        ) : null}
-
-        {planes === undefined ? null : (
-          <ChoiceRow
-            choice="plane"
-            label="平面"
-            options={planes}
-            labels={PLANE_LABEL}
-            value={store.plane}
-            onChange={store.setPlane}
-          />
-        )}
-
-        {observables === undefined ? null : (
-          <ChoiceRow
-            choice="observable"
-            label="场"
-            options={observables}
-            labels={OBSERVABLE_LABEL}
-            value={store.sliceObservable}
-            onChange={store.setSliceObservable}
-          />
-        )}
-
-        {PARAMETER_ROWS.map(({ id, label, suffix }) => {
-          const bound = bounds[id]
-          if (bound === undefined) return null
-          return (
-            <ParameterRow
-              key={id}
-              parameter={id}
-              label={label}
-              bound={bound}
-              suffix={suffix}
-              value={parameterValue[id]}
-              onChange={parameterSetter[id]}
-            />
-          )
-        })}
-
-        {plan.status === 'available' && plan.params.a_mu !== undefined ? (
-          /*
-           * The reduced-mass ratio, read out iff the REQUEST CARRIES ONE.
-           *
-           * Read-only by decision: a_mu has no slider because changing it makes
-           * the state not-hydrogen while every label on screen still says
-           * hydrogenic. But read-only is not the same as invisible, and the gate
-           * used to be "is the mode superposition?" -- written when a_mu reached
-           * only the two superposition routes. It reaches four now, so an
-           * eigenstate slice was sending a reduced mass nothing on screen
-           * stated. The plan is the one thing that knows whether this request
-           * has an `a_mu` at all, so it is what decides.
-           *
-           * The value comes from the plan too, which is the clamped one: a
-           * read-out of the store's raw number would name a length scale the
-           * wire never carried.
-           */
-          <dl className="readout" data-readonly-group="request">
-            <div>
-              <dt>a<sub>μ</sub></dt>
-              <dd data-readonly="a_mu">{String(plan.params.a_mu)}</dd>
-            </div>
-          </dl>
-        ) : null}
-        </div>
-      </section>
-
-      {/*
-        Display controls are representation-specific. A slider is shown only
-        when the current renderer consumes it; that keeps this compact panel
-        from offering a polished-looking control over nothing. Exposure stays
-        internal until the composer path owns an audited tone-mapping policy.
-      */}
-      <section className="control-section compact display-section display-context-content">
-        <div className="section-title"><SlidersHorizontal size={15} /> 显示</div>
-        {store.representation === 'point_cloud' ? (
-          <DisplayRow control="pointSize" label="点尺寸" value={store.pointSize} min={1.5} max={7} step={0.1} onChange={store.setPointSize} />
-        ) : null}
-        {store.representation !== 'slice' ? (
-          <DisplayRow control="opacity" label="透明度" value={Math.round(store.opacity * 100)} min={25} max={100} step={1} suffix="%" onChange={(value) => store.setOpacity(value / 100)} />
-        ) : null}
-        {store.representation === 'slice' || store.representation === 'streamlines' ? (
-          <DisplayRow control="bloom" label="Bloom" value={Math.round(store.bloom * 100)} min={0} max={50} step={1} suffix="%" onChange={(value) => store.setBloom(value / 100)} />
-        ) : null}
-        <button
-          type="button"
-          className="toggle-row"
-          aria-pressed={store.autoRotate}
-          onClick={() => store.setAutoRotate(!store.autoRotate)}
-        >
-          {store.autoRotate ? <Pause size={15} /> : <Play size={15} />}
-          <span>自动旋转</span>
-          <span className={store.autoRotate ? 'switch on' : 'switch'} />
-        </button>
-        <button
-          type="button"
-          className="toggle-row"
-          aria-pressed={store.showGrid}
-          onClick={() => store.setShowGrid(!store.showGrid)}
-        >
-          <Layers3 size={15} />
-          <span>参考网格</span>
-          <span className={store.showGrid ? 'switch on' : 'switch'} />
-        </button>
-      </section>
-      </aside>
-    </div>
+            {id === 'state' ? (
+              <StateSection />
+            ) : id === 'representation' ? (
+              <RepresentationSection onActivate={() => setActive('representation')} />
+            ) : (
+              <DisplaySection />
+            )}
+          </ControlGroup>
+        ))}
+      </div>
+    </aside>
   )
 }

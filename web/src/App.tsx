@@ -2,7 +2,7 @@ import { Atom, Eye, ListTree, PanelRightOpen, SlidersHorizontal } from 'lucide-r
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { SceneStatus } from './api/types'
-import { ControlPanel, type ControlContext } from './components/ControlPanel'
+import { ControlPanel } from './components/ControlPanel'
 import { Header } from './components/Header'
 import { Inspector } from './components/Inspector'
 import { Legend } from './components/Legend'
@@ -108,7 +108,6 @@ export function StatusBar({ status }: { status: SceneStatus }) {
 export default function App() {
   const compactWorkspace = useCompactWorkspace()
   const [status, setStatus] = useState<SceneStatus>({ loading: true })
-  const [controlContext, setControlContext] = useState<ControlContext>('state')
   // The wide rail is useful on first load; a compact overlay must wait for an
   // explicit request so it does not cover the canvas merely because it exists.
   const [inspectorOpen, setInspectorOpen] = useState(() => !compactWorkspace)
@@ -119,13 +118,6 @@ export default function App() {
   const restoreInspectorFocusRef = useRef(false)
   const previousCompactWorkspaceRef = useRef(compactWorkspace)
   const handleStatus = useCallback((value: SceneStatus) => setStatus(value), [])
-
-  const openControls = (context: ControlContext): void => {
-    restoreInspectorFocusRef.current = false
-    setInspectorOpen(false)
-    setControlContext(context)
-    setMobileSurface('controls')
-  }
 
   const openInspector = (opener: HTMLButtonElement): void => {
     inspectorOpenerRef.current = opener
@@ -187,12 +179,7 @@ export default function App() {
     <div className="app-shell">
       <Header stateLabel={status.metadata?.label ?? status.superposition?.label} />
       <main className="workspace" data-inspector-open={inspectorOpen}>
-        <ControlPanel
-          activeContext={controlContext}
-          onContextChange={setControlContext}
-          mobileOpen={mobileSurface === 'controls'}
-          onRequestClose={() => setMobileSurface(null)}
-        />
+        <ControlPanel />
         <section className="viewport-card" aria-label="量子态三维视口">
           <div className="viewport-copy">
             <span className="viewport-signal"><i />实时量子场</span>
@@ -237,29 +224,27 @@ export default function App() {
       <nav className="mobile-actionbar" aria-label="移动端工作区">
         <button
           type="button"
-          className={mobileSurface === 'controls' && controlContext === 'state' ? 'active' : ''}
-          aria-pressed={mobileSurface === 'controls' && controlContext === 'state'}
-          onClick={() => openControls('state')}
+          className={mobileSurface === 'controls' ? 'active' : ''}
+          aria-pressed={mobileSurface === 'controls'}
+          onClick={() => setMobileSurface('controls')}
         >
           <Atom size={20} />
           <span>态</span>
         </button>
         <button
           type="button"
-          className={
-            mobileSurface === 'controls' && controlContext === 'representation' ? 'active' : ''
-          }
-          aria-pressed={mobileSurface === 'controls' && controlContext === 'representation'}
-          onClick={() => openControls('representation')}
+          className={mobileSurface === 'controls' ? 'active' : ''}
+          aria-pressed={mobileSurface === 'controls'}
+          onClick={() => setMobileSurface('controls')}
         >
           <SlidersHorizontal size={20} />
           <span>参数</span>
         </button>
         <button
           type="button"
-          className={mobileSurface === 'controls' && controlContext === 'display' ? 'active' : ''}
-          aria-pressed={mobileSurface === 'controls' && controlContext === 'display'}
-          onClick={() => openControls('display')}
+          className={mobileSurface === 'controls' ? 'active' : ''}
+          aria-pressed={mobileSurface === 'controls'}
+          onClick={() => setMobileSurface('controls')}
         >
           <Eye size={20} />
           <span>显示</span>

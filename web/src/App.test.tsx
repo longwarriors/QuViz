@@ -321,36 +321,6 @@ describe('App wires the canvas status to the shell', () => {
       )
       expect(mobileButtons.map((button) => button.textContent)).toEqual(['态', '参数', '显示', '详情'])
 
-      await press(mobileButtons[2])
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.activeContext,
-      ).toBe('display')
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.mobileOpen,
-      ).toBe('true')
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-inspector]')?.dataset.open,
-      ).toBe('false')
-
-      const controlsClose = tree.container.querySelector<HTMLButtonElement>(
-        '[data-mock-close-controls]',
-      )
-      if (controlsClose === null) throw new Error('the mocked controls have no close action')
-      await press(controlsClose)
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.mobileOpen,
-      ).toBe('false')
-
-      await press(mobileButtons[0])
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.activeContext,
-      ).toBe('state')
-
-      await press(mobileButtons[1])
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.activeContext,
-      ).toBe('representation')
-
       await press(mobileButtons[3])
       expect(
         tree.container.querySelector<HTMLElement>('[data-mock-inspector]')?.dataset.mobileOpen,
@@ -385,6 +355,38 @@ describe('App wires the canvas status to the shell', () => {
       stageOpener.style.display = 'inline-flex'
       await press(inspectorClose)
       expect(document.activeElement).toBe(stageOpener)
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('returns the mobile sheet to the one control panel from each of the three control buttons', async () => {
+    // The panel no longer has contexts to open at: 态 / 参数 / 显示 all bring
+    // back the control sheet, and the detail sheet yields to it.
+    const tree = await shell({ loading: false })
+    try {
+      const buttons = Array.from(
+        tree.container.querySelectorAll<HTMLButtonElement>('.mobile-actionbar button'),
+      )
+      const controls = buttons.slice(0, 3)
+      for (const control of controls) {
+        await press(buttons[3])
+        expect(control.getAttribute('aria-pressed')).toBe('false')
+        expect(
+          tree.container.querySelector<HTMLElement>('[data-mock-inspector]')?.dataset.mobileOpen,
+        ).toBe('true')
+
+        await press(control)
+        expect(controls.map((button) => button.getAttribute('aria-pressed'))).toEqual([
+          'true',
+          'true',
+          'true',
+        ])
+        expect(buttons[3].getAttribute('aria-pressed')).toBe('false')
+        expect(
+          tree.container.querySelector<HTMLElement>('[data-mock-inspector]')?.dataset.mobileOpen,
+        ).toBe('false')
+      }
     } finally {
       await tree.unmount()
     }
