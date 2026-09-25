@@ -460,9 +460,23 @@ async function revealControls(page: Page, group: '量子态' | '表示法' | '�
  * every property, visibility included, and a visibility transition away from
  * `visible` stays visible until it ends -- one animation frame per level of a
  * panel's tree (measured: the header hidden two frames later, its icons
- * later still). So wait until nothing inside the chrome still computes as
- * visible. The same wait fails if any descendant overrides the inherited
- * `hidden`, which is the leak the no-`visibility: visible` rule forbids.
+ * later still). So wait until nothing inside the chrome that is rendered
+ * still computes as visible, and name whatever does. The same wait fails if
+ * any rendered descendant overrides the inherited `hidden`, which is the leak
+ * the no-`visibility: visible` rule forbids.
+ *
+ * "Rendered and visible" is `checkVisibility({ visibilityProperty: true })`:
+ * the node has a box, no ancestor has `content-visibility: hidden`, and its
+ * computed visibility is `visible`. The ancestor clause is load-bearing. A
+ * closed `<details>` -- the detail panel's 数值诊断 disclosure -- lays its
+ * content out under `content-visibility: hidden`, and Chromium never ran the
+ * warning card's visibility transition to its end in there: measured in the
+ * pinned Linux image, its div, svg, three paths and span still computed
+ * `visible` after the full 30 s poll, on exactly the two 2s + 2p_z tests,
+ * whose fixtures are the only ones here that carry a server warning. Those
+ * nodes are not painted at all, so they cannot reach a canvas pixel, and
+ * counting every node's computed visibility failed both tests before any
+ * screenshot.
  */
 async function hideChrome(page: Page): Promise<void> {
   const chrome = page.locator('[data-chrome]')
@@ -473,15 +487,18 @@ async function hideChrome(page: Page): Promise<void> {
   await expect
     .poll(
       () =>
-        chrome.evaluateAll(
-          (elements) =>
-            elements
-              .flatMap((element) => [element, ...element.querySelectorAll('*')])
-              .filter((node) => getComputedStyle(node).visibility !== 'hidden').length,
+        chrome.evaluateAll((elements) =>
+          elements
+            .flatMap((element) => [element, ...element.querySelectorAll('*')])
+            .filter((node) => node.checkVisibility({ visibilityProperty: true }))
+            .map((node) => [node.tagName.toLowerCase(), ...node.classList].join('.')),
         ),
-      { message: 'a chrome element still computes as visible after hideChrome', ...SETTLE },
+      {
+        message: 'a rendered chrome element still computes as visible after hideChrome',
+        ...SETTLE,
+      },
     )
-    .toBe(0)
+    .toEqual([])
 }
 
 /** Undo `hideChrome` before driving the controls again. */
