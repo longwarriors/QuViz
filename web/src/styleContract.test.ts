@@ -83,6 +83,15 @@ describe('lab.css design tokens', () => {
     expect(labCss()).not.toMatch(/visibility:\s*visible/)
   })
 
+  it('keeps the hidden attribute hiding elements that carry a display rule', () => {
+    // The user-agent `[hidden] { display: none }` loses to any author display
+    // rule, so a folded `.qv-group-body` (display: grid) stayed on screen while
+    // its header announced aria-expanded="false". jsdom computes no stylesheet,
+    // so the component specs that assert `hidden` cannot see this; the global
+    // override is what makes every `hidden={...}` in the lab actually hide.
+    expect(labCss()).toMatch(/(?:^|\})\s*\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/)
+  })
+
   it('paints the page with the scene background, so the canvas has no seam', async () => {
     const { SCENE_BACKGROUND } = await import('./scene/fog')
     expect(declaredTokens(read('./lab.css')).get('--qv-bg')).toBe(SCENE_BACKGROUND)
