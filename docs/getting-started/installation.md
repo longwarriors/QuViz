@@ -105,7 +105,7 @@ uv run --locked --no-sync mkdocs serve -a 127.0.0.1:8001
 依赖组，`--locked` 则在锁文件过期时直接失败，因此这组启动命令不会修改仓库文件。如果检查失败，说明维护者需要在审查真值源变更后显式重新生成并提交页面，
 不能跳过检查直接发布。
 
-教材页面中的交互图默认嵌入 `http://127.0.0.1:8000/` 的本地实验室（`mkdocs.yml` 的 `extra.quviz.lab_url`）。本地阅读教材时，另开一个终端按上一节运行 `quviz serve`，点“加载交互图”才会显示实验室；文档服务因此固定在 8001 端口，避免与实验室冲突。
+教材页面中的交互图默认嵌入 `http://127.0.0.1:8000/` 的本地实验室（`mkdocs.yml` 的 `extra.quviz.lab_url`）。本地阅读教材时，请另开一个终端按“单服务源码预览”一节依次运行 `npm --prefix web run build` 与 `quviz serve`，再点“加载交互图”；“启动开发模式”一节的 `quviz serve --reload` 在没有当前 `web/dist` 时只返回 JSON 提示，旧版 `web/dist` 也无法识别嵌入模式用到的 `#embed=1`。文档服务因此固定在 8001 端口，避免与实验室冲突。
 
 !!! note "Windows"
     PowerShell 与 Git Bash 均可运行上述命令。不要手工激活 `.venv` 后再用 `pip install` 修改环境；依赖变化应通过 `uv add` 或 `pyproject.toml` 管理。

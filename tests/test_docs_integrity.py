@@ -403,6 +403,14 @@ def test_ui_docs_follow_the_redesigned_lab_and_the_static_textbook() -> None:
     # mkdocs serve on 8000 would collide with the lab that textbook figures embed.
     assert "uv run --locked --no-sync mkdocs serve -a 127.0.0.1:8001" in development
     assert "extra.quviz.lab_url" in installation
+    # Embed mode (#embed=1) is a redesigned-lab feature: a stale `web/dist` built
+    # before the redesign, or a missing one, will not serve it. Point at the
+    # section that builds a current one, not at "启动开发模式" (--reload, no build).
+    assert "按上一节运行 `quviz serve`" not in installation
+    assert (
+        "按“单服务源码预览”一节依次运行 `npm --prefix web run build` 与 `quviz serve`"
+        in installation
+    )
 
 
 # --- red/green cases for the gate itself --------------------------------------
