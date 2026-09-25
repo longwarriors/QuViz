@@ -384,6 +384,20 @@ def test_probability_flow_docs_cover_scale_covariance_and_discovery() -> None:
     assert "`slice_resolution_floor`" in frontend
 
 
+def test_isosurface_docs_describe_the_shaded_material() -> None:
+    # D23 replaced the unlit isosurface material with a ShaderMaterial carrying
+    # its own neutral headlight; the current-state tutorials must not still call
+    # it unlit or promise that the colour ignores the normal.
+    frontend = (ROOT / "docs/tutorials/frontend-rendering.md").read_text(encoding="utf-8")
+    real_vs_complex = (ROOT / "docs/tutorials/real-vs-complex.md").read_text(encoding="utf-8")
+
+    for page in (frontend, real_vs_complex):
+        assert "未照明材质" not in page
+        assert "色相就是相位" in page
+        assert "中性白光" in page
+    assert "不随法线" not in frontend
+
+
 def test_ui_docs_follow_the_redesigned_lab_and_the_static_textbook() -> None:
     frontend = (ROOT / "docs/tutorials/frontend-rendering.md").read_text(encoding="utf-8")
     first_orbital = (ROOT / "docs/getting-started/first-orbital.md").read_text(encoding="utf-8")
