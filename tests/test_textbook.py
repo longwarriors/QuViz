@@ -685,6 +685,210 @@ def test_textbook_index_links_every_chapter_in_order() -> None:
     assert positions == sorted(positions)
 
 
+class ReviewPin(NamedTuple):
+    """One confirmed finding of the Task C15 physics review."""
+
+    page: str
+    wrong: str
+    right: str
+
+
+#: Fixed findings of the independent physics review. Each pin keeps the
+#: reviewed error from coming back and keeps its correction on the page.
+#: ``right`` is "" when the fix only deletes text.
+PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
+    # One ReviewPin per finding being fixed, in review-record order, built from the
+    # finding record:
+    #   page:  the file name in the finding's "where";
+    #   wrong: the shortest fragment of its "quote" that still contains the error
+    #          and occurs exactly once on the unfixed page;
+    #   right: the shortest fragment of its "correct" text that carries the fix.
+    ReviewPin("00-how-to-use.md", "也就是 observable；", "这里取宽义"),  # noqa: RUF001
+    ReviewPin("00-how-to-use.md", "对方打开的就是同一幅图", "视角不写入深链接"),
+    ReviewPin("00-how-to-use.md", "时间胶囊和一个", "一条状态提示"),
+    ReviewPin("00-how-to-use.md", "交互图连接的也是本机运行的", "要先构建前端"),
+    ReviewPin("00-how-to-use.md", "控件是按这三层组织的", "控件怎样对应这三层"),
+    ReviewPin(
+        "01-wavefunction.md",
+        "约化质量\n[@griffiths2018qm, ch. 4 (pp. 131--197)]",
+        "普通 Bohr 半径",
+    ),
+    ReviewPin("01-wavefunction.md", "这个方程的解一般是复函数", "定态解总可以选成实函数"),
+    ReviewPin("01-wavefunction.md", "实验室的电子云正是这样画出来的", "不是实测数据"),
+    ReviewPin(
+        "01-wavefunction.md",
+        "第 7 章的相位切片和第 9 章的叠加态都依赖这种相对相位",
+        "同一个波函数在不同点之间的相位差",
+    ),
+    ReviewPin("01-wavefunction.md", "相位约定和 QuViz 对实基的定义", "径向函数的符号约定"),
+    ReviewPin("01-wavefunction.md", "对 $R$ 求导即可验证它等于被积函数", "且 $R=0$ 时右边为 0"),
+    ReviewPin(
+        "02-hydrogen-levels.md",
+        "它也让 $\\psi$ 带上长度的 $-3/2$ 次方量纲",
+        "这个常数的单位是 $a_0^{-3/2}$",
+    ),
+    ReviewPin(
+        "02-hydrogen-levels.md",
+        "的总公式\n[@griffiths2018qm, eq. (4.89), p. 151]",
+        "Bohr 半径 $a$ 换成 $a_\\mu/Z$",
+    ),
+    ReviewPin(
+        "03-radial-nodes.md",
+        "对类氢态有闭合形式 [@griffiths2018qm, ch. 4 (pp. 131--197)]",
+        "代入积分",
+    ),
+    ReviewPin(
+        "03-radial-nodes.md",
+        "也就是 Laguerre 多项式 $L_{n-\\ell-1}^{2\\ell+1}(\\rho)$ 的根",
+        "节点就在 $r=na_\\mu\\rho_k/(2Z)$",
+    ),
+    ReviewPin("03-radial-nodes.md", "放大画面后更容易看清", "没有采样点正好落在 $1.90\\,a_0$ 上"),
+    ReviewPin("03-radial-nodes.md", "$\\ell$ 越大的态越紧凑", "整体尺度小不等于更靠近原子核"),
+    ReviewPin("04-real-complex.md", "只看一个方向分不出 $m$ 的正负", "只看 $+y$ 一个方向分不出"),
+    ReviewPin("04-real-complex.md", "但它只是一个编号", "但它的正负号只是一个编号"),
+    ReviewPin(
+        "04-real-complex.md", "选哪组基只取决于想让什么有确定值", "对 $L_z$ 只确定了它的平方"
+    ),
+    ReviewPin(
+        "04-real-complex.md",
+        "只改变单个基函数的样子",
+        "同一个态无论用哪组基展开",
+    ),
+    ReviewPin(
+        "04-real-complex.md", "密度 $\\propto\\sin^2\\theta$", "r^2e^{-r}\\sin^2\\theta/(64\\pi)"
+    ),
+    ReviewPin(
+        "05-electron-cloud.md",
+        "描述按半径、极角、方位角分别求逆累积分布的分离采样",
+        "方位角在复基中均匀抽取",
+    ),
+    ReviewPin("05-electron-cloud.md", "真实的分布却偏向一侧", "之后在 $+z$ 与 $-z$ 之间来回振荡"),
+    ReviewPin(
+        "05-electron-cloud.md",
+        "28{,}000\\times0.3233\\approx9{,}053",
+        "28{,}000\\times(1-5e^{-2})\\approx9{,}053",
+    ),
+    ReviewPin("05-electron-cloud.md", "$t=0$ 时两个函数都是实函数", "$t=0$ 时两项的系数也都是实数"),
+    ReviewPin(
+        "06-isosurface.md",
+        "例如 $3p_z$ 在 $p=0.9$ 时是内外各两瓣",
+        "实验室画出的曲面会把每一侧的内瓣与外瓣连在一起",
+    ),
+    ReviewPin(
+        "06-isosurface.md",
+        "$d_{xy}$、$d_{xz}$、$d_{yz}$、$d_{x^2-y^2}$ 是四瓣",
+        "$4d_{xy}$ 在 $p=0.9$ 时是内外各四瓣",
+    ),
+    ReviewPin("06-isosurface.md", "改变数据颜色：同一种颜色在曲面的", "调低「透明度」后"),  # noqa: RUF001
+    ReviewPin("07-phase-slices.md", "数值接近零就是深灰色", "残差也会被拉伸到整条色带"),
+    ReviewPin("07-phase-slices.md", "所以两张切片的图案相同", "这只对 $xy$ 平面成立"),
+    ReviewPin(
+        "07-phase-slices.md",
+        "相位约定也是这样一种全局相位的选择。",
+        "它是不同 $m$ 分量之间的相对相位",
+    ),
+    ReviewPin("07-phase-slices.md", "节面不经过样本点，它的 $xz$ 相位切片上只有原点", "网格更密时"),  # noqa: RUF001
+    ReviewPin("07-phase-slices.md", "所以它的实部、虚部切片随时间转动", "两张切片始终保持同一图案"),
+    ReviewPin(
+        "07-phase-slices.md",
+        "$R_{21}\\propto r$",
+        "$R_{21}\\propto r\\,e^{-r/(2a_0)}$ 在原点处为零",
+    ),
+    ReviewPin("08-probability-current.md", "给出实数", "乘上 $\\psi^*$ 后是实数"),
+    ReviewPin("08-probability-current.md", "线速率是 $m/s=1$ a.u.", "$\\hbar m/(\\mu s)=2/2=1$"),
+    ReviewPin(
+        "08-probability-current.md",
+        "流线是概率流 $\\mathbf j/\\rho$ 的积分曲线",
+        "流线是速度场 $\\mathbf v=\\mathbf j/\\rho$ 的积分曲线",
+    ),
+    ReviewPin(
+        "08-probability-current.md",
+        "「定态」只说明密度 $\\rho$ 不随时间变化",
+        "概率流 $\\mathbf j$ 也不变",
+    ),
+    ReviewPin("08-probability-current.md", "绕着盆心匀速旋转", "绕着盆心稳定地打转"),
+    ReviewPin("08-probability-current.md", "只有相位颜色和概率流能区分", "流线图本身也区分不了"),
+    ReviewPin(
+        "09-superposition-time.md",
+        "它的密度随时间连续变化",
+        "能量不同的两项叠加",
+    ),
+    ReviewPin(
+        "09-superposition-time.md",
+        "要看 $\\lvert\\Psi\\rvert^2$ 或 $\\langle z\\rangle$ 这样",
+        "$\\langle z\\rangle$ 不变并不说明态不变",
+    ),
+    ReviewPin(
+        "09-superposition-time.md",
+        "它们怎样变化、以什么频率变化",
+        "怎样变化则取决于各项的空间形状与系数",
+    ),
+    ReviewPin(
+        "10-experiment.md", "实验记录的是它经电离与传播后", "能量接近电离阈的高激发 Stark 态"
+    ),
+    ReviewPin(
+        "10-experiment.md", "探测效率、背景与 Poisson 计数噪声", "有限点数本身已经带有计数涨落"
+    ),
+    ReviewPin(
+        "10-experiment.md",
+        "还要叠加 PSF、效率、背景与计数噪声",
+        "点数的随机涨落已经包含在有限样本里",
+    ),
+    ReviewPin("10-experiment.md", "直接算出的内禀的量", "会随全局相位的约定转动"),
+    ReviewPin("10-experiment.md", "哪些画面是内禀的物理量", "哪些画面是由量子态直接算出的量"),
+    ReviewPin("10-experiment.md", "在本书忽略精细结构的模型里", "忽略自旋与精细结构的模型里"),
+    ReviewPin("11-symmetry-hybridization.md", "杂化轨道不是新的量子态", "并不是子空间之外的新态"),
+    ReviewPin(
+        "11-symmetry-hybridization.md",
+        "例如上一节的 $\\Gamma_{\\mathrm{tetrahedral}}",
+        "例如「sp³ 杂化」一节的",
+    ),
+    ReviewPin(
+        "11-symmetry-hybridization.md",
+        "上一节的矩阵就是这样一组定向基",
+        "「sp³ 杂化」一节的系数矩阵",
+    ),
+    ReviewPin(
+        "11-symmetry-hybridization.md",
+        "对称性不说明哪种描述让能量最低",
+        "用哪些轨道、以什么比例组合",
+    ),
+    ReviewPin("11-symmetry-hybridization.md", "以内的一小块", "向 $+z$ 张开"),
+    ReviewPin("appendix-a-misconceptions.md", "它的密度随时间连续变化", "只要其中有能量不同的项"),
+    ReviewPin(
+        "appendix-a-misconceptions.md",
+        "所以 $d_{z^2}$ 的等值面是两瓣加一个环",
+        "所以 $3d_{z^2}$ 的等值面",
+    ),
+    ReviewPin("appendix-a-misconceptions.md", "## 磁量子数不是朝向", "## 磁量子数不是轨道朝向"),
+    ReviewPin("appendix-b-notation-units.md", "换算成国际单位制时用下表", "换算成常用单位时用下表"),
+    ReviewPin(
+        "appendix-b-notation-units.md",
+        "没有写出的部分取实验室的默认值。",
+        "实验室只应用写出的键",
+    ),
+    ReviewPin(
+        "appendix-b-notation-units.md",
+        "| point_cloud、isosurface、slice、streamlines |",
+        "本征态只有复基 m≠0 有 streamlines",
+    ),
+)
+
+
+def test_physics_review_corrections_stay_fixed() -> None:
+    problems: list[str] = []
+    for pin in PHYSICS_REVIEW_PINS:
+        assert pin.page in CHAPTERS, pin.page
+        # A wrong fragment inside its own correction could never be absent.
+        assert pin.wrong and pin.wrong not in pin.right, pin
+        text = (TEXTBOOK / pin.page).read_text(encoding="utf-8")
+        if pin.wrong in text:
+            problems.append(f"{pin.page}: the reviewed error is back: {pin.wrong!r}")
+        if pin.right not in text:
+            problems.append(f"{pin.page}: the correction is missing: {pin.right!r}")
+    assert problems == [], "\n".join(problems)
+
+
 def test_quoted_deep_links_are_catalogue_states_in_the_lab_key_order() -> None:
     """Deep links quoted as inline code (chapter 0, appendix B) must open a
     precomputed state too, and appendix B must spell the lab's key order."""

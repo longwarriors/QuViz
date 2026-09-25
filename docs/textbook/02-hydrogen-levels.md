@@ -106,8 +106,8 @@ $E_1$ 到 $E_2$ 相差 $0.375$ Ha，$E_3$ 到 $E_4$ 只差约 $0.0243$ Ha。
 
 ## 总公式 {#general-formula}
 
-把径向解与球谐函数乘在一起，并要求 $\int\lvert\psi\rvert^2d^3r=1$，得到类氢波函数的总公式
-[@griffiths2018qm, eq. (4.89), p. 151]：
+把径向解与球谐函数乘在一起，并要求 $\int\lvert\psi\rvert^2d^3r=1$，得到类氢波函数的总公式，即把 Griffiths
+氢原子波函数中的 Bohr 半径 $a$ 换成 $a_\mu/Z$ 的结果 [@griffiths2018qm, eq. (4.89), p. 151]：
 
 $$
 \boxed{
@@ -124,8 +124,9 @@ $$
 其中 $\sigma=Zr/a_\mu$，$\rho=2\sigma/n=2Zr/(na_\mu)$。逐个因子来读：
 
 - **归一化常数** $\left(\frac{2Z}{na_\mu}\right)^{3/2}\sqrt{\frac{(n-\ell-1)!}{2n(n+\ell)!}}$：球谐函数已经在球面上归一化，
-  这个常数保证 $\int_0^\infty\lvert R_{n\ell}\rvert^2r^2\,dr=1$。它也让 $\psi$ 带上长度的 $-3/2$ 次方量纲，
-  所以 $\lvert\psi\rvert^2$ 是“每单位体积”的量，与第 1 章的概率密度一致；
+  这个常数保证 $\int_0^\infty\lvert R_{n\ell}\rvert^2r^2\,dr=1$。式中 $r$ 以 $a_0$ 计、$a_\mu=m_e/\mu$ 是无量纲的质量比，
+  所以这个常数的单位是 $a_0^{-3/2}$（写回国际单位制时，$a_\mu$ 要换成约化 Bohr 半径 $a_\mu a_0$），$\psi$ 因此带上
+  长度的 $-3/2$ 次方量纲，$\lvert\psi\rvert^2$ 是“每单位体积”的量，与第 1 章的概率密度一致；
 - **指数衰减** $e^{-\rho/2}=e^{-Zr/(na_\mu)}$：远离原子核时波函数指数衰减，衰减长度 $na_\mu/Z$ 随 $n$ 增大，
   所以激发态比基态更弥散；
 - **幂次** $\rho^\ell$：原子核附近 $R_{n\ell}\propto r^\ell$，$\ell\ge1$ 的态在原子核处为零（第 3 章）；

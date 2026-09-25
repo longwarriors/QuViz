@@ -58,7 +58,7 @@ $$
 \nabla\cdot\mathbf j=0,
 $$
 
-**并不要求 $\mathbf j=0$。** 一盆水绕着盆心匀速旋转，每一处的水量都不变，水却一直在流：定态允许的正是这种没有源和汇的环流。
+**并不要求 $\mathbf j=0$。** 一盆水绕着盆心稳定地打转，每一处的水量都不变，水却一直在流：定态允许的正是这种没有源和汇的环流。
 
 ## 实波函数没有流 {#real-states}
 
@@ -79,7 +79,8 @@ $$
 ## 复本征态的环流 {#complex-states}
 
 复基本征态可以写成 $\psi_{n\ell m}=R_{n\ell}(r)\,\Theta_{\ell m}(\theta)\,e^{im\phi}$，其中 $R_{n\ell}$ 与 $\Theta_{\ell m}$ 都是实函数。
-在球坐标中，梯度的 $r$、$\theta$ 分量只作用在实因子上，给出实数；只有 $\phi$ 分量碰到 $e^{im\phi}$：
+在球坐标中，梯度的 $r$、$\theta$ 分量只作用在实因子 $R_{n\ell}$、$\Theta_{\ell m}$ 上，乘上 $\psi^*$ 后是实数
+（例如 $\psi^*\partial_r\psi=R_{n\ell}R_{n\ell}'\Theta_{\ell m}^2$），对 $\mathbf j$ 没有贡献；只有 $\phi$ 分量碰到 $e^{im\phi}$：
 
 $$
 \frac{1}{r\sin\theta}\frac{\partial\psi}{\partial\phi}=\frac{im}{r\sin\theta}\,\psi .
@@ -96,7 +97,8 @@ $$
 沿逆时针方向增加，概率也沿逆时针方向流。
 
 $m$ 与 $-m$ 两个态的密度完全相同：$\lvert e^{im\phi}\rvert^2=1$，而且 $\lvert\Theta_{\ell,-m}\rvert=\lvert\Theta_{\ell m}\rvert$。它们的环流方向却相反。
-只看密度（电子云中点的疏密、等密度面的形状、密度切片）无法区分二者，只有相位颜色和概率流能区分。
+只看密度（电子云中点的疏密、等密度面的形状、密度切片）无法区分二者，只有相位颜色和概率流的方向能区分；
+实验室的流线不画箭头，流线图本身也区分不了（图 8.2）。
 
 环流还带着角动量。对任何态都有 $\langle\mathbf L\rangle=\mu\int\mathbf r\times\mathbf j\,dV$。对上面的 $\mathbf j$，
 $(\mathbf r\times\mathbf j)_z=r\sin\theta\,j_\phi=\hbar m\rho/\mu$，于是
@@ -157,13 +159,14 @@ $$
 
 !!! warning "误区：定态的电子是静止的，没有流"
 
-    「定态」只说明密度 $\rho$ 不随时间变化。复基 $m\ne0$ 的定态有一刻不停的环流（图 8.1）；连续性方程只要求 $\nabla\cdot\mathbf j=0$。
+    「定态」说明一切不显含时间的可观测量的统计都不随时间变化：密度 $\rho$ 不变，概率流 $\mathbf j$ 也不变，
+    但并不要求 $\mathbf j=0$。复基 $m\ne0$ 的定态有一刻不停的环流（图 8.1）；连续性方程只要求 $\nabla\cdot\mathbf j=0$。
     即使在 $\mathbf j=0$ 的实轨道里，电子也不是静止的：$\mathbf j=0$ 只说明概率没有净的输运，而动量平方的平均值
     $\langle p^2\rangle=\hbar^2\int\lvert\nabla\psi\rvert^2\,dV$ 对任何可归一化的波函数都大于零。
 
 !!! warning "误区：流线就是电子的轨道"
 
-    流线是概率流 $\mathbf j/\rho$ 的积分曲线，描述概率的输运，而不是电子走过的路径。电子在两次测量之间没有确定的路径；
+    流线是速度场 $\mathbf v=\mathbf j/\rho$ 的积分曲线，描述概率的输运，而不是电子走过的路径。电子在两次测量之间没有确定的路径；
     把流线读作轨迹，需要明确采用 Bohm 解释。流线也不是「轨道」（orbital）：轨道指的是波函数本身。
 
 !!! warning "误区：密度相同的两个态无法区分"
@@ -198,7 +201,7 @@ $$
     T=\frac{2\pi}{0.5}=4\pi\approx12.57\,\hbar/E_h,
     $$
 
-    约 0.30 fs。这条圆上的线速率是 $m/s=1$ a.u.。
+    约 0.30 fs。这条圆上的线速率是 $\hbar m/(\mu s)=2/2=1$ a.u.。
 
 ??? question "思考题 8.4：密度不随时间变化，概率流却不为零，这与连续性方程矛盾吗？"
 
