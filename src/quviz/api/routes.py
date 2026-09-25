@@ -681,7 +681,7 @@ def _superposition_default_representation(terms: str) -> Literal["isosurface", "
     is therefore published only when both bases build -- the safe intersection,
     like ``streamline_seed_count_max``. Catalogue terms are fixed, so the
     answer is cached per process; the first catalogue request pays a few
-    seconds for it, most of it one refused 2s + 2p_z build.
+    seconds (one refused 2s + 2p_z build).
 
     Only ``t = 0`` is probed. Today's presets are either stationary or free of
     excited-s components, and only an excited-s component triggers the
