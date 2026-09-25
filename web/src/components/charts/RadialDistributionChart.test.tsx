@@ -112,3 +112,170 @@ describe('RadialDistributionChart', () => {
     }
   })
 })
+
+/**
+ * A hydrogen profile as Part A publishes it: 256 radii on r = r_max s² (s
+ * uniform), P(r) = r²|R_nl|², and the analytic <r> and most probable radius.
+ * The r_max values are radial_profile()'s own (99.9 % of the mass).
+ */
+function hydrogenProfile(
+  rMax: number,
+  density: (r: number) => number,
+  expectation: number,
+  mostProbable: number,
+  nodes: number[],
+): RadialProfileView {
+  const r = Array.from({ length: 256 }, (_, index) => rMax * (index / 255) ** 2)
+  return {
+    r_bohr: r,
+    radial_density: r.map(density),
+    nodes_bohr: nodes,
+    expectation_r_bohr: expectation,
+    most_probable_r_bohr: mostProbable,
+  }
+}
+
+/** 2p: P = r⁴e^{−r}/24, <r> = 5 and r_mp = 4 bohr -- 17 px apart on this chart. */
+const P2 = hydrogenProfile(15.533857, (r) => (r ** 4 * Math.exp(-r)) / 24, 5, 4, [])
+/** 3s: P = (4/19683) r²(27 − 18r + 2r²)² e^{−2r/3}, <r> = 13.5 and r_mp = 13.074 bohr -- 4 px apart. */
+const S3 = hydrogenProfile(
+  32.21132,
+  (r) => (4 / 19683) * r * r * (27 - 18 * r + 2 * r * r) ** 2 * Math.exp((-2 * r) / 3),
+  13.5,
+  13.0740328,
+  [1.9019237886466842, 7.098076211353316],
+)
+
+/** 4s: <r> = 24 lies LEFT of r_mp = 24.618 bohr, the other way round from 2p and 3s. */
+const S4 = hydrogenProfile(
+  52.28826,
+  (r) => r * r * (0.25 * (1 - 0.75 * r + (r * r) / 8 - r ** 3 / 192) * Math.exp(-r / 4)) ** 2,
+  24,
+  24.618092,
+  [1.8716444550481757, 6.610814578664558, 15.517540966287267],
+)
+
+interface Box {
+  left: number
+  right: number
+  top: number
+  bottom: number
+}
+
+/**
+ * The rendered size of a marker label, in viewBox units, measured with
+ * getBBox() in the built lab (Chromium, the chart's 10 px label font): "r_mp"
+ * is 23.5 wide and "⟨r⟩" 10.9, both 12.7 tall with the box top 9.5 above the
+ * baseline. Rounded up here, and deliberately not read from the component, so
+ * the component's own layout box has to cover what is actually drawn.
+ */
+const MEASURED_LABEL = { width: 24, ascent: 9.5, descent: 3.2 } as const
+
+/**
+ * The box a marker label occupies, from the attributes the chart emitted: its
+ * anchor point and its `text-anchor` (absent means SVG's default, start).
+ */
+function labelBox(markup: string, marker: 'expectation' | 'peak'): Box {
+  const document = new DOMParser().parseFromString(markup, 'text/html')
+  const text = document.querySelector(`[data-marker="${marker}"] text`)
+  if (text === null) throw new Error(`no ${marker} label`)
+  const x = Number(text.getAttribute('x'))
+  const y = Number(text.getAttribute('y'))
+  const anchor = text.getAttribute('text-anchor') ?? 'start'
+  expect(['start', 'end']).toContain(anchor)
+  const left = anchor === 'end' ? x - MEASURED_LABEL.width : x
+  return {
+    left,
+    right: left + MEASURED_LABEL.width,
+    top: y - MEASURED_LABEL.ascent,
+    bottom: y + MEASURED_LABEL.descent,
+  }
+}
+
+const overlap = (a: Box, b: Box): boolean =>
+  Math.min(a.right, b.right) > Math.max(a.left, b.left) && Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top)
+
+describe('RadialDistributionChart marker labels', () => {
+  it.each([
+    ['2p', P2],
+    ['3s', S3],
+    ['4s', S4],
+  ])('never lets the <r> and r_mp labels of %s overlap', (_state, profile) => {
+    const markup = render(profile)
+    const expectation = labelBox(markup, 'expectation')
+    const peak = labelBox(markup, 'peak')
+    expect(overlap(expectation, peak), JSON.stringify({ expectation, peak })).toBe(false)
+    // Both stay inside the plot's horizontal span, clear of the y-axis ticks.
+    for (const box of [expectation, peak]) {
+      expect(box.left).toBeGreaterThanOrEqual(44)
+      expect(box.right).toBeLessThanOrEqual(320 - 12)
+    }
+  })
+
+  it.each([
+    ['3s, r_mp left of <r>', S3, 'peak'],
+    ['4s, <r> left of r_mp', S4, 'expectation'],
+  ] as const)('puts each label on the outer side of its own mark (%s)', (_case, profile, leftMarker) => {
+    const markup = render(profile)
+    const document = new DOMParser().parseFromString(markup, 'text/html')
+    const ruleX = Number(document.querySelector('.qv-chart-expectation')?.getAttribute('x1'))
+    const peakX = Number(document.querySelector('.qv-chart-marker')?.getAttribute('cx'))
+    const expectation = labelBox(markup, 'expectation')
+    const peak = labelBox(markup, 'peak')
+    if (leftMarker === 'peak') {
+      expect(peak.right).toBeLessThan(peakX)
+      expect(expectation.left).toBeGreaterThan(ruleX)
+    } else {
+      expect(expectation.right).toBeLessThan(ruleX)
+      expect(peak.left).toBeGreaterThan(peakX)
+    }
+  })
+
+  it('leaves labels where they were when the two radii are far apart', () => {
+    const markup = render({ ...PROFILE, expectation_r_bohr: 12, most_probable_r_bohr: 2 })
+    const document = new DOMParser().parseFromString(markup, 'text/html')
+    for (const marker of ['expectation', 'peak']) {
+      expect(document.querySelector(`[data-marker="${marker}"] text`)?.getAttribute('text-anchor') ?? 'start').toBe(
+        'start',
+      )
+    }
+    expect(overlap(labelBox(markup, 'expectation'), labelBox(markup, 'peak'))).toBe(false)
+  })
+
+  it('puts a lone label beside its own mark when the other radius cannot be placed', () => {
+    const noExpectation = new DOMParser().parseFromString(
+      render({ ...P2, expectation_r_bohr: Number.NaN }),
+      'text/html',
+    )
+    const peakText = noExpectation.querySelector('[data-marker="peak"] text')
+    expect(Number(peakText?.getAttribute('x'))).toBeCloseTo(
+      Number(noExpectation.querySelector('.qv-chart-marker')?.getAttribute('cx')) + 7,
+      9,
+    )
+    const noPeak = new DOMParser().parseFromString(render({ ...P2, most_probable_r_bohr: -1 }), 'text/html')
+    const ruleText = noPeak.querySelector('[data-marker="expectation"] text')
+    expect(ruleText?.getAttribute('text-anchor')).toBe('start')
+    expect(Number(ruleText?.getAttribute('x'))).toBeCloseTo(
+      Number(noPeak.querySelector('.qv-chart-expectation')?.getAttribute('x1')) + 4,
+      9,
+    )
+  })
+
+  it('stacks the labels instead when the left one has no room before the axis', () => {
+    // The same r²e^{−r} drawn out to 60 bohr: its peak (r_mp = 2) and <r> = 3
+    // sit within 13 px of the y axis, so flipping r_mp's label to its left
+    // would run it into the tick labels; <r> drops below r_mp instead.
+    const wide = Array.from({ length: 121 }, (_, index) => index * 0.5)
+    const markup = render({
+      ...PROFILE,
+      r_bohr: wide,
+      radial_density: wide.map((r) => r * r * Math.exp(-r)),
+      nodes_bohr: [],
+    })
+    const expectation = labelBox(markup, 'expectation')
+    const peak = labelBox(markup, 'peak')
+    expect(overlap(expectation, peak)).toBe(false)
+    expect(expectation.top).toBeGreaterThanOrEqual(peak.bottom)
+    expect(Math.min(expectation.left, peak.left)).toBeGreaterThanOrEqual(44)
+  })
+})
