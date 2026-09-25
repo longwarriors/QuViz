@@ -604,3 +604,35 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
   .qv-pill-tag { padding: 2px 8px; font-size: 11px; }
   .qv-header-actions .qv-icon-button { min-width: 36px; height: 36px; padding: 0 8px; }
 }
+
+/* ---- Charts (SVG) ---- */
+.qv-charts { display: grid; gap: 10px; }
+.qv-chart { display: grid; gap: 6px; padding: 12px; border-radius: 16px; background: var(--qv-card); }
+.qv-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.qv-chart-title { font-size: 13px; font-weight: 500; }
+.qv-chart-grid line { stroke: rgba(255,255,255,.08); stroke-width: 1; }
+.qv-chart-axis line { stroke: rgba(255,255,255,.25); stroke-width: 1; }
+.qv-chart-axis text { fill: var(--qv-text-3); font-size: 10px; }
+.qv-chart-axis-title { fill: var(--qv-text-3); font-size: 10px; font-style: italic; }
+.qv-chart-line { fill: none; stroke: var(--qv-accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.qv-chart-area { fill: rgba(138,180,248,.14); stroke: none; }
+.qv-chart-node { stroke: var(--qv-text-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.qv-chart-expectation { stroke: var(--qv-text-2); stroke-width: 1; }
+.qv-chart-marker { fill: var(--qv-accent); stroke: var(--qv-card); stroke-width: 2; }
+.qv-chart-label { fill: var(--qv-text-2); font-size: 10px; }
+.qv-chart-crosshair { stroke: rgba(255,255,255,.4); stroke-width: 1; }
+.qv-chart-hover-dot { fill: var(--qv-card); stroke: var(--qv-text); stroke-width: 2; }
+.qv-chart-readout { fill: var(--qv-text); font-size: 11px; }
+.qv-chart-hit { fill: transparent; cursor: crosshair; }
+.qv-level { stroke: rgba(255,255,255,.35); stroke-width: 2; stroke-linecap: round; }
+.qv-level[data-current="true"] { stroke: var(--qv-accent); stroke-width: 3; }
+.qv-level-ionization { stroke: rgba(255,255,255,.25); stroke-width: 1; stroke-dasharray: 4 4; }
+.qv-bar { fill: var(--qv-accent); }
+.qv-bar-track { fill: rgba(255,255,255,.06); }
+.qv-chart-note { color: var(--qv-text-2); font-size: 12px; line-height: 1.5; }
+.qv-chart-empty { padding: 12px 4px; color: var(--qv-text-3); font-size: 12px; }
+.qv-chart-table summary { color: var(--qv-text-3); font-size: 12px; cursor: pointer; }
+.qv-chart-table table { width: 100%; margin-top: 6px; border-collapse: collapse; font-size: 12px; }
+.qv-chart-table th,
+.qv-chart-table td { padding: 4px 6px; border-top: 1px solid rgba(255,255,255,.08); text-align: right; }
+.qv-chart-table th { color: var(--qv-text-2); font-weight: 400; text-align: left; }
