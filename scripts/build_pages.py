@@ -16,8 +16,18 @@ so tests/test_build_pages.py imports it directly and pins every decision it make
 
 from __future__ import annotations
 
+import argparse
+import contextlib
+import http.server
 import json
+import os
 import re
+import shutil
+import subprocess
+import sys
+import time
+from collections.abc import Callable, Sequence
+from http import HTTPStatus
 from pathlib import Path
 from typing import NamedTuple
 from urllib.parse import unquote, urlsplit
@@ -221,3 +231,377 @@ def check_site_limit(total: int) -> None:
             f"the site is {_human(total)}, above GitHub Pages' 1 GB limit for a published "
             "site; shrink StaticCatalogSpec before publishing"
         )
+
+
+# --- orchestration -----------------------------------------------------------------
+
+BUILD_INFO_FORMAT = "quviz-pages-build/1"
+MANIFEST_FORMAT = "quviz-static/1"
+
+
+class Layout(NamedTuple):
+    root: Path
+    build: Path
+    pages: Path
+    data: Path
+    web_out: Path
+    mkdocs_config: Path
+    build_info: Path
+
+
+class Tools(NamedTuple):
+    uv: str
+    npm: str
+
+
+class BuildOptions(NamedTuple):
+    site_url: str
+    workers: int
+    skip_data: bool
+
+
+Runner = Callable[[str, Sequence[str], Path], None]
+
+
+def layout_for(root: Path) -> Layout:
+    build = root / "build"
+    pages = build / "pages"
+    return Layout(
+        root=root,
+        build=build,
+        pages=pages,
+        data=pages / "data",
+        web_out=build / "pages-web",
+        mkdocs_config=build / "mkdocs.pages.yml",
+        build_info=build / "pages-build.json",
+    )
+
+
+# `quviz export-static render --workers` accepts 1..32 (Part A's Typer range).
+MAX_WORKERS = 32
+
+
+def default_workers() -> int:
+    """Part A's own default: the CPU count, at most 8 (about 0.3-0.4 GB per worker)."""
+
+    return max(1, min(8, os.cpu_count() or 1))
+
+
+def git_origin_url(root: Path) -> str:
+    completed = subprocess.run(
+        ["git", "remote", "get-url", "origin"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise BuildError(
+            "this checkout has no git remote 'origin' to derive the Pages URL from; pass --site-url"
+        )
+    return completed.stdout.strip()
+
+
+def find_tools(root: Path) -> Tools:
+    uv = shutil.which("uv")
+    npm = shutil.which("npm")
+    if uv is None or npm is None:
+        missing = [name for name, found in (("uv", uv), ("npm", npm)) if found is None]
+        raise BuildError(
+            f"{' and '.join(missing)} not found on PATH; install the toolchain described in "
+            "docs/getting-started/installation.md"
+        )
+    if not (root / "web" / "node_modules").is_dir():
+        raise BuildError(
+            "web/node_modules is missing; run `npm --prefix web ci --no-audit --no-fund` first"
+        )
+    return Tools(uv=uv, npm=npm)
+
+
+def run_step(label: str, argv: Sequence[str], cwd: Path) -> None:
+    """Run one build step in the foreground; its own output streams to this console."""
+
+    print(f"==> {label}\n    $ {' '.join(argv)}\n      (in {cwd})", flush=True)
+    started = time.monotonic()
+    completed = subprocess.run(list(argv), cwd=cwd, check=False)
+    elapsed = time.monotonic() - started
+    if completed.returncode != 0:
+        raise BuildError(
+            f"step '{label}' failed with exit code {completed.returncode} after {elapsed:.1f} s"
+        )
+    print(f"    ok in {elapsed:.1f} s", flush=True)
+
+
+def _remove(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    elif path.exists() or path.is_symlink():
+        path.unlink()
+
+
+def prepare_output(layout: Layout, skip_data: bool) -> None:
+    """Start from an empty site; with ``skip_data`` keep only the previous ``data/``."""
+
+    manifest = layout.data / "manifest.json"
+    if skip_data:
+        if not manifest.is_file():
+            raise BuildError(
+                f"--skip-data reuses the data of a previous full build, but {manifest} does "
+                "not exist; run once without --skip-data"
+            )
+        for child in layout.pages.iterdir():
+            if child.name != "data":
+                _remove(child)
+    else:
+        _remove(layout.pages)
+        layout.data.mkdir(parents=True)
+    _remove(layout.web_out)
+    # pages-build.json describes a finished site: a build that fails from here on must
+    # not leave the previous record standing next to a half-built build/pages/.
+    _remove(layout.build_info)
+    layout.build.mkdir(parents=True, exist_ok=True)
+
+
+def read_manifest_version(data_dir: Path) -> str:
+    path = data_dir / "manifest.json"
+    if not path.is_file():
+        raise BuildError(f"the exporter wrote no {path}")
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise BuildError(f"{path} is not JSON: {error}") from error
+    if not isinstance(manifest, dict) or manifest.get("format") != MANIFEST_FORMAT:
+        raise BuildError(f"{path} is not a {MANIFEST_FORMAT} manifest")
+    version = manifest.get("version")
+    if not isinstance(version, str) or not version:
+        raise BuildError(f"{path} carries no version")
+    return version
+
+
+def copy_web_build(web_out: Path, pages: Path) -> None:
+    """Merge the staged lab build into the site root, refusing collisions and sourcemaps."""
+
+    if not (web_out / "index.html").is_file():
+        raise BuildError(f"the lab build wrote no {web_out / 'index.html'}")
+    maps = sorted(path.relative_to(web_out).as_posix() for path in web_out.rglob("*.map"))
+    if maps:
+        raise BuildError(f"the Pages lab build must not publish a sourcemap; found {maps}")
+    for child in sorted(web_out.iterdir()):
+        target = pages / child.name
+        if target.exists():
+            raise BuildError(
+                f"the lab build contains {child.name!r}, which would overwrite the site's own "
+                f"{child.name!r}"
+            )
+        if child.is_dir():
+            shutil.copytree(child, target)
+        else:
+            shutil.copy2(child, target)
+
+
+def build_site(
+    layout: Layout, options: BuildOptions, tools: Tools, runner: Runner = run_step
+) -> SizeReport:
+    """Build build/pages/ and return its size report; raises BuildError on any failure."""
+
+    site_url = normalize_site_url(options.site_url)
+    prepare_output(layout, options.skip_data)
+    uv_run = [tools.uv, "run", "--locked", "--no-sync"]
+    total = 2 if options.skip_data else 5
+    numbers = iter(range(1, total + 1))
+
+    def step(label: str, argv: list[str], cwd: Path) -> None:
+        runner(f"[{next(numbers)}/{total}] {label}", argv, cwd)
+
+    if not options.skip_data:
+        data = str(layout.data)
+        step(
+            "plan the static catalog",
+            [*uv_run, "quviz", "export-static", "plan", "--out", data],
+            layout.root,
+        )
+        # Run from web/: `npm --prefix web exec` keeps the caller's cwd, and vite-node
+        # resolves tools/static-requests.ts against the cwd.
+        step(
+            "enumerate the lab's requests",
+            [tools.npm, "exec", "--no", "--", "vite-node", "tools/static-requests.ts", "--", data],
+            layout.root / "web",
+        )
+        step(
+            "render every precomputed response",
+            [
+                *uv_run, "quviz", "export-static", "render", "--data", data,
+                "--requests", str(layout.data / "requests.json"),
+                "--workers", str(options.workers),
+            ],
+            layout.root,
+        )  # fmt: skip
+    data_version = read_manifest_version(layout.data)
+    step(
+        "build the lab in pages mode",
+        [
+            tools.npm, "--prefix", "web", "run", "build:pages", "--",
+            "--outDir", str(layout.web_out), "--emptyOutDir",
+        ],
+        layout.root,
+    )  # fmt: skip
+    layout.mkdocs_config.write_text(
+        render_pages_mkdocs_config(layout.root, site_url), encoding="utf-8"
+    )
+    step(
+        "build the textbook",
+        [
+            *uv_run, "--group", "docs", "mkdocs", "build", "--strict",
+            "-f", str(layout.mkdocs_config), "-d", str(layout.pages / "learn"),
+        ],
+        layout.root,
+    )  # fmt: skip
+    copy_web_build(layout.web_out, layout.pages)
+    # Jekyll is irrelevant for an Actions deployment, and upload-pages-artifact leaves
+    # hidden files out by default; the marker keeps a branch-based deployment honest too.
+    (layout.pages / ".nojekyll").write_bytes(b"")
+    report = size_report(layout.pages)
+    print(format_size_report(report), flush=True)
+    check_site_limit(report.total)
+    layout.build_info.write_text(
+        json.dumps(
+            {
+                "format": BUILD_INFO_FORMAT,
+                "site_url": site_url,
+                "base_path": base_path_of(site_url),
+                "data_version": data_version,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return report
+
+
+# --- the sub-path preview ------------------------------------------------------------
+
+
+def make_server(site_root: Path, prefix: str, port: int) -> http.server.ThreadingHTTPServer:
+    """A 127.0.0.1 server that answers exactly as map_request_path decides."""
+
+    class PagesPreviewHandler(http.server.BaseHTTPRequestHandler):
+        server_version = "QuVizPagesPreview/1"
+
+        def do_GET(self) -> None:
+            self._answer(send_body=True)
+
+        def do_HEAD(self) -> None:
+            self._answer(send_body=False)
+
+        def _answer(self, *, send_body: bool) -> None:
+            route = map_request_path(self.path, prefix, site_root)
+            if route.status in (HTTPStatus.MOVED_PERMANENTLY, HTTPStatus.FOUND):
+                self.send_response(route.status)
+                self.send_header("Location", route.target)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            if route.status == HTTPStatus.OK:
+                path = Path(route.target)
+                body = path.read_bytes()
+                content_type = content_type_for(path)
+            else:
+                body = f"404: {self.path} is not part of the site served under {prefix}\n".encode()
+                content_type = "text/plain; charset=utf-8"
+            self.send_response(route.status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            if send_body:
+                self.wfile.write(body)
+
+        def log_request(self, code: int | str = "-", size: int | str = "-") -> None:
+            if isinstance(code, int) and code >= HTTPStatus.BAD_REQUEST:
+                super().log_request(code, size)
+
+    return http.server.ThreadingHTTPServer(("127.0.0.1", port), PagesPreviewHandler)
+
+
+def serve(site_root: Path, prefix: str, port: int) -> None:
+    server = make_server(site_root, prefix, port)
+    print(
+        f"build_pages: previewing http://127.0.0.1:{port}{prefix} "
+        "(only this sub-path is served; Ctrl+C stops)",
+        flush=True,
+    )
+    try:
+        with contextlib.suppress(KeyboardInterrupt):
+            server.serve_forever()
+    finally:
+        server.server_close()
+
+
+# --- command line --------------------------------------------------------------------
+
+
+def _worker_count(text: str) -> int:
+    value = int(text)
+    if not 1 <= value <= MAX_WORKERS:
+        raise argparse.ArgumentTypeError(f"{text} is not a worker count in 1..{MAX_WORKERS}")
+    return value
+
+
+def _port(text: str) -> int:
+    value = int(text)
+    if not 1 <= value <= 65535:
+        raise argparse.ArgumentTypeError(f"{text} is not a TCP port")
+    return value
+
+
+def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="build_pages.py",
+        description="Assemble the GitHub Pages site in build/pages/ and optionally preview it.",
+    )
+    parser.add_argument(
+        "--site-url", help="public site URL (default: derived from `git remote get-url origin`)"
+    )
+    parser.add_argument(
+        "--workers",
+        type=_worker_count,
+        default=default_workers(),
+        help=f"exporter processes, 1-{MAX_WORKERS} (default: CPU count, at most 8)",
+    )
+    parser.add_argument(
+        "--skip-data",
+        action="store_true",
+        help="reuse build/pages/data from the previous full build; rebuild only lab and textbook",
+    )
+    parser.add_argument(
+        "--serve",
+        type=_port,
+        metavar="PORT",
+        help="after building, serve build/pages under the site's sub-path on 127.0.0.1:PORT",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    try:
+        tools = find_tools(ROOT)
+        site_url = (
+            normalize_site_url(args.site_url)
+            if args.site_url
+            else derive_site_url(git_origin_url(ROOT))
+        )
+        layout = layout_for(ROOT)
+        build_site(layout, BuildOptions(site_url, args.workers, args.skip_data), tools)
+        print(f"build_pages: site ready in {layout.pages} (site_url {site_url})", flush=True)
+        if args.serve is not None:
+            serve(layout.pages, base_path_of(site_url), args.serve)
+    except BuildError as error:
+        print(f"build_pages: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -62,6 +62,31 @@ Windows PowerShell：
 & .\scripts\check.ps1
 ```
 
+## 静态教材站（GitHub Pages）
+
+教材站由 `scripts/build_pages.py` 在本地组装到 `build/pages/`（`build/` 已被 `.gitignore` 忽略，预计算数据不入库）：
+
+```bash
+uv run --locked --no-sync python scripts/build_pages.py                            # 完整构建：预计算数据 + 实验室 + 教材
+uv run --locked --no-sync python scripts/build_pages.py --skip-data                # 复用上次的 build/pages/data，只重建实验室与教材
+uv run --locked --no-sync python scripts/build_pages.py --skip-data --serve 4180   # 重建后按仓库子路径预览
+```
+
+完整构建依次运行：
+
+1. `quviz export-static plan` 写出目录与规格；
+2. `web/tools/static-requests.ts` 由前端真实请求代码枚举 `requests.json`；
+3. `quviz export-static render --workers N` 通过 ASGI 逐字回放每个请求。N 默认与导出器相同，取 CPU 数且最多 8：每个进程峰值约 0.3–0.4 GB 内存。导出器只接受 1–32，超出范围时脚本在任何步骤之前拒绝；
+4. `npm --prefix web run build:pages` 构建实验室，输出到 `build/pages-web/`，不覆盖 `quviz serve` 挂载的 `web/dist`；
+5. 生成 `build/mkdocs.pages.yml` 并 `mkdocs build --strict` 到 `build/pages/learn/`。
+
+最后合并实验室文件、写入 `.nojekyll`，并打印体积报告（总量、各顶层目录、最大 10 个文件）。实验室构建里出现 sourcemap，或整站超过 GitHub Pages 的 1 GB 上限，构建都会失败。只有成功的构建才写出构建记录 `build/pages-build.json`（站点地址、子路径与数据版本）；构建一开始就删掉上一次的记录，所以失败的构建不会留下一份描述旧站点的记录。完整构建的耗时主要花在第 3 步。
+
+`site_url` 默认由 `git remote get-url origin` 推导为 `https://<owner>.github.io/<repo>/`，也可以用 `--site-url` 指定。它只影响教材的 sitemap、canonical 与预览子路径；实验室本身全部使用相对路径。`--serve` 在 `http://127.0.0.1:<端口>/<repo>/` 预览，并且只在这个子路径下应答，与 Pages 一致：`/` 跳转到子路径，子路径之外一律 404。所以任何写死根路径的资源都会在预览里暴露。预览与 Pages 的两处刻意差异如下：
+
+- 预览发送 `Cache-Control: no-cache`，不压缩；
+- Material 的 instant navigation 按 sitemap 重定位链接时只替换协议与主机名、不替换端口，所以在本地端口上退化为整页跳转，在 Pages 上正常。
+
 ## 提交前门禁
 
 `scripts/check.ps1` 按顺序跑完下面九道门禁，任何一道非零退出即整体失败：

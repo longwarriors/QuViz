@@ -116,6 +116,16 @@
 
     单方面修改 wire format 会同时打破两侧——已验证：把 `POINT_CLOUD_STRIDE` 从 5 改成 6，Python 立刻 2 个测试变红；即使有人重新生成黄金字节把 Python 弄绿，TypeScript 仍有 5 个测试变红。
 
+## 静态教材站与发布
+
+- ✅ `scripts/build_pages.py` 自身的决定 — `tests/test_build_pages.py` 钉住以下各项：
+    - `site_url` 由 ssh/https 形式的 GitHub remote 推导；`<owner>.github.io` 用户站点落在根路径；非 GitHub remote 直接拒绝并要求 `--site-url`，而不是猜测。
+    - 生成的 `build/mkdocs.pages.yml` 由 MkDocs 自己的 `load_config` 校验通过。负控：只含 `INHERIT`、`site_url`、`extra` 的最小写法会失败，因为继承来的相对路径改为相对 `build/` 解析（MkDocs 先报 `theme.custom_dir`，`docs_dir` 同理）；`theme.name` 与 `theme.custom_dir` 与 `mkdocs.yml` 的声明互校。
+    - 预览服务器只在仓库子路径下应答：`/` 302 到子路径，子路径外 404，目录补斜杠 301，`..` 与反斜杠拒绝；`.bin` 为 `application/octet-stream`，`.json` 为 `application/json`。
+    - 编排按固定顺序调用导出、枚举、渲染、`build:pages` 与 MkDocs；`--skip-data` 复用上次数据，缺少 `manifest.json` 时在任何步骤之前失败；导出器写出其他格式的 manifest 时停在构建实验室之前。构建记录 `build/pages-build.json` 只在整站通过体积上限后写出，失败的构建（含超限）不留下上一次的记录。
+    - `--workers` 默认取 CPU 数且最多 8，与导出器自己的默认相同；超出导出器接受的 1–32 时在任何步骤之前拒绝。二者都与 `quviz.export.static_site` 的 `default_worker_count()`、`MAXIMUM_WORKERS` 互校。
+    - 实验室构建若会覆盖 `data/`、`learn/` 或带 sourcemap 即失败；整站超过 GitHub Pages 1 GB 上限时构建失败；
+
 ## 文档与引用 { #docs-and-citations }
 
 - ✅ `mkdocs build --strict`；
