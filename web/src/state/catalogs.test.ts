@@ -168,9 +168,8 @@ describe('useCatalogs', () => {
 
     const tree = await mount(createElement(Probe))
     try {
-      await flush()
-      await tree.update(createElement(Probe))
-      expect(tree.container.querySelector('span')?.dataset.count).toBe('2')
+      // No forced re-render: only the hook's store subscription can repaint the probe.
+      await vi.waitFor(() => expect(tree.container.querySelector('span')?.dataset.count).toBe('2'))
     } finally {
       await tree.unmount()
     }
