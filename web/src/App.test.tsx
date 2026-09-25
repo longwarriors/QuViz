@@ -3,7 +3,7 @@ import { act, createElement, useEffect, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
-import type { SceneStatus } from './api/types'
+import type { SceneStatus, SuperpositionPreset } from './api/types'
 import { GUIDE_SEEN_KEY } from './components/GuideDialog'
 import { mount, type MountedTree } from './test/mount'
 
@@ -18,6 +18,7 @@ const embed = vi.hoisted(() => ({ current: false }))
 const webgl = vi.hoisted(() => ({ current: true }))
 const crash = vi.hoisted(() => ({ scene: false, shell: false }))
 const binding = vi.hoisted(() => ({ bound: 0 }))
+const catalogue = vi.hoisted(() => ({ superpositions: [] as SuperpositionPreset[] }))
 
 vi.mock('./components/OrbitalCanvas', () => ({
   OrbitalCanvas: ({ onStatus }: { onStatus: (status: SceneStatus) => void }) => {
@@ -44,11 +45,25 @@ vi.mock('./components/ControlPanel', async () => {
 vi.mock('./components/Inspector', async () => {
   const { createElement: element } = await import('react')
   return {
-    Inspector: ({ open, onClose }: { open?: boolean; onClose?: () => void }) => {
+    Inspector: ({
+      open,
+      onClose,
+      mixtures,
+    }: {
+      open?: boolean
+      onClose?: () => void
+      mixtures?: ReadonlyArray<{ id: string }>
+    }) => {
       if (crash.shell) throw new Error('inspector exploded')
       return element(
         'aside',
-        { 'data-mock-inspector': '', 'data-chrome': '', 'data-open': String(open), id: 'science-inspector' },
+        {
+          'data-mock-inspector': '',
+          'data-chrome': '',
+          'data-open': String(open),
+          'data-mixtures': (mixtures ?? []).map((mixture) => mixture.id).join(','),
+          id: 'science-inspector',
+        },
         element('button', { type: 'button', 'data-mock-close-inspector': '', onClick: onClose }, 'close'),
       )
     },
@@ -64,7 +79,12 @@ vi.mock('./components/WebGLGate', async () => {
 })
 
 vi.mock('./state/catalogs', () => ({
-  useCatalogs: () => ({ orbitals: [], superpositions: [], orbitalStatus: 'ready', superpositionStatus: 'ready' }),
+  useCatalogs: () => ({
+    orbitals: [],
+    superpositions: catalogue.superpositions,
+    orbitalStatus: 'ready',
+    superpositionStatus: 'ready',
+  }),
   ensureCatalogsLoaded: () => undefined,
 }))
 
@@ -136,6 +156,7 @@ beforeEach(() => {
   crash.scene = false
   crash.shell = false
   binding.bound = 0
+  catalogue.superpositions = []
   localStorage.setItem(GUIDE_SEEN_KEY, 'seen')
 })
 
@@ -169,6 +190,29 @@ describe('App: canvas and chrome', () => {
       expect(q(tree, '.viewport-copy')).toBeNull()
       expect(tree.container.textContent).not.toContain('色彩表示 arg ψ，不表示电荷')
       expect(tree.container.textContent).not.toContain('实时量子场')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('hands the superposition catalogue to the detail panel, which titles presets by it', async () => {
+    const preset = (id: string, terms: string): SuperpositionPreset => ({
+      id,
+      label: id,
+      terms,
+      period_au: 0,
+      note: '',
+      slice_resolution_floor: 65,
+      streamline_seed_count_max: 40,
+      default_representation: 'isosurface',
+    })
+    catalogue.superpositions = [
+      preset('1s-2pz', '1,0,0,0.7071067811865476;2,1,0,0.7071067811865476'),
+      preset('2s-2pz', '2,0,0,0.7071067811865476;2,1,0,0.7071067811865476'),
+    ]
+    const tree = await shell()
+    try {
+      expect(q(tree, '[data-mock-inspector]')?.getAttribute('data-mixtures')).toBe('1s-2pz,2s-2pz')
     } finally {
       await tree.unmount()
     }

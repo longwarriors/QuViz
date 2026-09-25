@@ -45,7 +45,7 @@ function LabShell() {
   // One catalogue load per page, even for an embed that renders no controls:
   // the time pill needs the selected mixture's period and the planner its floors.
   // (The URL hash is bound once, before the first render, by main.tsx -- B11.)
-  useCatalogs()
+  const { superpositions } = useCatalogs()
 
   useEffect(() => {
     // A permanent rail must not silently become a canvas-covering overlay when
@@ -142,7 +142,9 @@ function LabShell() {
             <span>科学详情</span>
           </button>
         )}
-        {embed ? null : <Inspector status={status} open={detailOpen} onClose={closeDetail} />}
+        {embed ? null : (
+          <Inspector status={status} open={detailOpen} onClose={closeDetail} mixtures={superpositions} />
+        )}
         <TimePill status={status} />
         <Legend status={status} bloom={bloom} defaultExpanded={!embed && !mobile} />
         {embed ? <EmbedBar /> : null}

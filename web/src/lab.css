@@ -656,6 +656,8 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
 .qv-detail-title { flex: 1; min-width: 0; }
 .qv-detail-title h2 { font-size: 20px; font-weight: 500; overflow-wrap: anywhere; }
 .qv-detail-sub { margin-top: 2px; color: var(--qv-text-2); font-size: 12px; }
+/* The server's ket string under a catalogue superposition's name, kept verbatim. */
+.qv-detail-ket { font-family: ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace; overflow-wrap: anywhere; }
 .energy-pill {
   flex: 0 0 auto;
   margin-top: 2px;

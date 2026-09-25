@@ -1,17 +1,20 @@
 import { AlertTriangle, Box, Database, Gauge, Sigma, X } from 'lucide-react'
 import { type KeyboardEvent, useId, useRef, useState } from 'react'
 
-import type { SceneStatus } from '../api/types'
+import type { SceneStatus, SuperpositionPreset } from '../api/types'
 import { ChartsPanel } from './charts/ChartsPanel'
 import { formatFinite, formatFiniteUnit } from './format'
 import { nextRovingIndex } from './rovingTabs'
 import { observableLabel, representationLabel } from './sceneStatus'
+import { catalogueMixtureFor, mixtureLabel } from './stateIndex'
 
 interface InspectorProps {
   status: SceneStatus
   open?: boolean
   mobileOpen?: boolean
   onClose?: () => void
+  /** The server's superposition catalogue, so a preset is titled by its name, not its ket. */
+  mixtures?: readonly SuperpositionPreset[]
 }
 
 function formatSuperpositionTerms(terms: NonNullable<SceneStatus['superposition']>['terms']): string {
@@ -65,6 +68,7 @@ export function Inspector({
   open = true,
   mobileOpen = false,
   onClose,
+  mixtures = [],
 }: InspectorProps) {
   const [activeTab, setActiveTab] = useState<InspectorTab>('overview')
   const instanceId = useId()
@@ -79,11 +83,21 @@ export function Inspector({
   const observable = metadata?.observable ?? mixture?.observable
   const representation = metadata?.representation ?? mixture?.representation
   const energy = metadata?.energy_hartree ?? mixture?.energy_expectation_hartree
-  const subtitle = state
-    ? `ψ(${state.n}, ${state.l}, ${state.m}) · ${state.basis} basis`
-    : mixture
-      ? `${mixture.terms.length} 项叠加 · ${mixture.basis} basis`
-      : '等待已验证的元数据'
+  // A catalogue superposition is titled by its panel name, with the server's
+  // ket string kept verbatim underneath; a custom one has no name but its ket.
+  const preset = mixture === undefined ? undefined : catalogueMixtureFor(mixture.terms, mixtures)
+  const title = preset === undefined ? label : mixtureLabel(preset)
+  const subtitle = state ? (
+    `ψ(${state.n}, ${state.l}, ${state.m}) · ${state.basis} basis`
+  ) : mixture && preset ? (
+    <>
+      <span className="qv-detail-ket">{mixture.label}</span> · {mixture.basis} basis
+    </>
+  ) : mixture ? (
+    `${mixture.terms.length} 项叠加 · ${mixture.basis} basis`
+  ) : (
+    '等待已验证的元数据'
+  )
 
   const tabId = (tab: InspectorTab): string => `${instanceId}-${tab}-tab`
   const panelId = (tab: InspectorTab): string => `${instanceId}-${tab}-panel`
@@ -113,7 +127,7 @@ export function Inspector({
     >
       <div className="qv-detail-head">
         <div className="qv-detail-title">
-          <h2>{label ?? (status.loading ? '计算中…' : '暂无资产')}</h2>
+          <h2>{title ?? (status.loading ? '计算中…' : '暂无资产')}</h2>
           <p className="qv-detail-sub">{subtitle}</p>
         </div>
         <span className="energy-pill">

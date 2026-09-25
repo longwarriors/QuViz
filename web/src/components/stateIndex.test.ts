@@ -2,16 +2,25 @@ import { readFileSync } from 'node:fs'
 
 import { describe, expect, it } from 'vitest'
 
-import type { OrbitalPreset, SuperpositionPreset } from '../api/types'
-import { buildSearchEntries, MIXTURE_COPY, orbitalName, searchEntries } from './stateIndex'
+import type { OrbitalPreset, SuperpositionMetadata, SuperpositionPreset } from '../api/types'
+import {
+  buildSearchEntries,
+  catalogueMixtureFor,
+  MIXTURE_COPY,
+  mixtureLabel,
+  orbitalName,
+  searchEntries,
+} from './stateIndex'
+
+/** A committed server response under tests/fixtures/visual/ (rebuilt by tests/test_visual_fixtures.py). */
+const visualFixture = (name: string): unknown =>
+  JSON.parse(readFileSync(new URL(`../../../tests/fixtures/visual/${name}`, import.meta.url), 'utf-8'))
 
 describe('MIXTURE_COPY', () => {
   it('names every preset the server catalogue publishes', () => {
     // The committed catalogue fixture is the server's own response bytes
     // (tests/fixtures/visual/, rebuilt by tests/test_visual_fixtures.py).
-    const catalogue = JSON.parse(
-      readFileSync(new URL('../../../tests/fixtures/visual/catalog-superposition.json', import.meta.url), 'utf-8'),
-    ) as { id: string }[]
+    const catalogue = visualFixture('catalog-superposition.json') as { id: string }[]
     for (const { id } of catalogue) {
       expect(MIXTURE_COPY[id]?.label, id).toBeTruthy()
       expect(MIXTURE_COPY[id]?.note, id).toBeTruthy()
@@ -101,5 +110,60 @@ describe('buildSearchEntries / searchEntries', () => {
     expect(searchEntries(entries, '')).toHaveLength(40)
     expect(searchEntries(entries, '', 5)).toHaveLength(5)
     expect(searchEntries(entries, 'zzz')).toEqual([])
+  })
+})
+
+describe('catalogueMixtureFor / mixtureLabel', () => {
+  const catalogue = visualFixture('catalog-superposition.json') as SuperpositionPreset[]
+  type Terms = SuperpositionMetadata['terms']
+  const term = (n: number, l: number, m: number, re: number, im = 0): Terms[number] => ({
+    n,
+    l,
+    m,
+    coefficient_real: re,
+    coefficient_imag: im,
+  })
+  const HALF = 0.7071067811865476
+
+  it.each([
+    ['1s2pz-t0-xz.json', '1s-2pz'],
+    ['1s2pz-t8.4-xz.json', '1s-2pz'],
+    ['degenerate-stationary-xz-t0.json', '2s-2pz'],
+  ])('finds the preset the server built %s from, in the server bytes', (fixture, id) => {
+    const payload = visualFixture(fixture) as { metadata: SuperpositionMetadata }
+    expect(catalogueMixtureFor(payload.metadata.terms, catalogue)?.id).toBe(id)
+  })
+
+  it('titles a preset with the panel copy, or the server label for an id the copy deck lacks', () => {
+    const preset = catalogue.find((entry) => entry.id === '1s-2pz')
+    if (preset === undefined) throw new Error('no 1s-2pz in the catalogue fixture')
+    expect(mixtureLabel(preset)).toBe('1s + 2p_z · Bohr 振荡')
+    expect(mixtureLabel({ ...preset, id: 'not-in-the-copy-deck' })).toBe(preset.label)
+  })
+
+  it('matches no preset for a custom mixture', () => {
+    const custom: Terms[] = [
+      // Other weights.
+      [term(1, 0, 0, 0.6), term(2, 1, 0, 0.8)],
+      // The same kets in the other order: a different request, not the preset.
+      [term(2, 1, 0, HALF), term(1, 0, 0, HALF)],
+      // A relative sign, and a relative phase.
+      [term(1, 0, 0, HALF), term(2, 1, 0, -HALF)],
+      [term(1, 0, 0, HALF), term(2, 1, 0, 0, HALF)],
+      // A term missing, a term extra, another m.
+      [term(1, 0, 0, 1)],
+      [term(1, 0, 0, HALF), term(2, 1, 0, HALF), term(3, 2, 0, 0)],
+      [term(1, 0, 0, HALF), term(2, 1, 1, HALF)],
+    ]
+    for (const terms of custom) expect(catalogueMixtureFor(terms, catalogue), JSON.stringify(terms)).toBeUndefined()
+    expect(catalogueMixtureFor([term(1, 0, 0, HALF), term(2, 1, 0, HALF)], [])).toBeUndefined()
+  })
+
+  it('reads an explicit imaginary part and drops zero amplitudes, as the server parses terms', () => {
+    const preset = { ...catalogue[0], id: 'probe', terms: '1,0,0,0.6; 2,1,1,0,0.8;3,0,0,0' }
+    expect(catalogueMixtureFor([term(1, 0, 0, 0.6), term(2, 1, 1, 0, 0.8)], [preset])?.id).toBe('probe')
+    // A malformed entry is simply not a match.
+    expect(catalogueMixtureFor([term(1, 0, 0, 1)], [{ ...preset, terms: '1,0,x,1' }])).toBeUndefined()
+    expect(catalogueMixtureFor([term(1, 0, 0, 1)], [{ ...preset, terms: '1,0,0' }])).toBeUndefined()
   })
 })

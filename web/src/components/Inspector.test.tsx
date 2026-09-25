@@ -3,7 +3,7 @@ import { act, createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { OrbitalMetadata, SceneStatus, SuperpositionMetadata } from '../api/types'
+import type { OrbitalMetadata, SceneStatus, SuperpositionMetadata, SuperpositionPreset } from '../api/types'
 import { mount } from '../test/mount'
 import { Inspector } from './Inspector'
 
@@ -81,6 +81,70 @@ function superpositionStatus(terms: SuperpositionMetadata['terms']): SceneStatus
     },
   }
 }
+
+/** The server's 1s + 2p_z catalogue entry (tests/fixtures/visual/catalog-superposition.json). */
+const BOHR_PRESET: SuperpositionPreset = {
+  id: '1s-2pz',
+  label: '1s + 2p_z (Bohr oscillation)',
+  terms: '1,0,0,0.7071067811865476;2,1,0,0.7071067811865476',
+  period_au: 16.755160819145562,
+  note: 'Dipole oscillates at omega = 3/8 hartree; the textbook radiating state.',
+  slice_resolution_floor: 65,
+  streamline_seed_count_max: 40,
+  default_representation: 'isosurface',
+}
+
+/** A superposition as the server reports it: its label is the ket string. */
+function arrivedMixture(terms: SuperpositionMetadata['terms'], ket: string): SceneStatus {
+  const status = superpositionStatus(terms)
+  status.superposition!.label = ket
+  return status
+}
+
+const BOHR_TERMS: SuperpositionMetadata['terms'] = [
+  { n: 1, l: 0, m: 0, coefficient_real: 0.7071067811865476, coefficient_imag: 0 },
+  { n: 2, l: 1, m: 0, coefficient_real: 0.7071067811865476, coefficient_imag: 0 },
+]
+const BOHR_KET = '0.707|1,0,0> + 0.707|2,1,0>'
+
+describe('Inspector title of a superposition', () => {
+  const titled = (status: SceneStatus, mixtures?: readonly SuperpositionPreset[]): string =>
+    renderToStaticMarkup(createElement(Inspector, { status, mixtures }))
+
+  it('titles a catalogue preset by its panel label and keeps the ket as the monospace subtitle', () => {
+    const markup = titled(arrivedMixture(BOHR_TERMS, BOHR_KET), [BOHR_PRESET])
+
+    expect(markup).toContain('<h2>1s + 2p_z · Bohr 振荡</h2>')
+    expect(markup).toContain(
+      '<p class="qv-detail-sub"><span class="qv-detail-ket">0.707|1,0,0&gt; + 0.707|2,1,0&gt;</span> · complex basis</p>',
+    )
+    expect(markup).not.toContain('<h2>0.707|1,0,0')
+  })
+
+  it('keeps the ket as the title of a custom superposition', () => {
+    const custom = [
+      { n: 1, l: 0, m: 0, coefficient_real: 0.6, coefficient_imag: 0 },
+      { n: 2, l: 1, m: 0, coefficient_real: 0.8, coefficient_imag: 0 },
+    ]
+    const markup = titled(arrivedMixture(custom, '0.6|1,0,0> + 0.8|2,1,0>'), [BOHR_PRESET])
+
+    expect(markup).toContain('<h2>0.6|1,0,0&gt; + 0.8|2,1,0&gt;</h2>')
+    expect(markup).toContain('<p class="qv-detail-sub">2 项叠加 · complex basis</p>')
+    expect(markup).not.toContain('Bohr 振荡')
+  })
+
+  it('titles by the ket until a catalogue has arrived to name it', () => {
+    const markup = titled(arrivedMixture(BOHR_TERMS, BOHR_KET))
+    expect(markup).toContain('<h2>0.707|1,0,0&gt; + 0.707|2,1,0&gt;</h2>')
+    expect(markup).not.toContain('qv-detail-ket')
+  })
+
+  it('leaves an eigenstate title and subtitle alone', () => {
+    const markup = titled(eigenstateStatus(-0.125), [BOHR_PRESET])
+    expect(markup).toContain('<h2>test eigenstate</h2>')
+    expect(markup).toContain('<p class="qv-detail-sub">ψ(2, 1, 0) · complex basis</p>')
+  })
+})
 
 describe('Inspector superposition coefficients', () => {
   it('preserves a negative real coefficient instead of displaying its magnitude', () => {
