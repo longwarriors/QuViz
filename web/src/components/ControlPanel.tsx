@@ -22,14 +22,8 @@ import {
   type ParameterBound,
   type ParameterId,
 } from '../api/capability'
-import { fetchCatalog, fetchSuperpositionCatalog } from '../api/client'
-import type {
-  OrbitalPreset,
-  PrincipalPlane,
-  RepresentationKind,
-  SliceObservable,
-  SuperpositionPreset,
-} from '../api/types'
+import type { PrincipalPlane, RepresentationKind, SliceObservable } from '../api/types'
+import { useCatalogs } from '../state/catalogs'
 import { useSceneStore } from '../state/useSceneStore'
 import { nextTimeAu, selectSceneRequestInputs } from './sceneRequest'
 import { REPRESENTATION_LABELS } from './sceneStatus'
@@ -304,7 +298,6 @@ export function ControlPanel({
   const [localContext, setLocalContext] = useState<ControlContext>('state')
   const activeContext = controlledContext ?? localContext
   const setActiveContext = onContextChange ?? setLocalContext
-  const [presets, setPresets] = useState<OrbitalPreset[]>([])
   const [representationNotice, setRepresentationNotice] =
     useState<RepresentationKind | null>(null)
   const lOptions = useMemo(
@@ -315,37 +308,9 @@ export function ControlPanel({
     () => Array.from({ length: 2 * store.orbital.l + 1 }, (_, index) => index - store.orbital.l),
     [store.orbital.l],
   )
-  const [mixtures, setMixtures] = useState<SuperpositionPreset[]>([])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    fetchCatalog(controller.signal).then(setPresets).catch(() => setPresets([]))
-    fetchSuperpositionCatalog(controller.signal)
-      .then((catalogue) => {
-        if (controller.signal.aborted) return
-        setMixtures(catalogue)
-        const terms = useSceneStore.getState().superpositionTerms
-        const selected = catalogue.find((mixture) => mixture.terms === terms)
-        if (selected === undefined) {
-          useSceneStore.getState().invalidateSuperpositionStreamlineCapability()
-          return
-        }
-        useSceneStore
-          .getState()
-          .syncSuperpositionCapabilities(
-            selected.terms,
-            selected.slice_resolution_floor,
-            selected.streamline_seed_count_max,
-            selected.default_representation,
-          )
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return
-        setMixtures([])
-        useSceneStore.getState().invalidateSuperpositionStreamlineCapability()
-      })
-    return () => controller.abort()
-  }, [])
+  // One load per page, shared with the time pill and the search pill: the
+  // fail-closed catalogue side effects now live in state/catalogs.ts.
+  const { orbitals: presets, superpositions: mixtures } = useCatalogs()
 
   const { mode, playing } = store
 

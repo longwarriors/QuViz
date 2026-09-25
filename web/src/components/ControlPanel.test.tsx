@@ -11,6 +11,7 @@ import {
 } from '../api/capability'
 import { PRINCIPAL_PLANES, SLICE_OBSERVABLES } from '../api/sliceContract'
 import type { OrbitalParameters, RepresentationKind } from '../api/types'
+import { resetCatalogs } from '../state/catalogs'
 import { useSceneStore, type SceneMode } from '../state/useSceneStore'
 import { mount, type MountedTree } from '../test/mount'
 import { ControlPanel } from './ControlPanel'
@@ -140,6 +141,9 @@ beforeEach(() => {
   capabilityOverride.current = null
   superpositionCatalogueFailure.current = null
   superpositionCatalogueFailure.omitSelected = false
+  // The loader is page-wide; each mounted panel must see a fresh catalogue
+  // request, which is what the failure and omission cases below arrange.
+  resetCatalogs()
   useSceneStore.setState(PRISTINE, true)
 })
 

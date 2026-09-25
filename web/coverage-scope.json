@@ -38,6 +38,7 @@
     "src/scene/sliceColor.ts",
     "src/scene/sliceTexture.ts",
     "src/scene/speedColor.ts",
+    "src/state/catalogs.ts",
     "src/state/urlState.ts",
     "src/state/useSceneStore.ts",
     "src/test/mount.tsx"
@@ -82,6 +83,7 @@
     "src/scene/sliceColor.ts",
     "src/scene/sliceTexture.ts",
     "src/scene/speedColor.ts",
+    "src/state/catalogs.ts",
     "src/state/urlState.ts",
     "src/state/useSceneStore.ts",
     "src/test/mount.tsx"
