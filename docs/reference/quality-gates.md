@@ -10,7 +10,7 @@
 
     - ✅ **已门禁**：由 `make check` / `check.ps1` 在每次提交上自动强制，并指明测试位置；`check.ps1` 的每一步都在脚本自身所在的仓库根目录执行（启动时打印该路径），与调用者当前目录无关，因此从另一个 checkout 以绝对路径调用也不会混用两棵树（`tests/test_check_script.py`）；
     - 🌐 **仅 CI、需网络**：只由 GitHub Actions 执行，因为要访问网络，**不在** `make check` / `check.ps1` 内，本地提交不会触发；触发时机见各条目说明；
-    - 🖥️ **仅 CI、需 Linux/SwiftShader**：只由 GitHub Actions 的 Linux runner 执行，因为判据是像素，而像素由那台机器的图形栈决定，**不在** `make check` / `check.ps1` 内；与 🌐 的区别不是“需要网络”而是“需要那一个渲染环境”——它在别的平台上不是变慢或变不准，而是**根本不允许运行**；
+    - 🖥️ **固定 Linux 镜像、需 Docker**：判据是像素，而像素由图形栈决定，所以只在按 digest 固定的 `mcr.microsoft.com/playwright:v1.62.1-noble` 容器里运行（`pwsh scripts/visual-docker.ps1`，POSIX 宿主用 `bash scripts/visual-docker.sh`），**不在** `make check` / `check.ps1` 内；按项目原则以本地容器结果为判据，CI 的 `web-visual` job 运行同一套件只作复核；与 🌐 的区别不是“需要网络”而是“需要那一个渲染环境”——它在 Windows/macOS 宿主上不是变慢或变不准，而是**根本不允许直接运行**；
     - 🔗 **本地浏览器集成**：把真实后端或真实构建产物、生产前端构建和 Chromium 接在同一进程树中执行，耗时长且需要先构建，所以**不在** `make check` / `check.ps1` 内；按项目原则（不依赖 CI）以本地运行结果为判据，CI 若也运行（`web-fullstack`）只作复核；
     - 🧑 **人工门禁**：必须人工复核，无法自动化，评审时逐条确认；
     - 🕒 **计划中**：已列入[路线图](../project/roadmap.md)，当前**没有**任何自动检查。
@@ -104,11 +104,24 @@
 
 !!! warning "截图门禁不覆盖什么，以及它到底多出了哪一句"
 
-    **`check.ps1` / `make check` 完全不覆盖视觉映射。** `web/playwright.config.ts` 在非 Linux 上于**模块加载时**直接抛错，所以这条门禁在开发机上不是“没跑”，而是**不允许跑**。这不是洁癖：基线是 Linux CI 镜像上 SwiftShader（Chromium 的软件光栅化器）画出来的像素，Windows 与 macOS 的字体栅格化、次像素定位和可用的 ANGLE 后端都不同，同一份代码在那里渲染出可见不同的图。真正的危险不是本机全红，而是本机全红之后有人顺手敲 `--update-snapshots`——那会**用这台机器的像素覆盖掉 CI 基线**，此后套件本地绿、CI 红，并且不再描述任何回归。所以守卫是抛错而不是 `skip`：`skip` 之下 `--update-snapshots` 照样能写。
+    **`check.ps1` / `make check` 完全不覆盖视觉映射。** `web/playwright.config.ts` 在非 Linux 上于**模块加载时**直接抛错，所以这条门禁在 Windows/macOS 宿主上不是“没跑”，而是**不允许跑**，只能进入按 digest 固定的 Linux 容器：`pwsh scripts/visual-docker.ps1`（POSIX 宿主用 `bash scripts/visual-docker.sh`）。
+
+    这不是洁癖：基线是该镜像里 SwiftShader（Chromium 的软件光栅化器）画出来的像素。Windows 与 macOS 的字体栅格化、次像素定位和可用的 ANGLE 后端都不同，同一份代码在那里会渲染出可见不同的图。真正的危险不是宿主上全红，而是全红之后有人顺手敲 `--update-snapshots`：那会**用这台机器的像素覆盖掉基线**，此后套件在宿主上绿、在固定镜像里红，并且不再描述任何回归。所以守卫是抛错而不是 `skip`：`skip` 之下 `--update-snapshots` 照样能写。
+
+    容器脚本在 `npm ci` 之前先检查镜像自带的 Node 是否满足 `web/package.json` 的 `engines`；镜像版本号必须等于精确固定的 `@playwright/test`。`tests/test_visual_docker.py` 以桩 `docker` 执行脚本并钉住这两点。
 
     **每一条截图声明都另有一条与平台无关的 vitest 断言。** 图片多出来的只有一句：**固定的 Linux/Chromium/SwiftShader WebGL 管线确实把它光栅化成了这些像素**。对照关系是：行主序布局与“样本 (row, col) 落在第 `4 * (row * resolution + col)` 个字节“由 `scene/sliceTexture.test.ts` 断言；这里能抓渲染器自己的索引或 uv 转置，但输入 payload 本身已经被转置时仍会满足客户端契约，所以 `slice.spec.ts` 另用一个转置 fixture 作端到端负控；被遮罩的样本渲染成**全透明且为黑**、极小振幅仍不透明、色标按切片自身极值归一化，同样在 `sliceTexture.test.ts`；相位色轮的周期性、$\pm A$ 两极不同色、零点为消色中性、发散色标的色相反对称由 `scene/sliceColor.test.ts` 断言；$u\times v=n$ 的右手标架、`xz` 的 $-\hat y$ 法向、以及“遮罩样本经 `sliceValueAt` 读作 `null` 而不是哨兵 `0.0`“由 `api/sliceContract.test.ts` 断言；四项纹理采样与色彩空间决定（两个 `NearestFilter`、`flipY = false`、`SRGBColorSpace`）、quad 尺寸规则与三张主平面各自的朝向由 `scene/SliceField.test.tsx` 断言；视点是平面自己的法向由 `scene/camera.test.ts` 断言。这就是分工：数值断言说“映射是对的”，截图只说“这条正确的映射确实被固定软件栅格环境画成了这些像素”。反过来读同样成立——一张绿的截图**不能**替代上述任何一条，也不能证明真实 GPU 或其他浏览器的行为。
 
-    **基线的产生方式是刻意昂贵的。** `updateSnapshots: 'none'` 让“缺失基线”成为失败而不是被静默写入的答案键（Playwright 的默认值 `'missing'` 会把新断言的第一次运行变成它自己的答案键，包括 bug）。第一次 CI 运行因此按设计失败，人从失败工件里的 `test-results/<test>/<name>-actual.png` 逐张检查之后才提交答案键；五张 Linux/SwiftShader PNG 现已位于 `web/e2e/__screenshots__/slice.spec.ts/`。任何生产或阈值改动都仍须让同一 SHA 的 CI 运行对这些既有基线通过，不能在开发机上更新快照来消除差异。
+    **基线的产生方式是刻意昂贵的。** `updateSnapshots: 'none'` 让“缺失基线”成为失败，而不是被静默写入的答案键；Playwright 的默认值 `'missing'` 会把新断言的第一次运行变成它自己的答案键，包括 bug。
+
+    有意改变画面时只走一条路：
+
+    1. 在固定容器里运行 `pwsh scripts/visual-docker.ps1 -Mode update`，重写五张 PNG 并立即再比较一次。同一环境下刚画的图都对不上，说明渲染不确定，而不是基线问题。
+    2. 由人逐张检查：节线水平且正瓣在上；相位逆时针缠绕一圈且原点是洞；简并态两时刻同图；1s + 2p_z 在 $t=0$ 与 $t=8.4$ 分别偏向 $+z$ 与 $-z$；画面里没有任何浮层。
+    3. 重测 `web/e2e/slice.spec.ts` 的校准表。
+    4. check 模式通过后才提交。
+
+    `assert-visual-run.mjs` 拒绝 update 运行产生的报告，所以一次 update 永远不能冒充一次比较。
 
 !!! info "QVPC/1 的跨语言黄金向量"
 

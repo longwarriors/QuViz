@@ -97,6 +97,22 @@ npm --prefix web run test:pages
 
 它在上面的子路径下验证开场场景、表示法切换、未预计算提示、叠加态播放、深链接、嵌入模式与教材页（教材页需要网络以加载 MathJax），然后由 `assert-pages-run.mjs` 审计报告，只有恰好 8 项测试各运行一次且全部通过才算绿。
 
+## 视觉像素门禁（Docker）
+
+`web/playwright.config.ts` 在非 Linux 上直接拒绝加载：五张基线是固定镜像里 SwiftShader 的像素。本地运行需要 Docker Desktop（Linux 容器）：
+
+```powershell
+pwsh scripts/visual-docker.ps1                 # check：对照已提交基线（npm run test:visual）
+pwsh scripts/visual-docker.ps1 -Mode update    # 仅在有意改变画面时：重写基线后立即再比较一次
+pwsh scripts/visual-docker.ps1 -Fresh          # 忽略缓存，在容器内重新 npm ci
+```
+
+POSIX 宿主使用 `bash scripts/visual-docker.sh [check|update] [--fresh]`。
+
+镜像按 digest 固定为 `mcr.microsoft.com/playwright:v1.62.1-noble`，其版本号必须等于 `web/package.json` 精确固定的 `@playwright/test`。脚本先在镜像里执行 `node --version`，不满足 `engines` 就在 `npm ci` 之前退出。
+
+容器的 `node_modules` 放在名为 `quviz-visual-node-modules` 的 Docker 卷里，因为宿主的 `web/node_modules` 带有 Windows 原生绑定；锁文件未变时复用该卷。运行会在工作树里写入 `web/dist` 与 `web/test-results/`，`update` 模式还会改写 `web/e2e/__screenshots__/`。提交这些 PNG 之前必须逐张人工检查，标准见 `web/e2e/slice.spec.ts` 顶部。
+
 ## 提交前门禁
 
 `scripts/check.ps1` 按顺序跑完下面九道门禁，任何一道非零退出即整体失败：
