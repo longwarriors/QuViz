@@ -8,7 +8,6 @@ import { createStaticTransport, loadStaticManifest } from './api/staticCatalog'
 import { setTransport } from './api/transport'
 import { bindUrlState } from './state/urlState'
 import './styles.css'
-import './quantum-observatory.css'
 import './lab.css'
 
 /** Shown instead of the lab when the static catalogue cannot be loaded. */

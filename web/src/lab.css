@@ -915,3 +915,28 @@ input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border: 0; bo
   .qv-dialog { max-height: 88dvh; }
   .qv-dialog-body { padding: 14px 18px 22px; }
 }
+
+/* ---- Embed + drawers ---- */
+.qv-embed-open {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--qv-radius-pill);
+  color: var(--qv-text);
+  font-size: 13px;
+  font-weight: 500;
+}
+.qv-embed-open:hover { text-decoration: none; }
+.qv-app[data-embed="true"] .qv-time-pill { bottom: 12px; }
+
+@media (max-width: 820px) {
+  .qv-app[data-drawer-open="true"] .qv-controls-fab,
+  .qv-app[data-drawer-open="true"] .qv-detail-toggle { display: none; }
+  .qv-app[data-embed="true"] .qv-time-pill { right: 12px; left: 12px; }
+}

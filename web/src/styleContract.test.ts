@@ -96,6 +96,16 @@ describe('lab.css design tokens', () => {
     const { SCENE_BACKGROUND } = await import('./scene/fog')
     expect(declaredTokens(read('./lab.css')).get('--qv-bg')).toBe(SCENE_BACKGROUND)
   })
+
+  it('keeps styles.css to the byte-checked data colours, with the old visual system gone', () => {
+    const data = read('./styles.css')
+    expect(data).not.toMatch(/:root|\.app-shell|\.workspace|\.topbar|\.viewport-copy|font-family/)
+    for (const selector of ['.phase-wheel', '.phase-dot.red', '.phase-dot.cyan', '.diverging-ramp', '.density-ramp', '.speed-ramp']) {
+      expect(data).toContain(selector)
+    }
+    expect(existsSync(new URL('./quantum-observatory.css', import.meta.url))).toBe(false)
+    expect(read('./main.tsx')).not.toContain('quantum-observatory')
+  })
 })
 
 describe('legend placement does not collide with other chrome', () => {
