@@ -17,9 +17,10 @@ silently lose a figure, change a deep-link anchor or drift from the plan.
 
 Some chapters also describe what a catalogue asset looks like at the
 catalogue's own settings (a mesh artifact, which samples a phase slice masks,
-how the streamline figures are seeded and why two of them look alike).
-Those statements are pinned against the builders at the end of this file, so a
-builder, grid or seeding change cannot silently falsify the prose.
+how the streamline figures are seeded and why two of them look alike, how
+visibly a superposition slice changes between frames). Those statements are
+pinned against the builders at the end of this file, so a builder, grid or
+seeding change cannot silently falsify the prose.
 """
 
 from __future__ import annotations
@@ -35,11 +36,16 @@ import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import connected_components
 
-from quviz.api.routes import superposition_catalog
+from quviz.api.routes import _parse_superposition, superposition_catalog
 from quviz.conventions import BasisKind, PrincipalPlane, SliceObservable
 from quviz.physics.hydrogenic import hydrogenic_wavefunction
-from quviz.scene.builders import build_current_field, build_isosurface
-from quviz.scene.slices import build_slice
+from quviz.physics.superposition import SuperpositionState
+from quviz.scene.builders import (
+    build_current_field,
+    build_isosurface,
+    build_superposition_current_field,
+)
+from quviz.scene.slices import build_slice, build_superposition_slice
 
 ROOT = Path(__file__).resolve().parents[1]
 TEXTBOOK = ROOT / "docs" / "textbook"
@@ -239,6 +245,27 @@ CHAPTERS: dict[str, Chapter] = {
             "mode=eigenstate&n=2&l=1&m=1&basis=complex&rep=streamlines",
             "mode=eigenstate&n=2&l=1&m=-1&basis=complex&rep=streamlines",
             "mode=eigenstate&n=3&l=2&m=2&basis=complex&rep=streamlines",
+        ),
+    ),
+    "09-superposition-time.md": Chapter(
+        sections=(
+            "goals",
+            "time-evolution",
+            "interference",
+            "bohr-oscillation",
+            "quadrupole-breathing",
+            "degenerate-controls",
+            "playback",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=superposition&preset=1s-2pz&t=0&rep=slice&plane=xz&obs=probability_density",
+            "mode=superposition&preset=1s-2pz&t=8.4&rep=slice&plane=xz&obs=probability_density",
+            "mode=superposition&preset=1s-2pz&t=4.2&rep=streamlines",
+            "mode=superposition&preset=1s-3dz2&t=7&rep=slice&plane=xz&obs=probability_density",
+            "mode=superposition&preset=2s-2pz&t=0&rep=slice&plane=xz&obs=probability_density",
         ),
     ),
 }
@@ -698,3 +725,81 @@ def test_chapter_8_streamline_figures_match_the_current_field_builder() -> None:
         assert np.array_equal(np.asarray(reverse), np.asarray(forward) * [1.0, -1.0, 1.0])
         # Equal up to the last serialised digit (measured: 5 of 15487 vertices, 1e-12).
         assert np.allclose(reverse_speed, forward_speed, rtol=1e-9, atol=0.0)
+
+
+def _preset(preset: str) -> tuple[SuperpositionState, int, int]:
+    """A catalogue preset as the lab asks for it: complex basis, the slice
+    resolution raised to the preset's floor, the seed count clamped to its maximum."""
+
+    entry = next(entry for entry in superposition_catalog() if entry["id"] == preset)
+    state = _parse_superposition(str(entry["terms"]), BasisKind.COMPLEX)
+    resolution = max(65, int(str(entry["slice_resolution_floor"])))
+    return state, resolution, min(48, int(str(entry["streamline_seed_count_max"])))
+
+
+def _xz_density(
+    state: SuperpositionState, time: float, resolution: int
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    payload = build_superposition_slice(
+        state,
+        time=time,
+        plane=PrincipalPlane.XZ,
+        observable=SliceObservable.PROBABILITY_DENSITY,
+        resolution=resolution,
+    )
+    assert (payload.u_axis, payload.v_axis) == ([1.0, 0.0, 0.0], [0.0, 0.0, 1.0])
+    size = payload.resolution
+    axis = (np.arange(size) - size // 2) * payload.spacing_bohr
+    z, x = np.meshgrid(axis, axis, indexing="ij")  # rows are v = z, columns u = x
+    return np.asarray(payload.values).reshape(size, size), x, z
+
+
+def test_chapter_9_figures_match_the_superposition_builders() -> None:
+    """Chapter 9's superposition figures, checked on the catalogue's own assets.
+
+    Figures 9.1 and 9.2 lean to +z and -z and are near mirror images. Every line
+    of figure 9.3 lies in one plane containing the z axis, runs towards -z and
+    never crosses z = 0 upwards. Between t = 0 and figure 9.4's t = 7 the
+    1s + 3d_z2 slice fades inside the nodal cones and brightens outside them, by
+    at most about 7 % of the sqrt(rho / rho_max) colour ramp (chapter 7),
+    almost all of it 1-5 bohr from the nucleus; beyond 2 bohr its density is
+    under 3 % of the peak. Figure 9.5 leans to -z and is the same at any t. If a builder,
+    the slice floor or the seed clamp changes, revisit the "bohr-oscillation",
+    "quadrupole-breathing" and "degenerate-controls" sections and the captions.
+    """
+
+    bohr, resolution, seeds = _preset("1s-2pz")
+    up, _, z = _xz_density(bohr, 0.0, resolution)
+    down, _, _ = _xz_density(bohr, 8.4, resolution)
+    assert up[z > 0].sum() > 2 * up[z < 0].sum()
+    assert np.max(np.abs(down[::-1] - up)) < 1e-5 * up.max()
+
+    field = build_superposition_current_field(bohr, time=4.2, seed_count=seeds)
+    assert len(field.lines) == seeds
+    for line in field.lines:
+        x_line, y_line, z_line = np.asarray(line).T
+        far = int(np.argmax(np.hypot(x_line, y_line)))
+        assert np.allclose(x_line * y_line[far] - y_line * x_line[far], 0.0, atol=1e-9)
+        assert z_line[-1] < z_line[0]
+        assert not np.any((z_line[:-1] < 0) & (z_line[1:] > 0))
+
+    quad, resolution, _ = _preset("1s-3dz2")
+    before, x, z = _xz_density(quad, 0.0, resolution)
+    after, _, _ = _xz_density(quad, 7.0, resolution)
+    assert np.max(np.abs(after - after[::-1])) <= 1e-12 * after.max()
+    change = np.sqrt(after / after.max()) - np.sqrt(before / before.max())
+    radius = np.hypot(x, z)
+    in_cones = np.abs(z) > radius / math.sqrt(3)
+    assert np.all(change[in_cones] <= 1e-12)
+    assert np.all(change[~in_cones] >= -1e-12)
+    band = (radius > 1) & (radius < 5)
+    assert 0.06 < np.max(np.abs(change[band])) < 0.08
+    assert np.max(np.abs(change[~band])) < 0.02
+    for density in (before, after):
+        assert np.max(density[radius >= 2]) < 0.03 * density.max()
+
+    degenerate, resolution, _ = _preset("2s-2pz")
+    still, _, z = _xz_density(degenerate, 0.0, resolution)
+    later, _, _ = _xz_density(degenerate, 5.0, resolution)
+    assert still[z < 0].sum() > 3 * still[z > 0].sum()
+    assert np.max(np.abs(later - still)) <= 1e-12 * still.max()
