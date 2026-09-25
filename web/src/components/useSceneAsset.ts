@@ -301,7 +301,7 @@ export function useSceneAsset(
       setFitKey(null)
       emit({
         loading: false,
-        unavailable: { kind: inputs.representation, reason: plan.reason },
+        unavailable: { kind: inputs.representation, reason: plan.reason, refusal: plan.status },
       })
       return
     }

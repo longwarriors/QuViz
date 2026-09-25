@@ -19,7 +19,8 @@ import { resolve } from 'node:path'
 import { act, createElement, useEffect, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { planSceneRequest } from '../api/capability'
+import { planSceneRequest, setStaticCatalog } from '../api/capability'
+import { NOT_PRECOMPUTED_DETAIL, parseStaticSpec } from '../api/staticCatalog'
 import type {
   CurrentFieldPayload,
   IsosurfacePayload,
@@ -471,7 +472,30 @@ describe('useSceneAsset', () => {
     expect(status.loading).toBe(false)
     expect(status.unavailable?.kind).toBe('point_cloud')
     expect(status.unavailable?.reason).toContain('尚未实现')
+    expect(status.unavailable?.refusal).toBe('not_implemented')
     await tree.unmount()
+  })
+
+  it('refuses a scene the static catalogue does not hold, without a request, and says so', async () => {
+    const spec = parseStaticSpec(
+      JSON.parse(readFileSync(resolve(process.cwd(), 'tools', 'fixtures', 'spec.json'), 'utf-8')),
+    )
+    setStaticCatalog({ format: 'quviz-static/1', version: '0000000000000000', spec, entries: {} })
+    try {
+      const inputs: SceneAssetInputs = { ...baseInputs, representation: 'point_cloud' }
+      const { capture, statuses, element } = host(inputs)
+      const tree = await mount(element(inputs))
+
+      expect(calls).toHaveLength(0)
+      expect(capture.current?.asset).toBeNull()
+      expect(latest(statuses).unavailable).toMatchObject({ kind: 'point_cloud', refusal: 'not_precomputed' })
+      // End to end, the status carries the contract sentence verbatim: what the
+      // status chip prints, what chapter 0 quotes, what the pages e2e matches.
+      expect(latest(statuses).unavailable?.reason).toBe(NOT_PRECOMPUTED_DETAIL)
+      await tree.unmount()
+    } finally {
+      setStaticCatalog(null)
+    }
   })
 
   it('keeps the rendered frame and marks the status refreshing while a later time loads', async () => {
