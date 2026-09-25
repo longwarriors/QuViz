@@ -77,6 +77,7 @@ import {
   slicePlaneOf,
   usesPresentationEffects,
 } from './OrbitalCanvas'
+import { SCENE_CANVAS_ID } from './sceneCapture'
 import { selectSceneRequestInputs as sceneAssetInputs } from './sceneRequest'
 import type { SceneAsset } from './useSceneAsset'
 
@@ -1355,6 +1356,8 @@ describe('OrbitalCanvas', () => {
       preserveDrawingBuffer: true,
       powerPreference: 'high-performance',
     })
+    // The save button finds the scene canvas by this id, never "the first canvas".
+    expect(props.id).toBe(SCENE_CANVAS_ID)
 
     await unmount()
   })

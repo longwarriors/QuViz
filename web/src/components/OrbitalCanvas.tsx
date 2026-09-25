@@ -24,6 +24,7 @@ import { OrbitalSurface } from '../scene/OrbitalSurface'
 import { SceneReady } from '../scene/SceneReady'
 import { SliceField } from '../scene/SliceField'
 import { useSceneStore } from '../state/useSceneStore'
+import { SCENE_CANVAS_ID } from './sceneCapture'
 import { selectSceneRequestInputs } from './sceneRequest'
 import {
   sceneExtentBohr,
@@ -504,6 +505,7 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
 
   return (
     <Canvas
+      id={SCENE_CANVAS_ID}
       dpr={[1, 2]}
       camera={{ position: [11, 11, 6.6], up: [0, 0, 1], fov: 42, near: 0.01, far: 500 }}
       gl={{

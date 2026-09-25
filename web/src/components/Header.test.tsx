@@ -52,20 +52,25 @@ function captureButton(tree: MountedTree): HTMLButtonElement {
 }
 
 describe('Header capture', () => {
-  it('saves the canvas it can actually read, under a file-system-safe name', async () => {
-    const canvas = document.createElement('canvas')
-    document.body.appendChild(canvas)
+  it('saves the scene canvas, not whichever canvas comes first', async () => {
+    const decoy = document.createElement('canvas')
+    Object.defineProperty(decoy, 'toDataURL', { value: () => 'data:image/png;base64,REVDT1k=' })
+    document.body.appendChild(decoy)
+    const host = document.createElement('div')
+    host.id = 'quviz-scene'
+    host.appendChild(document.createElement('canvas'))
+    document.body.appendChild(host)
     const tree = await header()
     try {
       captureButton(tree).click()
 
       expect(clicked).toHaveLength(1)
       expect(clicked[0].href).toBe(DATA_URL)
-      // An ISO timestamp carries colons, which Windows refuses in a file name.
       expect(clicked[0].download).not.toContain(':')
       expect(clicked[0].download).toMatch(/^quviz-.*\.png$/)
     } finally {
       await tree.unmount()
+      host.remove()
     }
   })
 

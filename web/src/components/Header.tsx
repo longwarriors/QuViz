@@ -1,15 +1,7 @@
 import { BookOpen, Camera, Crosshair, Orbit } from 'lucide-react'
 
 import { useSceneStore } from '../state/useSceneStore'
-
-function saveScreenshot() {
-  const canvas = document.querySelector('canvas')
-  if (!(canvas instanceof HTMLCanvasElement)) return
-  const link = document.createElement('a')
-  link.download = `quviz-${new Date().toISOString().replaceAll(':', '-')}.png`
-  link.href = canvas.toDataURL('image/png')
-  link.click()
-}
+import { captureSceneCanvas } from './sceneCapture'
 
 export function Header({ stateLabel }: { stateLabel?: string }) {
   const mode = useSceneStore((state) => state.mode)
@@ -43,7 +35,7 @@ export function Header({ stateLabel }: { stateLabel?: string }) {
           <BookOpen size={17} />
           <span>OpenAPI</span>
         </a>
-        <button className="icon-button primary" type="button" onClick={saveScreenshot} title="保存当前画布" aria-label="保存当前画布">
+        <button className="icon-button primary" type="button" onClick={() => captureSceneCanvas()} title="保存当前画布" aria-label="保存当前画布">
           <Camera size={17} />
           <span>保存图像</span>
         </button>
