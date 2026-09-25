@@ -861,6 +861,12 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
         "所以 $3d_{z^2}$ 的等值面",
     ),
     ReviewPin("appendix-a-misconceptions.md", "## 磁量子数不是朝向", "## 磁量子数不是轨道朝向"),
+    # Residue of 08-4: appendix A summarises chapter 8 and kept its old wording.
+    ReviewPin(
+        "appendix-a-misconceptions.md",
+        "「定态」只说明密度 $\\rho$ 不随时间变化",
+        "概率流 $\\mathbf j$ 也不变",
+    ),
     ReviewPin("appendix-b-notation-units.md", "换算成国际单位制时用下表", "换算成常用单位时用下表"),
     ReviewPin(
         "appendix-b-notation-units.md",
