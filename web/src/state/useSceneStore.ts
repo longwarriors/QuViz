@@ -314,19 +314,27 @@ export const useSceneStore = create<SceneStore>()((set) => ({
       // one has to be re-resolved here or the canvas is asked for a picture no
       // route can draw. Resolution follows that resolved row in the SAME write;
       // otherwise the panel can show 129 while the request planner sends 81.
-      const representation = openingRepresentation(
+      const resolved = resolveRepresentation(
         mode,
         state.orbital,
-        resolveRepresentation(
-          mode,
-          state.orbital,
-          state.representation,
-          state.representation,
-          state.superpositionStreamlineSeedCountMax,
-        ),
-        state.superpositionDefaultRepresentation,
+        state.representation,
+        state.representation,
         state.superpositionStreamlineSeedCountMax,
       )
+      // openingRepresentation only applies when this call actually SWITCHES the
+      // mode: the 叠加态 toggle stays clickable while already active, and
+      // re-clicking it must be a no-op, not a second "opening" that can
+      // override an explicit setRepresentation made since the last switch.
+      const representation =
+        state.mode === mode
+          ? resolved
+          : openingRepresentation(
+              mode,
+              state.orbital,
+              resolved,
+              state.superpositionDefaultRepresentation,
+              state.superpositionStreamlineSeedCountMax,
+            )
       return {
         mode,
         playing: false,

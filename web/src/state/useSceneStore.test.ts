@@ -616,6 +616,18 @@ describe('catalogue default representation', () => {
     expect(read().representation).toBe('isosurface')
   })
 
+  it('re-clicking the already-active superposition toggle does not override an explicit isosurface choice', () => {
+    read().setMode('superposition')
+    read().setSuperposition(DEGENERATE_TERMS, '2s + 2p_z', 65, 40, 'slice')
+    read().setRepresentation('isosurface')
+
+    // setMode('superposition') again, as the already-active 叠加态 button does
+    // on every re-click -- this must be a no-op, not a second "opening".
+    read().setMode('superposition')
+
+    expect(read().representation).toBe('isosurface')
+  })
+
   it('records the published default on a catalogue sync without moving the picture', () => {
     useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
 
