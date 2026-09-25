@@ -47,7 +47,7 @@ Stodolna 等人把氢原子放在静电场中，用激光把它激发到电离�
 探测器上每个像素的强度也不是某一点的 $\lvert\psi(\mathbf r)\rvert^2$。
 
 最简单的 Stark 态可以手算。[第 9 章](09-superposition-time.md#degenerate-controls)的简并预设 $(\psi_{2s}+\psi_{2p_z})/\sqrt2$ 就是其中之一。
-在本书忽略自旋与精细结构的模型里，$n=2$ 能级四重简并；设电场很弱，能移远小于相邻 $n$ 能级的间距，电场只需在这个能级内部重新选基。
+在本书忽略自旋、精细结构等更小修正的模型里，$n=2$ 能级四重简并；设电场很弱，能移远小于相邻 $n$ 能级的间距，电场只需在这个能级内部重新选基。
 偶极算符 $z$ 在 $n=2$ 内部只有 $\langle200\lvert z\rvert210\rangle=\langle210\lvert z\rvert200\rangle=-3a_0$ 不为零，只把 $2s$ 与 $2p_z$ 连起来，
 所以 $n=2$、$m=0$ 的一阶 Stark 本征态是 $(\psi_{2s}\pm\psi_{2p_z})/\sqrt2$（思考题 10.3）。写成显式函数：
 

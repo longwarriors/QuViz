@@ -73,7 +73,8 @@ $$
 
 实验室地址中 `#` 之后的部分叫深链接。它由若干 `key=value` 对组成，用 `&` 连接；实验室按
 `embed, mode, n, l, m, z, basis, preset, t, rep, plane, obs` 的顺序写出这些键。本书的交互图在最前面加上 `embed=1`，
-让实验室以嵌入模式运行。实验室会忽略不认识的键和不合法的值。新打开的页面里，没有写出的部分取实验室的默认值；
+让实验室以嵌入模式运行。实验室会忽略不认识的键和不合法的值。新打开的页面里，没有写出的部分取实验室的默认值，
+但默认值与写出的键不相容时改用相容的取值（例如叠加态不画电子云）；
 在已经打开的实验室里改动地址栏中的深链接时，实验室只应用写出的键，其余设置不一定回到默认值。
 
 下表列出各个键，以及教材版的预计算目录覆盖的取值：
@@ -87,7 +88,7 @@ $$
 | `basis` | 本征态所用的基 | real、complex |
 | `preset` | 叠加态预设 | 1s-2pz、2s-2pz、1s-3dz2、2pplus-2pminus |
 | `t` | 叠加态的时刻，单位 $\hbar/E_h$ | 该预设在播放器上的各帧 |
-| `rep` | 表示法 | point_cloud、isosurface、slice、streamlines（叠加态没有 point_cloud；本征态只有复基 m≠0 有 streamlines；3s、4s 没有 isosurface） |
+| `rep` | 表示法 | point_cloud、isosurface、slice、streamlines（叠加态没有 point_cloud；本征态只有复基 m≠0 有 streamlines；3s、4s 与 2s-2pz 叠加态没有 isosurface） |
 | `plane` | 切片平面 | xy、xz、yz（叠加态只有 xz） |
 | `obs` | 切片上画的场 | probability_density、wavefunction_real、wavefunction_imag、phase |
 

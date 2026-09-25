@@ -708,6 +708,8 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
     ReviewPin("00-how-to-use.md", "时间胶囊和一个", "一条状态提示"),
     ReviewPin("00-how-to-use.md", "交互图连接的也是本机运行的", "要先构建前端"),
     ReviewPin("00-how-to-use.md", "控件是按这三层组织的", "控件怎样对应这三层"),
+    # Step 7 re-verification finding 00-6.
+    ReviewPin("00-how-to-use.md", "复制它发给别人", "带有它的完整地址"),
     ReviewPin(
         "01-wavefunction.md",
         "约化质量\n[@griffiths2018qm, ch. 4 (pp. 131--197)]",
@@ -732,6 +734,8 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
         "的总公式\n[@griffiths2018qm, eq. (4.89), p. 151]",
         "Bohr 半径 $a$ 换成 $a_\\mu/Z$",
     ),
+    # Step 7 re-verification finding 02-3.
+    ReviewPin("02-hydrogen-levels.md", "它们就是径向节点", "每个根对应一个径向节点"),
     ReviewPin(
         "03-radial-nodes.md",
         "对类氢态有闭合形式 [@griffiths2018qm, ch. 4 (pp. 131--197)]",
@@ -744,6 +748,8 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
     ),
     ReviewPin("03-radial-nodes.md", "放大画面后更容易看清", "没有采样点正好落在 $1.90\\,a_0$ 上"),
     ReviewPin("03-radial-nodes.md", "$\\ell$ 越大的态越紧凑", "整体尺度小不等于更靠近原子核"),
+    # Step 7 re-verification finding 03-5.
+    ReviewPin("03-radial-nodes.md", "的概率约为 $1\\,\\%$", "$9.9\\times10^{-3}$"),
     ReviewPin("04-real-complex.md", "只看一个方向分不出 $m$ 的正负", "只看 $+y$ 一个方向分不出"),
     ReviewPin("04-real-complex.md", "但它只是一个编号", "但它的正负号只是一个编号"),
     ReviewPin(
@@ -780,6 +786,8 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
         "$4d_{xy}$ 在 $p=0.9$ 时是内外各四瓣",
     ),
     ReviewPin("06-isosurface.md", "改变数据颜色：同一种颜色在曲面的", "调低「透明度」后"),  # noqa: RUF001
+    # Step 7 re-verification finding 06-4 (fixed where the d_xy contrast is drawn).
+    ReviewPin("06-isosurface.md", "干净地分开（图 6.2）。", "的节面 $x=\\pm y$ 虽然也是平面"),  # noqa: RUF001
     ReviewPin("07-phase-slices.md", "数值接近零就是深灰色", "残差也会被拉伸到整条色带"),
     ReviewPin("07-phase-slices.md", "所以两张切片的图案相同", "这只对 $xy$ 平面成立"),
     ReviewPin(
@@ -794,6 +802,16 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
         "$R_{21}\\propto r$",
         "$R_{21}\\propto r\\,e^{-r/(2a_0)}$ 在原点处为零",
     ),
+    # Step 7 re-verification findings 07-7 ... 07-11.
+    ReviewPin("07-phase-slices.md", "为偶数时虚部处处为零。", "$xy$ 平面本身就是节面"),
+    ReviewPin("07-phase-slices.md", "图例上的数值：$A$ 只有", "残差与真实的场按同一比例"),  # noqa: RUF001
+    ReviewPin(
+        "07-phase-slices.md",
+        "两张切片始终保持同一图案，只有",  # noqa: RUF001
+        "因子为零的时刻那张切片是一片均匀的中性色",
+    ),
+    ReviewPin("07-phase-slices.md", "会改变同一组系数给出的密度", "有的 $m$ 是正奇数、有的不是"),
+    ReviewPin("07-phase-slices.md", "振幅已经很小的几个样本", "网格上有一百多个"),
     ReviewPin("08-probability-current.md", "给出实数", "乘上 $\\psi^*$ 后是实数"),
     ReviewPin("08-probability-current.md", "线速率是 $m/s=1$ a.u.", "$\\hbar m/(\\mu s)=2/2=1$"),
     ReviewPin(
@@ -836,7 +854,10 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
     ),
     ReviewPin("10-experiment.md", "直接算出的内禀的量", "会随全局相位的约定转动"),
     ReviewPin("10-experiment.md", "哪些画面是内禀的物理量", "哪些画面是由量子态直接算出的量"),
-    ReviewPin("10-experiment.md", "在本书忽略精细结构的模型里", "忽略自旋与精细结构的模型里"),
+    # 10-6 named spin; 10-7 (Step 7) widened the qualifier, so its correction
+    # is now "忽略自旋、精细结构等更小修正".
+    ReviewPin("10-experiment.md", "在本书忽略精细结构的模型里", "忽略自旋、精细结构"),
+    ReviewPin("10-experiment.md", "忽略自旋与精细结构的模型里", "精细结构等更小修正的模型里"),
     ReviewPin("11-symmetry-hybridization.md", "杂化轨道不是新的量子态", "并不是子空间之外的新态"),
     ReviewPin(
         "11-symmetry-hybridization.md",
@@ -854,6 +875,12 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
         "用哪些轨道、以什么比例组合",
     ),
     ReviewPin("11-symmetry-hybridization.md", "以内的一小块", "向 $+z$ 张开"),
+    # The 10-7 qualifier, carried to the same 2s/2p degeneracy claim in chapter 11.
+    ReviewPin(
+        "11-symmetry-hybridization.md",
+        "在本书忽略精细结构的模型里",
+        "忽略精细结构等更小修正的模型里",
+    ),
     ReviewPin("appendix-a-misconceptions.md", "它的密度随时间连续变化", "只要其中有能量不同的项"),
     ReviewPin(
         "appendix-a-misconceptions.md",
@@ -877,6 +904,15 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
         "appendix-b-notation-units.md",
         "| point_cloud、isosurface、slice、streamlines |",
         "本征态只有复基 m≠0 有 streamlines",
+    ),
+    # Step 7 re-verification findings B-4 and B-5.
+    ReviewPin(
+        "appendix-b-notation-units.md", "3s、4s 没有 isosurface", "2s-2pz 叠加态没有 isosurface"
+    ),
+    ReviewPin(
+        "appendix-b-notation-units.md",
+        "没有写出的部分取实验室的默认值；",  # noqa: RUF001
+        "默认值与写出的键不相容时",
     ),
 )
 
