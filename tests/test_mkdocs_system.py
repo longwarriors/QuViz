@@ -51,6 +51,49 @@ def test_every_markdown_page_appears_once_in_navigation() -> None:
     assert set(nav_paths) == markdown
 
 
+TOP_LEVEL_TABS = ["首页", "教材", "深入阅读", "开发者", "信源与审计"]
+DEVELOPER_SECTIONS = ["项目", "入门", "操作指南", "技术参考", "决策记录"]
+
+
+def _section(entries: list[Any], title: str) -> Any:
+    for entry in entries:
+        if isinstance(entry, dict) and title in entry:
+            return entry[title]
+    raise AssertionError(f"nav has no section {title!r}")
+
+
+def test_navigation_separates_the_learner_path_from_developer_pages() -> None:
+    nav = _raw_config()["nav"]
+    assert [next(iter(entry)) for entry in nav] == TOP_LEVEL_TABS
+    assert _section(nav, "首页") == "index.md"
+
+    textbook = _section(nav, "教材")
+    assert textbook[0] == "textbook/index.md"
+    assert all(path.startswith("textbook/") for path in _nav_paths(textbook))
+
+    further = _nav_paths(_section(nav, "深入阅读"))
+    assert {path.split("/")[0] for path in further} == {"concepts", "tutorials"}
+    # Implementation-facing pages live with the developer material.
+    assert "concepts/architecture.md" not in further
+    assert "tutorials/frontend-rendering.md" not in further
+
+    developer = _section(nav, "开发者")
+    assert [next(iter(entry)) for entry in developer] == DEVELOPER_SECTIONS
+    developer_paths = _nav_paths(developer)
+    for path in (
+        "project/status.md",
+        "getting-started/installation.md",
+        "how-to/cite-sources.md",
+        "concepts/architecture.md",
+        "tutorials/frontend-rendering.md",
+        "reference/physics-api.md",
+        "adr/index.md",
+    ):
+        assert path in developer_paths, path
+
+    assert _nav_paths(_section(nav, "信源与审计"))[0] == "references/index.md"
+
+
 def test_strict_validation_policy_is_explicit() -> None:
     config = _raw_config()
     assert config["strict"] is True
