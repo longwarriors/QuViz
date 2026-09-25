@@ -5,7 +5,7 @@ import type {
   RepresentationKind,
   SliceObservable,
 } from '../api/types'
-import { TIME_GRID_STEP_AU, type SceneRequestInputs } from '../api/capability'
+import { playbackFrameCount, playbackFrameTime, type SceneRequestInputs } from '../api/capability'
 import type { SceneMode } from '../state/useSceneStore'
 
 /**
@@ -159,11 +159,6 @@ export function sceneIdentityKey(inputs: SceneIdentityInputs): string {
   ].join('|')
 }
 
-/** Target atomic-unit spacing; a physical period is divided into whole frames. */
-const TARGET_TIME_STEP_AU = 0.6
-/** Backward-compatible fallback for callers that do not own a catalogue period. */
-const DEFAULT_PLAYBACK_PERIOD_AU = 39.6
-
 /**
  * The next playback time, as a frame index rather than an accumulated sum.
  *
@@ -171,26 +166,20 @@ const DEFAULT_PLAYBACK_PERIOD_AU = 39.6
  * not a whole number of steps, so the loop walks 200 distinct times before it
  * repeats, and the sum drifts off the grid (1.2 + 0.6 is 1.7999999999999998).
  * Every distinct time is a cache-missing request for a frame nobody will see
- * again. Counting frames instead means a lap revisits bit-identical values, so
- * playback asks for the same 66 frames forever.
+ * again. Counting frames instead means a lap revisits bit-identical values.
+ *
+ * `periodAu` is required: it is the selected catalogue entry's period scaled by
+ * a_mu/Z^2 (ControlPanel.tsx:457-464). The old 39.6 a.u. default walked a
+ * lattice no catalogue period produces, and on the static site those times are
+ * requests nobody exported (spec section 5). A missing or invalid period fails
+ * closed at t = 0, like a degenerate preset.
  */
-export function nextTimeAu(time: number, periodAu = DEFAULT_PLAYBACK_PERIOD_AU): number {
-  if (!Number.isFinite(time) || !Number.isFinite(periodAu) || periodAu <= 0) return 0
-  const frames = Math.max(1, Math.ceil(periodAu / TARGET_TIME_STEP_AU))
+export function nextTimeAu(time: number, periodAu: number): number {
+  const frames = playbackFrameCount(periodAu)
+  if (!Number.isFinite(time) || frames === 0) return 0
   const normalized = ((time % periodAu) + periodAu) % periodAu
   const frame = Math.round((normalized * frames) / periodAu) % frames
-  const next = (frame + 1) % frames
-
-  // The ideal phase samples are evenly spaced across the exact physical
-  // period. Snap each one to the same 0.2-a.u. lattice the time slider shows;
-  // otherwise a catalogue period such as 16.755... produces long binary
-  // decimals, range-step mismatches and cache keys the UI cannot reproduce.
-  // Rounding each absolute frame independently distributes the small timing
-  // error instead of accumulating it, and the integer frame still guarantees
-  // a bit-identical wrap to zero.
-  const idealTime = (next * periodAu) / frames
-  const ticks = Math.round(idealTime / TIME_GRID_STEP_AU)
-  return Number((ticks * TIME_GRID_STEP_AU).toFixed(12))
+  return playbackFrameTime((frame + 1) % frames, frames, periodAu)
 }
 
 /**

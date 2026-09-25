@@ -9,6 +9,13 @@ import {
   selectSceneRequestInputs,
 } from './sceneRequest'
 
+/**
+ * The fixed period the removed default carried. Still a valid period to walk
+ * the lattice on (ceil(39.6 / 0.6) = 66 frames), so the lattice specs below keep
+ * their meaning; what changed is that every caller now has to say it.
+ */
+const LEGACY_PERIOD_AU = 39.6
+
 const baseInputs: SceneIdentityInputs = {
   mode: 'superposition',
   superpositionTerms: '1,0,0,0.7071067811865476;2,1,0,0.7071067811865476',
@@ -171,12 +178,21 @@ describe('nextTimeAu', () => {
   const STEP = 0.6
   const FRAMES = 66
 
+  it('requires the catalogue period: there is no 39.6 a.u. fallback (spec section 5)', () => {
+    // Function.length counts the parameters before the first default. With
+    // `periodAu = 39.6` it was 1, and a caller that forgot the period walked a
+    // 66-frame lattice no catalogue period produces.
+    expect(nextTimeAu.length).toBe(2)
+    // @ts-expect-error -- the period is required; a missing one fails closed at t = 0
+    expect(nextTimeAu(0.6)).toBe(0)
+  })
+
   it('advances by one step with exact decimals', () => {
-    expect(nextTimeAu(0)).toBe(0.6)
-    expect(nextTimeAu(0.6)).toBe(1.2)
+    expect(nextTimeAu(0, LEGACY_PERIOD_AU)).toBe(0.6)
+    expect(nextTimeAu(0.6, LEGACY_PERIOD_AU)).toBe(1.2)
     // 1.2 + 0.6 is 1.7999999999999998 in binary floating point; a naive
     // accumulator drifts off the grid here on the third frame.
-    expect(nextTimeAu(1.2)).toBe(1.8)
+    expect(nextTimeAu(1.2, LEGACY_PERIOD_AU)).toBe(1.8)
   })
 
   it('visits exactly 66 frames and nothing else, however long it runs', () => {
@@ -185,7 +201,7 @@ describe('nextTimeAu', () => {
     let time = 0
     for (let step = 0; step < 500; step += 1) {
       seen.add(time)
-      time = nextTimeAu(time)
+      time = nextTimeAu(time, LEGACY_PERIOD_AU)
     }
     expect([...seen].sort((a, b) => a - b)).toEqual(expected)
   })
@@ -195,22 +211,22 @@ describe('nextTimeAu', () => {
     for (let frame = 0; frame < FRAMES; frame += 1) {
       let lap = time
       for (let step = 0; step < FRAMES; step += 1) {
-        lap = nextTimeAu(lap)
+        lap = nextTimeAu(lap, LEGACY_PERIOD_AU)
       }
       expect(lap, `frame ${frame}`).toBe(time)
-      time = nextTimeAu(time)
+      time = nextTimeAu(time, LEGACY_PERIOD_AU)
     }
   })
 
   it('wraps from the last frame back to zero', () => {
-    expect(nextTimeAu(39)).toBe(0)
+    expect(nextTimeAu(39, LEGACY_PERIOD_AU)).toBe(0)
   })
 
   it('snaps a time set off the frame grid back onto it', () => {
     // The slider steps by 0.2, so the user can hand playback a time that is
     // not a multiple of 0.6.
-    expect(nextTimeAu(12.4)).toBe(13.2)
-    expect(nextTimeAu(-0.6)).toBe(0)
+    expect(nextTimeAu(12.4, LEGACY_PERIOD_AU)).toBe(13.2)
+    expect(nextTimeAu(-0.6, LEGACY_PERIOD_AU)).toBe(0)
   })
 
   it('does not drift the way the modulo-40 step did', () => {
@@ -230,7 +246,7 @@ describe('nextTimeAu', () => {
     let time = 0
     for (let step = 0; step < 500; step += 1) {
       seen.add(time)
-      time = nextTimeAu(time)
+      time = nextTimeAu(time, LEGACY_PERIOD_AU)
     }
     expect(seen.size).toBe(FRAMES)
   })
@@ -426,7 +442,7 @@ describe('fetch coordinator', () => {
 
     let time = 0
     for (let tick = 0; tick < 30; tick += 1) {
-      time = nextTimeAu(time)
+      time = nextTimeAu(time, LEGACY_PERIOD_AU)
       const decision = coordinator.onInputsChanged({ identityKey: key, timeAu: time })
       if (decision.clearScene) cleared += 1
       expect(decision.abortPrevious, `tick ${tick}`).toBe(false)

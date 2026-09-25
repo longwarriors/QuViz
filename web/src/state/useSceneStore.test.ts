@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { planSceneRequest } from '../api/capability'
+import { planSceneRequest, setStaticCatalog } from '../api/capability'
+import { superpositionIsosurfaceRequest } from '../api/requests'
+import { parseStaticSpec, type StaticManifest } from '../api/staticCatalog'
+import { requestKey } from '../api/transport'
 import { selectSceneRequestInputs } from '../components/sceneRequest'
 import { useSceneStore } from './useSceneStore'
 
@@ -559,6 +563,81 @@ describe('scene setters', () => {
       autoRotate: true,
       showGrid: false,
     })
+  })
+})
+
+describe('static catalogue pins', () => {
+  const SPEC = parseStaticSpec(
+    JSON.parse(readFileSync(new URL('../../tools/fixtures/spec.json', import.meta.url), 'utf-8')),
+  )
+  const frameKey = (timeAu: number): string => {
+    const request = superpositionIsosurfaceRequest(INITIAL.superpositionTerms, 'complex', 1, 1, timeAu, 65, 0.9)
+    return requestKey(request.route, request.query)
+  }
+  const manifest = (keys: readonly string[]): StaticManifest => ({
+    format: 'quviz-static/1',
+    version: '0000000000000000',
+    spec: SPEC,
+    entries: Object.fromEntries(
+      keys.map((key) => [
+        key,
+        { file: 'files/000000000000000000000000.json', status: 200, content_type: 'application/json', headers: {} },
+      ]),
+    ),
+  })
+
+  afterEach(() => {
+    setStaticCatalog(null)
+  })
+
+  it('holds both charges at the catalogue Z', () => {
+    setStaticCatalog(manifest([]))
+    read().setOrbital({ z: 3 })
+    read().setSuperpositionZ(4)
+    expect(read().orbital.z).toBe(1)
+    expect(read().superpositionZ).toBe(1)
+  })
+
+  it('snaps a superposition time to the nearest exported frame', () => {
+    setStaticCatalog(manifest([frameKey(0), frameKey(0.6), frameKey(1.2)]))
+    read().setMode('superposition')
+    read().setTimeAu(0.5)
+    expect(read().timeAu).toBe(0.6)
+    read().setTimeAu(99)
+    expect(read().timeAu).toBe(1.2)
+  })
+
+  it('passes a time through when the cell itself is refused', () => {
+    // Frames ARE installed for the standing superposition -- and would be used
+    // if snapTimeAu looked up the clock lattice without first checking that the
+    // cell is available. point_cloud is a superposition cell the routes never
+    // implement (not_implemented, not a catalogue miss), forced past setMode's
+    // own resolution by writing the store directly, so this is discriminating:
+    // a snap that used the frames regardless of availability would clamp 0.5 to
+    // the nearest one (0.6) instead of leaving it alone.
+    setStaticCatalog(manifest([frameKey(0), frameKey(0.6), frameKey(1.2)]))
+    useSceneStore.setState({ mode: 'superposition', representation: 'point_cloud' })
+    read().setTimeAu(0.5)
+    expect(read().timeAu).toBe(0.5)
+  })
+
+  it('re-clamps the grid to the pinned value the planner will send', () => {
+    setStaticCatalog(manifest([]))
+    read().setOrbital({ n: 4, l: 3, m: 0 })
+    read().setRepresentation('isosurface')
+    expect(read().resolution).toBe(81)
+    read().setOrbital({ n: 2, l: 1 })
+    expect(read().resolution).toBe(65)
+    // What the panel holds is what the planner would send (the catalogue lacks
+    // the key here, so the plan is refused rather than re-spelled).
+    expect(planSceneRequest(selectSceneRequestInputs(read())).status).toBe('not_precomputed')
+  })
+
+  it('leaves live-mode time and charge alone', () => {
+    read().setTimeAu(0.5)
+    read().setOrbital({ z: 3 })
+    expect(read().timeAu).toBe(0.5)
+    expect(read().orbital.z).toBe(3)
   })
 })
 

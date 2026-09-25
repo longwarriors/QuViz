@@ -22,16 +22,22 @@ import {
   fetchCurrentField,
   fetchIsosurface,
   fetchMetadata,
+  fetchOrbitalMetadata,
   fetchPointCloud,
   fetchSlice,
   fetchSuperpositionCatalog,
   fetchSuperpositionCurrentField,
   fetchSuperpositionIsosurface,
   fetchSuperpositionSlice,
+  lastSuperpositionCatalog,
+  parseOrbitalCatalog,
   parsePointCloud,
+  parseSuperpositionCatalog,
+  rememberSuperpositionCatalog,
 } from './client'
 import { parsePointCloud as parsePointCloudFromQvpc } from './qvpc'
 import { SliceContractError } from './sliceContract'
+import { requestKey, resetTransport, setTransport, type Transport } from './transport'
 import type {
   CurrentFieldPayload,
   OrbitalMetadata,
@@ -1023,5 +1029,106 @@ describe('SceneStatus truthfulness fields', () => {
     expect(status.refreshing).toBeUndefined()
     expect(status.renderedTimeAu).toBeUndefined()
     expect(status.unavailable).toBeUndefined()
+  })
+})
+
+/* --------------------------------------------------------------- transport */
+
+const SUPERPOSITION_CATALOG_FIXTURE: unknown = JSON.parse(
+  readFileSync(
+    fileURLToPath(new URL('../../../tests/fixtures/visual/catalog-superposition.json', import.meta.url)),
+    'utf-8',
+  ),
+)
+
+describe('the transport seam', () => {
+  afterEach(() => {
+    resetTransport()
+  })
+
+  it('sends every fetcher through the installed transport, never the global fetch', async () => {
+    const seen: string[] = []
+    const signals: (AbortSignal | undefined)[] = []
+    const refusing: Transport = {
+      request(route, query, signal) {
+        seen.push(requestKey(route, query))
+        signals.push(signal)
+        return Promise.resolve(errorResponse('{"detail":"stop"}', 422))
+      },
+    }
+    setTransport(refusing)
+    const { signal } = new AbortController()
+
+    const outcomes = await Promise.allSettled([
+      fetchPointCloud(params, 20000, 7, signal),
+      fetchIsosurface(params, 65, 0.9, signal),
+      fetchCurrentField(params, 48, signal),
+      fetchMetadata(params, signal),
+      fetchOrbitalMetadata(params, signal),
+      fetchCatalog(signal),
+      fetchSuperpositionCatalog(signal),
+      fetchSuperpositionIsosurface(terms, 1.25, 64, 'real', 2, 1.5, 0.75, signal),
+      fetchSuperpositionCurrentField(terms, 1.25, 40, 'real', 2, 1.5, signal),
+      fetchSlice(params, 65, 1.5, 'yz', 'phase', signal),
+      fetchSuperpositionSlice(terms, 1.25, 65, 'real', 2, 1.5, 'xy', 'wavefunction_real', signal),
+    ])
+
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(Array(11).fill('rejected'))
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(signals.every((each) => each === signal)).toBe(true)
+    expect(seen).toEqual([
+      '/api/orbitals/point-cloud?n=3&l=2&m=-1&z=2&basis=complex&samples=20000&seed=7',
+      '/api/orbitals/metadata?n=3&l=2&m=-1&z=2&basis=complex',
+      '/api/orbitals/isosurface?n=3&l=2&m=-1&z=2&basis=complex&resolution=65&probability_mass=0.9',
+      '/api/orbitals/current-field?n=3&l=2&m=-1&z=2&basis=complex&seed_count=48',
+      '/api/orbitals/metadata?n=3&l=2&m=-1&z=2&basis=complex',
+      '/api/orbitals/metadata?n=3&l=2&m=-1&z=2&basis=complex',
+      '/api/orbitals/catalog',
+      '/api/superposition/catalog',
+      `/api/superposition/isosurface?terms=${encodedTerms}&time=1.25&resolution=64&basis=real&z=2&a_mu=1.5&probability_mass=0.75`,
+      `/api/superposition/current-field?terms=${encodedTerms}&time=1.25&seed_count=40&basis=real&z=2&a_mu=1.5`,
+      '/api/orbitals/slice?n=3&l=2&m=-1&z=2&basis=complex&resolution=65&a_mu=1.5&plane=yz&observable=phase',
+      `/api/superposition/slice?terms=${encodedTerms}&time=1.25&resolution=65&basis=real&z=2&a_mu=1.5&plane=xy&observable=wavefunction_real`,
+    ])
+  })
+})
+
+describe('catalogue parsers and the metadata fetcher', () => {
+  it('validate a catalogue without a request, exactly as the fetchers do', () => {
+    expect(parseSuperpositionCatalog(SUPERPOSITION_CATALOG_FIXTURE).map((entry) => entry.id)).toEqual([
+      '1s-2pz',
+      '2s-2pz',
+      '1s-3dz2',
+      '2pplus-2pminus',
+    ])
+    const presets = [{ id: '1s', label: '1s', n: 1, l: 0, m: 0, basis: 'real' }]
+    expect(parseOrbitalCatalog(presets)).toEqual(presets)
+    expect(() => parseOrbitalCatalog({ presets })).toThrow('orbital catalog must be an array')
+    expect(() => parseSuperpositionCatalog(null)).toThrow('superposition catalog must be an array')
+  })
+
+  it('names the orbital metadata fetcher both ways', () => {
+    expect(fetchMetadata).toBe(fetchOrbitalMetadata)
+  })
+})
+
+describe('the remembered superposition catalogue', () => {
+  afterEach(() => {
+    rememberSuperpositionCatalog(null)
+  })
+
+  it('is what the last successful fetch parsed; a failed fetch leaves it alone', async () => {
+    rememberSuperpositionCatalog(null)
+    routeFetch({ '/api/superposition/catalog': () => errorResponse('catalog offline', 500) })
+    await expect(fetchSuperpositionCatalog()).rejects.toThrow('catalog offline')
+    expect(lastSuperpositionCatalog()).toBeNull()
+
+    routeFetch({ '/api/superposition/catalog': () => jsonResponse(SUPERPOSITION_CATALOG_FIXTURE) })
+    const fetched = await fetchSuperpositionCatalog()
+    expect(lastSuperpositionCatalog()).toEqual(fetched)
+
+    routeFetch({ '/api/superposition/catalog': () => jsonResponse([{ id: 'bad' }]) })
+    await expect(fetchSuperpositionCatalog()).rejects.toThrow('superposition catalog[0]')
+    expect(lastSuperpositionCatalog()).toEqual(fetched)
   })
 })

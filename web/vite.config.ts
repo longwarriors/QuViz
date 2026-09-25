@@ -2,6 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 export default defineConfig({
+  // Relative asset URLs: the same bundle is served at "/" by FastAPI
+  // (`quviz serve`, the fullstack gate), by `vite preview` (the visual gate)
+  // and under /<repo>/ by GitHub Pages. The app has no client-side router, so
+  // no URL ever needs an absolute base.
+  base: './',
   plugins: [react()],
   server: {
     port: 5173,

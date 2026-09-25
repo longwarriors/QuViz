@@ -296,7 +296,17 @@ export interface SceneStatus {
    * representation, `reason` is shown to the user. A disabled control with a
    * stated reason, never a silently hidden one.
    */
-  unavailable?: { kind: string; reason: string }
+  unavailable?: {
+    kind: string
+    reason: string
+    /**
+     * Which refusal: the physics or a route says no (`unsupported`), nothing
+     * was built for it (`not_implemented`), or the static catalogue holds no
+     * precomputed answer (`not_precomputed`). Optional so a status built by
+     * hand stays valid; `useSceneAsset` always sets it.
+     */
+    refusal?: 'unsupported' | 'not_implemented' | 'not_precomputed'
+  }
   superposition?: SuperpositionMetadata
   metadata?: OrbitalMetadata
   warnings?: string[]

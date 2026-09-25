@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import { capabilityFor, Z_CONSTRAINT, type ParameterBound } from '../api/capability'
+import { capabilityFor, chargeBound, clampToBound, type ParameterBound } from '../api/capability'
 import { MINIMUM_SLICE_RESOLUTION } from '../api/sliceContract'
 import type {
   BasisKind,
@@ -118,10 +118,11 @@ function normalizeOrbital(current: OrbitalParameters, patch: Partial<OrbitalPara
   const n = Math.max(1, Math.min(8, Math.round(patch.n ?? current.n)))
   const l = Math.max(0, Math.min(n - 1, Math.round(patch.l ?? current.l)))
   const m = Math.max(-l, Math.min(l, Math.round(patch.m ?? current.m)))
-  const z = Math.max(
-    Z_CONSTRAINT.uiBound.min,
-    Math.min(Z_CONSTRAINT.uiBound.max, patch.z ?? current.z),
-  )
+  // The route's charge range -- or, on the static site, the single Z the
+  // catalogue was exported at: a charge the planner would send differently
+  // from the one on screen is never stored.
+  const charge = chargeBound()
+  const z = Math.max(charge.min, Math.min(charge.max, patch.z ?? current.z))
   const basis: BasisKind = patch.basis ?? current.basis
   return { n, l, m, z, basis }
 }
@@ -178,6 +179,28 @@ function clampSeedCount(
     capability.status === 'available' ? capability.parameters.seedCount : undefined
   if (bound === undefined) return seedCount
   return Math.round(Math.min(bound.max, Math.max(bound.min, seedCount)))
+}
+
+/**
+ * The time the store may hold.
+ *
+ * Live, any time passes through: the slider owns its 0.2 a.u. lattice and the
+ * planner clamps into the route range. The static catalogue holds only its
+ * exported playback frames (the cell's `timeAu.values`), so a requested time
+ * moves to the nearest one here -- otherwise the status would label the frame
+ * on screen with a time it does not show.
+ */
+function snapTimeAu(state: SceneStore, timeAu: number): number {
+  const capability = capabilityFor({
+    mode: state.mode,
+    orbital: state.orbital,
+    representation: state.representation,
+    superpositionTerms: state.superpositionTerms,
+    superpositionSliceResolutionFloor: state.superpositionSliceResolutionFloor,
+    superpositionStreamlineSeedCountMax: state.superpositionStreamlineSeedCountMax,
+  })
+  const bound = capability.status === 'available' ? capability.parameters.timeAu : undefined
+  return bound?.values === undefined ? timeAu : clampToBound(bound, timeAu)
 }
 
 /**
@@ -467,15 +490,12 @@ export const useSceneStore = create<SceneStore>()((set) => ({
       }
     }),
   setSuperpositionBasis: (superpositionBasis) => set({ superpositionBasis }),
-  setSuperpositionZ: (superpositionZ) =>
-    set({
-      superpositionZ: Math.max(
-        Z_CONSTRAINT.uiBound.min,
-        Math.min(Z_CONSTRAINT.uiBound.max, superpositionZ),
-      ),
-    }),
+  setSuperpositionZ: (superpositionZ) => {
+    const charge = chargeBound()
+    set({ superpositionZ: Math.max(charge.min, Math.min(charge.max, superpositionZ)) })
+  },
   setAMu: (aMu) => set({ aMu }),
-  setTimeAu: (timeAu) => set({ timeAu }),
+  setTimeAu: (timeAu) => set((state) => ({ timeAu: snapTimeAu(state, timeAu) })),
   setPlaying: (playing) => set({ playing }),
   setOrbital: (patch) =>
     set((state) => {
