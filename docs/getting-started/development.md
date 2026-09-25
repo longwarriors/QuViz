@@ -87,6 +87,8 @@ uv run --locked --no-sync python scripts/build_pages.py --skip-data --serve 4180
 - 预览发送 `Cache-Control: no-cache`，不压缩；
 - Material 的 instant navigation 按 sitemap 重定位链接时只替换协议与主机名、不替换端口，所以在本地端口上退化为整页跳转，在 Pages 上正常。
 
+`.github/workflows/pages.yml` 在 master 更新时用同一脚本完整重建站点，`site_url` 取自 `actions/configure-pages`，然后部署。它是发布器而不是门禁：可发布的判据仍是本地的完整构建与浏览器门禁。首次使用前，需要维护者在仓库设置中把 Pages 的构建来源设为 GitHub Actions。
+
 ## 提交前门禁
 
 `scripts/check.ps1` 按顺序跑完下面九道门禁，任何一道非零退出即整体失败：

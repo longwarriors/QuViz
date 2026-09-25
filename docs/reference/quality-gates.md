@@ -125,6 +125,13 @@
     - 编排按固定顺序调用导出、枚举、渲染、`build:pages` 与 MkDocs；`--skip-data` 复用上次数据，缺少 `manifest.json` 时在任何步骤之前失败；导出器写出其他格式的 manifest 时停在构建实验室之前。构建记录 `build/pages-build.json` 只在整站通过体积上限后写出，失败的构建（含超限）不留下上一次的记录。
     - `--workers` 默认取 CPU 数且最多 8，与导出器自己的默认相同；超出导出器接受的 1–32 时在任何步骤之前拒绝。二者都与 `quviz.export.static_site` 的 `default_worker_count()`、`MAXIMUM_WORKERS` 互校。
     - 实验室构建若会覆盖 `data/`、`learn/` 或带 sourcemap 即失败；整站超过 GitHub Pages 1 GB 上限时构建失败；
+- ✅ 发布 workflow 的结构 — `tests/test_pages_workflow.py` 钉住 `.github/workflows/pages.yml` 的以下各项，每类篡改都有负控：
+    - 只在 master push 与手动触发时运行。
+    - 顶层只读权限；`build` 只有 `contents: read` 与 `pages: read`；`deploy` 只有 `pages: write` 与 `id-token: write`，并使用 `github-pages` environment。
+    - 构建步骤逐项固定：锁定安装；`actions/configure-pages` 的 `base_url` 传给 `--site-url`；完整重建而非 `--skip-data`；上传 `build/pages`。
+    - 任何步骤不得带 `if:` / `continue-on-error:`；action 只能引用版本 tag。
+
+    Node 版本由 `tests/test_declared_versions.py` 对**所有** workflow 的 `actions/setup-node` 步骤统一钉为 `.node-version`；锁定安装与 setup-uv 版本由 `tests/test_ci_workflows.py` 对所有 workflow 统一检查。该 workflow 是发布器而不是门禁：可发布的判据是本地的完整构建与 `npm run test:pages`；
 
 ## 文档与引用 { #docs-and-citations }
 
