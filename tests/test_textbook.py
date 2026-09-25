@@ -67,7 +67,40 @@ class Chapter(NamedTuple):
 
 
 #: file name -> exact level-2 heading ids and figure deep links, in page order.
-CHAPTERS: dict[str, Chapter] = {}
+CHAPTERS: dict[str, Chapter] = {
+    "00-how-to-use.md": Chapter(
+        sections=(
+            "goals",
+            "reading-path",
+            "lab-tour",
+            "figures",
+            "static-and-live",
+            "reading-rules",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=("mode=eigenstate&n=2&l=1&m=0&basis=real&rep=point_cloud",),
+    ),
+    "01-wavefunction.md": Chapter(
+        sections=(
+            "goals",
+            "wavefunction",
+            "schrodinger-equation",
+            "born-rule",
+            "normalization",
+            "volume-element",
+            "global-phase",
+            "misconceptions",
+            "exercises",
+            "further-reading",
+        ),
+        figures=(
+            "mode=eigenstate&n=1&l=0&m=0&basis=real&rep=point_cloud",
+            "mode=eigenstate&n=1&l=0&m=0&basis=real&rep=slice&plane=xz&obs=probability_density",
+        ),
+    ),
+}
 
 
 def js_number(value: float) -> str:

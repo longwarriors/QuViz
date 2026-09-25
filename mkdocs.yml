@@ -117,6 +117,8 @@ nav:
   - 首页: index.md
   - 教材:
       - textbook/index.md
+      - 0 如何使用本书与实验室: textbook/00-how-to-use.md
+      - 1 波函数与 Born 规则: textbook/01-wavefunction.md
   - 深入阅读:
       - 科学模型:
           - concepts/index.md
