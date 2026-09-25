@@ -4,7 +4,7 @@
  * Run with the working directory set to web/ (npm exec keeps the caller's
  * working directory, and this path is relative to web/):
  *
- *   npm --prefix web exec --no -- vite-node tools/static-requests.ts -- <data dir>
+ *   cd web && npm exec --no -- vite-node tools/static-requests.ts -- <abs data dir>
  *
  * Reads <data>/spec.json, <data>/catalog-orbitals.json and
  * <data>/catalog-superpositions.json (written by `quviz export-static plan`)
@@ -19,7 +19,7 @@ import { buildStaticRequestsFile } from '../src/api/staticEnumeration'
 
 const dataArgument = process.argv[2]
 if (dataArgument === undefined || dataArgument === '') {
-  console.error('用法：npm --prefix web exec --no -- vite-node tools/static-requests.ts -- <data 目录>')
+  console.error('用法：cd web && npm exec --no -- vite-node tools/static-requests.ts -- <绝对 data 目录>')
   process.exit(2)
 }
 const dataDir = resolve(dataArgument)
