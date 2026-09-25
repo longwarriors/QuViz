@@ -15,6 +15,7 @@ import {
   cameraDirectionForPlane,
   cameraUpForPlane,
   type CameraViewState,
+  WORLD_UP,
 } from '../scene/camera'
 import { CurrentStreamlines } from '../scene/CurrentStreamlines'
 import { ElectronCloud } from '../scene/ElectronCloud'
@@ -83,15 +84,6 @@ function RendererClearBoundary({
  * the viewport.
  */
 const MINIMUM_ORBIT_DISTANCE = 10
-
-/**
- * Which way is up when nothing on screen argues for anything else.
- *
- * Written down because it has to be RESTORED, not merely defaulted: the camera
- * object outlives every asset, so an `up` a slice set and nobody cleared is a
- * permanent tilt on every scene drawn afterwards.
- */
-const DEFAULT_CAMERA_UP: [number, number, number] = [0, 1, 0]
 
 /**
  * How long drei's `Bounds` takes to ease the camera into a new scene's frame.
@@ -219,12 +211,12 @@ export function aimCamera(
   )
   // ALWAYS set, in both arms. A slice needs the frame's own v axis as up --
   // partly so screen +Y is v and the picture is the grid the server sampled
-  // rather than a rotation of it, and partly because the xz plane's normal is
-  // -y, so looking down it with the default up hands lookAt two parallel
+  // rather than a rotation of it, and partly because the xy plane's normal is
+  // +z, so looking down it with the world up hands lookAt two parallel
   // vectors and no basis to build from. Anything else needs that tilt GONE:
   // the camera outlives the asset, and an up set once and never cleared is a
   // tilt on every scene afterwards.
-  camera.up.set(...(plane === undefined ? DEFAULT_CAMERA_UP : cameraUpForPlane(plane)))
+  camera.up.set(...(plane === undefined ? WORLD_UP : cameraUpForPlane(plane)))
   camera.position.copy(direction.normalize().multiplyScalar(distance))
   camera.lookAt(0, 0, 0)
 }
@@ -513,7 +505,7 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
   return (
     <Canvas
       dpr={[1, 2]}
-      camera={{ position: [10, 6, 12], fov: 42, near: 0.01, far: 500 }}
+      camera={{ position: [11, 11, 6.6], up: [0, 0, 1], fov: 42, near: 0.01, far: 500 }}
       gl={{
         antialias: true,
         alpha: true,

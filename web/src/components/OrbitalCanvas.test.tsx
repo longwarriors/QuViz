@@ -785,8 +785,8 @@ describe('aimCamera', () => {
       expect(camera.position.x).toBeCloseTo(direction.x, 6)
       expect(camera.position.y).toBeCloseTo(direction.y, 6)
       expect(camera.position.z).toBeCloseTo(direction.z, 6)
-      // `up` is not decoration on a slice view. The xz plane's normal is -y,
-      // so the camera looks straight down the default up vector: lookAt has no
+      // `up` is not decoration on a slice view. The xy plane's normal is +z,
+      // so the camera looks straight down the world up vector: lookAt has no
       // basis to build from there and the picture degenerates. The frame's own
       // v axis is also the only choice that puts screen +Y on v, which is what
       // makes the image the grid the server sampled rather than a rotation of
@@ -795,21 +795,17 @@ describe('aimCamera', () => {
     }
   })
 
-  it('restores the default up when the scene stops being a slice', () => {
+  it('restores the world up (+z) when the scene stops being a slice', () => {
     const camera = new THREE.PerspectiveCamera()
     camera.position.set(0, 0, 20)
-    aimCamera(camera, undefined, 'xz')
-    expect(camera.up.toArray()).toEqual([0, 0, 1])
+    aimCamera(camera, undefined, 'xy')
+    expect(camera.up.toArray()).toEqual([0, 1, 0])
 
-    // The literal transition: an xz slice on screen, then a point cloud. The
-    // second call is handed exactly what the canvas would hand it -- the point
-    // cloud's own view and no plane.
     aimCamera(camera, cameraViewOf({ kind: 'point_cloud', data: pointCloud() }))
 
-    // Leaving the slice's up in place would tilt every subsequent scene: the
-    // camera object outlives the asset, so a `up` set once and never cleared
-    // is a permanent change to how every orbital afterwards is framed.
-    expect(camera.up.toArray()).toEqual([0, 1, 0])
+    // The camera outlives the asset: a slice's up left in place would tilt
+    // every orbital drawn afterwards.
+    expect(camera.up.toArray()).toEqual([0, 0, 1])
   })
 })
 
@@ -1083,7 +1079,7 @@ describe('SceneRoot', () => {
     // of the camera as it was BEFORE the aim, and it is landed from a
     // `useFrame`, i.e. one frame later. Measured against this scene before the
     // fix: the settled camera came to rest at (19.2135, 11.5281, 23.0562) --
-    // 1.9214 times the `<Canvas>`'s own opening position (10, 6, 12) -- while
+    // 1.9214 times the `<Canvas>`'s opening position then, (10, 6, 12) -- while
     // `up` stayed (0, 0, 1), because `Bounds` never carries an `up` in its goal.
     // That is a plane seen from the default three-quarter direction with the
     // section's own up: an oblique parallelogram instead of a face-on square,
@@ -1350,7 +1346,7 @@ describe('OrbitalCanvas', () => {
     // Capped at 2: a 3x display costs nine times the fill for no more
     // information, and this scene is fill-bound.
     expect(props.dpr).toEqual([1, 2])
-    expect(props.camera).toMatchObject({ position: [10, 6, 12], fov: 42, near: 0.01, far: 500 })
+    expect(props.camera).toMatchObject({ position: [11, 11, 6.6], up: [0, 0, 1], fov: 42, near: 0.01, far: 500 })
     expect(props.gl).toMatchObject({
       antialias: true,
       alpha: true,
