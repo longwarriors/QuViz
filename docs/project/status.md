@@ -30,7 +30,7 @@
 
 **教材**：MkDocs 新增 `docs/textbook/` 学习者章节。第 0–11 章每章至少一张“点击加载”的嵌入交互图（附录除外），可一键在实验室中打开同一状态。静态托管与预计算目录的决定记录在 ADR-0005。
 
-**构建与发布**：`scripts/build_pages.py` 在本地组装站点，并按仓库子路径预览与线上相同的站点；`npm run test:pages` 在该子路径下验证 8 条用户路径。`.github/workflows/pages.yml` 只在 master 上用同一脚本重建并部署，是发布器而不是门禁。视觉基线改在按 digest 固定的 Docker 镜像中本地生成：帧为 1280×800，五张基线已逐张人工检查，三个负控的校准余量已重测。
+**构建与发布**：`scripts/build_pages.py` 在本地组装站点，并按仓库子路径预览与线上相同的站点；`npm run test:pages` 在该子路径下验证 9 条用户路径。`.github/workflows/pages.yml` 只在 master 上用同一脚本重建并部署，是发布器而不是门禁。视觉基线改在按 digest 固定的 Docker 镜像中本地生成：帧为 1280×800，五张基线已逐张人工检查，三个负控的校准余量已重测。
 
 **同时修复**：
 
@@ -40,20 +40,31 @@
 - 删除残留的 `DEFAULT_PLAYBACK_PERIOD_AU` 默认实参；
 - 实验室的 Pages 构建不再发布 sourcemap（`learn/` 下只剩 Material 主题包自带的 `.map`）。
 
+**终审修复（2026-09-26）**：
+
+- `2s + 2p_z` 等值面被拒的根因记录改正：$|\Psi|^2$ 在正水平上没有鞍点，0.90 水平集的真实拓扑是收敛的 (2, 2)；被拒是因为节点抛物面 $r=2+z$ 处约 0.21 bohr 的间隙窄于封顶网格间距，由一条测试在代码里钉住；
+- 没有 WebGL2 或场景崩溃时，外壳给出错误状态，不再让加载卡片盖住提示、吞掉点击；
+- 请求失败且画面上没有资产时，图例不再画相位色键；保留旧帧时，图例与详情继续描述那一帧；
+- 时间胶囊把输入的 $t$ 夹到能力边界内，显示的时刻就是请求的时刻；
+- 指南弹窗在焦点离开后仍响应 Escape 并困住 Tab；
+- 教材交互图的「关闭交互图」移到舞台下方，不再盖住嵌入实验室的「在实验室中打开」；
+- 引用组可以换行，手机宽度下教材页不再横向滚动；
+- `main.test.tsx` 等待 React 实际提交，不再依赖单个 `setTimeout(0)` 的时序。
+
 **尚未执行的对外动作**（需维护者确认）：推送分支；在仓库设置中启用 GitHub Pages，构建来源设为 GitHub Actions；合并到 master 以触发首次部署。另有两项待维护者决定：是否在首次发布前改正仓库名里的 `Atmoic`（站点地址会随之改变）；是否在公开站点保留指向私有 claude.ai artifact 的 `claude-fable-audit` 引用。
 
-本树最终实测（2026-09-26，Windows 11、CPython 3.12、同一工作树）：
+本树最终实测（2026-09-26 终审修复后，Windows 11、CPython 3.12、同一工作树）：
 
 | 门禁 | 结果 |
 |---|---|
 | Ruff / mypy | ruff 与 format 通过；mypy strict 无问题（38 个源文件） |
-| Python 全量 | 1658 passed，0 skipped；总覆盖率 93.28%（门槛 85%） |
+| Python 全量 | 1659 passed，0 skipped；总覆盖率 93.28%（门槛 85%） |
 | 引用、HTTP schema 与 MkDocs | 两个 `--check` 与 `mkdocs build --strict` 通过 |
-| 前端全量 | 66 个 spec 文件、1531 passed，0 skipped、0 todo；63 个模块逐文件达标 |
-| 类型检查与生产构建 | `typecheck` 通过；JS 1,318.84 kB（gzip 367.69 kB） |
+| 前端全量 | 66 个 spec 文件、1543 passed，0 skipped、0 todo；63 个模块逐文件达标 |
+| 类型检查与生产构建 | `typecheck` 通过；JS 1,319.72 kB（gzip 367.94 kB） |
 | 全栈浏览器 | `npm run test:fullstack` 1/1 通过 |
-| 静态站构建 | `build_pages.py` 完整构建通过：站点 305.27 MB（`data/` 295.24 MB，`learn/` 8.59 MB，`assets/` 1.35 MB） |
-| 静态站浏览器 | `npm run test:pages` 8/8 通过 |
+| 静态站构建 | `build_pages.py --skip-data` 重建通过（导出器与目录未改，`data/` 沿用上次完整构建）：站点 305.28 MB（`data/` 295.24 MB，`learn/` 8.59 MB，`assets/` 1.35 MB） |
+| 静态站浏览器 | `npm run test:pages` 9/9 通过 |
 | 视觉像素 | `scripts/visual-docker.ps1` 8/8 通过（1280×800 基线） |
 
 ## 能力账本
