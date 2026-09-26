@@ -371,6 +371,22 @@ def test_status_names_the_checkpoint_the_roadmap_names_and_records_open_follow_u
     assert "大小写" in remaining
 
 
+def test_contributing_asks_for_the_smallest_sufficient_static_site_checks() -> None:
+    """A textbook typo does not need a full data re-render or the Docker pixel
+    gate; a change to what the precomputed data answers does need the full build."""
+
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    before_commit = contributing.split("## 提交前", 1)[1].split("\n## ", 1)[0]
+
+    assert "改动前端、教材或构建脚本时，提交前还要在本地运行以下命令" not in before_commit  # noqa: RUF001
+    for trigger in ("导出器", "目录规格", "请求枚举器", "请求构造", "场景构建与路由"):
+        assert trigger in before_commit, trigger
+    assert "npm --prefix web run test:pages" in before_commit
+    assert "--skip-data" in before_commit
+    assert "pwsh scripts/visual-docker.ps1" in before_commit
+    assert "画进画布" in before_commit
+
+
 def test_visual_fixture_docs_do_not_call_the_derived_catalog_a_literal_table() -> None:
     """The superposition period is deterministic, but it is still arithmetic."""
 
