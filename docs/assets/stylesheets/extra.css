@@ -413,11 +413,14 @@
   background-color: var(--qv-bg);
 }
 
+/* 关闭按钮所在的栏：在舞台下方、图注上方，永远不叠在嵌入的实验室上。 */
+.quviz-figure__bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.6rem 1.2rem 0;
+}
+
 .quviz-figure__close {
-  position: absolute;
-  top: 0.6rem;
-  right: 0.6rem;
-  z-index: 1;
   padding: 0.3rem 0.9rem;
   border: 1px solid var(--qv-border-strong);
   border-radius: var(--qv-radius-pill);

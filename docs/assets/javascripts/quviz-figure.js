@@ -76,14 +76,16 @@
     var stage = figure.querySelector('.quviz-figure__stage')
     if (!stage) return
     var frame = stage.querySelector('.quviz-figure__frame')
-    var close = stage.querySelector('.quviz-figure__close')
+    var bar = figure.querySelector('.quviz-figure__bar')
     if (frame) stage.removeChild(frame)
-    if (close) stage.removeChild(close)
+    if (bar) figure.removeChild(bar)
     var placeholder = stage.querySelector('.quviz-figure__placeholder')
     if (placeholder) placeholder.hidden = false
     figure.removeAttribute(ACTIVE)
   }
 
+  // “关闭交互图”放在舞台下方的一条栏里，而不是叠在 iframe 上：嵌入的实验室把自己的
+  // “在实验室中打开”放在右上角，叠在舞台上的按钮会盖住它、把点击变成关闭。
   function load(figure, urls, caption) {
     var active = document.querySelectorAll('figure.quviz-figure[' + ACTIVE + ']')
     for (var i = 0; i < active.length; i += 1) {
@@ -99,15 +101,22 @@
     frame.setAttribute('allow', 'fullscreen')
     frame.setAttribute('allowfullscreen', '')
     frame.setAttribute('referrerpolicy', 'no-referrer')
+    var bar = element('div', 'quviz-figure__bar')
     var close = element('button', 'quviz-figure__close', '关闭交互图')
     close.setAttribute('type', 'button')
     close.addEventListener('click', function () {
       unload(figure)
+      // 关闭后焦点回到刚才加载它的按钮，而不是丢给 <body>。
+      var again = figure.querySelector('.quviz-figure__load')
+      if (again) again.focus()
     })
+    bar.appendChild(close)
     stage.querySelector('.quviz-figure__placeholder').hidden = true
     stage.appendChild(frame)
-    stage.appendChild(close)
+    figure.insertBefore(bar, stage.nextSibling)
     figure.setAttribute(ACTIVE, '')
+    // 加载按钮随占位卡一起隐藏，焦点移到关闭按钮；不滚动页面。
+    close.focus({ preventScroll: true })
   }
 
   function enhanceFigure(figure, setting) {

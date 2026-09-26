@@ -40,6 +40,9 @@ function matches(node, selector) {
   return true
 }
 
+// What focus() was last called on, and with which options; reset per page().
+const FOCUS = { active: null, options: null }
+
 class FakeElement {
   constructor(tag) {
     this.tagName = tag.toUpperCase()
@@ -55,6 +58,11 @@ class FakeElement {
   get textContent() { return this.ownText + this.children.map((child) => child.textContent).join('') }
   set textContent(value) { this.ownText = String(value); this.children = [] }
   get firstChild() { return this.children[0] || null }
+  get nextSibling() {
+    const siblings = this.parentNode ? this.parentNode.children : []
+    return siblings[siblings.indexOf(this) + 1] || null
+  }
+  focus(options) { FOCUS.active = this; FOCUS.options = options || null }
   setAttribute(name, value) { this.attributes.set(name, String(value)) }
   getAttribute(name) { return this.attributes.has(name) ? this.attributes.get(name) : null }
   hasAttribute(name) { return this.attributes.has(name) }
@@ -80,6 +88,8 @@ class FakeElement {
 }
 
 function page({ href, config, lab, figures = [], labLinks = [] }) {
+  FOCUS.active = null
+  FOCUS.options = null
   const root = new FakeElement('html')
   const head = root.appendChild(new FakeElement('head'))
   const body = root.appendChild(new FakeElement('body'))
@@ -156,15 +166,35 @@ const SUPER = 'mode=superposition&preset=1s-2pz&t=8.4&rep=slice&plane=xz&obs=pro
   assert.equal(frame.getAttribute('title'), 'QuViz 交互图' + String.fromCharCode(0xff1a) + '图 1.1 1s 电子云')
   assert.equal(first.querySelector('.quviz-figure__placeholder').hidden, true)
   assert.ok(first.hasAttribute('data-quviz-active'))
+  // The close control sits in a bar under the stage, never over the embedded lab,
+  // whose own top-right 在实验室中打开 it used to cover.
+  const stage = first.querySelector('.quviz-figure__stage')
+  assert.equal(stage.querySelector('.quviz-figure__close'), null)
+  const bar = first.querySelector('.quviz-figure__bar')
+  assert.equal(bar.parentNode, first)
+  assert.equal(stage.nextSibling, bar)
+  const close = bar.querySelector('.quviz-figure__close')
+  assert.equal(close.textContent, '关闭交互图')
+  assert.equal(close.getAttribute('type'), 'button')
+  // The load button is hidden with its placeholder, so focus moves to the close control.
+  assert.equal(FOCUS.active, close)
+  // (A field read, not deepEqual: the options object comes from the script's vm realm.)
+  assert.equal(FOCUS.options && FOCUS.options.preventScroll, true)
 
   // One live WebGL context per page: loading the second figure unloads the first.
   second.querySelector('.quviz-figure__load').click()
   assert.equal(first.querySelector('iframe'), null)
   assert.equal(first.querySelector('.quviz-figure__placeholder').hidden, false)
   assert.ok(!first.hasAttribute('data-quviz-active'))
+  assert.equal(first.querySelector('.quviz-figure__bar'), null)
   assert.equal(second.querySelector('iframe').getAttribute('src'), `https://example.test/repo/#embed=1&${SUPER}`)
+  // An unload caused by loading another figure leaves focus with that figure.
+  assert.equal(FOCUS.active, second.querySelector('.quviz-figure__close'))
   second.querySelector('.quviz-figure__close').click()
   assert.equal(document.querySelectorAll('iframe').length, 0)
+  assert.equal(second.querySelector('.quviz-figure__bar'), null)
+  // Closing returns focus to the button that loaded it.
+  assert.equal(FOCUS.active, second.querySelector('.quviz-figure__load'))
 
   // document$ emits again after every instant navigation: enhancing twice is a no-op.
   const before = first.children.length

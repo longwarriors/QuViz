@@ -560,6 +560,10 @@ test('serves the textbook under learn/ with typeset math and a figure that loads
   await figure.getByRole('button', { name: /加载交互图/ }).click()
   const frame = figure.locator('iframe')
   await expect(frame).toHaveCount(1)
+  // The load button hides with its card, so focus moves to the close control, which
+  // sits under the stage rather than over the lab it embeds.
+  const close = figure.getByRole('button', { name: '关闭交互图' })
+  await expect(close).toBeFocused()
   const embeddedLab = frame.contentFrame()
   await expect(embeddedLab.locator('[data-scene-ready]:not([data-scene-ready=""])')).toBeAttached(
     SETTLE,
@@ -580,6 +584,31 @@ test('serves the textbook under learn/ with typeset math and a figure that loads
   const fromFrame = new URL((await reopen.getAttribute('href')) as string, embedded.href)
   expect(`${fromFrame.origin}${fromFrame.pathname}`).toBe(`${base.origin}${base.pathname}`)
   expect(Object.fromEntries(hashOf(fromFrame.href))).toEqual(cardState)
+
+  // Nothing on the textbook page covers that link: a pointer at its centre reaches the
+  // figure's iframe (the close button used to sit exactly there and turn the click into
+  // "close"), and a real click opens the full lab on the same state in a new tab.
+  await reopen.scrollIntoViewIfNeeded()
+  const box = await reopen.boundingBox()
+  expect(box, 'the embedded 在实验室中打开 has no layout box').not.toBeNull()
+  const hit = await page.evaluate(
+    ({ x, y }) => document.elementFromPoint(x, y)?.className ?? null,
+    { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 },
+  )
+  expect(hit, 'the textbook page covers the embedded 在实验室中打开').toBe('quviz-figure__frame')
+  const opened = page.context().waitForEvent('page')
+  await reopen.click({ timeout: 15_000 })
+  const fullLab = await opened
+  await fullLab.waitForURL((url) => url.hash.length > 1)
+  const openedAt = new URL(fullLab.url())
+  expect(`${openedAt.origin}${openedAt.pathname}`).toBe(`${base.origin}${base.pathname}`)
+  expect(Object.fromEntries(hashOf(openedAt.href))).toEqual(cardState)
+  await fullLab.close()
+
+  // Closing unloads the lab and hands focus back to the button that loaded it.
+  await close.click()
+  await expect(frame).toHaveCount(0)
+  await expect(figure.getByRole('button', { name: /加载交互图/ })).toBeFocused()
   expectClean(ledger)
 })
 
