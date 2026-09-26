@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { setStaticCatalog } from '../api/capability'
 import { rememberSuperpositionCatalog } from '../api/client'
+import { parseStaticSpec } from '../api/staticCatalog'
 import type { SuperpositionPreset } from '../api/types'
 import {
   applyDeepLink,
@@ -34,6 +36,7 @@ const setHash = (hash: string): void => {
 const hashChanged = (): void => {
   window.dispatchEvent(new HashChangeEvent('hashchange'))
 }
+const hashOf = (): URLSearchParams => new URLSearchParams(window.location.hash.slice(1))
 const flush = (): Promise<void> => new Promise((done) => setTimeout(done, 0))
 
 interface Pending {
@@ -412,6 +415,47 @@ describe('bindUrlState', () => {
     setHash('#n=1')
     hashChanged()
     expect(read().orbital.n).toBe(4)
+  })
+
+  describe('on the static site, where superposition slices exist on xz only', () => {
+    beforeEach(() => {
+      setStaticCatalog({
+        format: 'quviz-static/1',
+        version: '0000000000000000',
+        spec: parseStaticSpec(
+          JSON.parse(readFileSync(resolve(process.cwd(), 'tools', 'fixtures', 'spec.json'), 'utf-8')),
+        ),
+        entries: {},
+      })
+      rememberSuperpositionCatalog(CATALOG)
+      vi.stubGlobal('fetch', vi.fn())
+    })
+
+    afterEach(() => {
+      setStaticCatalog(null)
+    })
+
+    it('links the plane that is drawn when the learner switches to a superposition from an xy slice', () => {
+      unbind = bindUrlState()
+      read().setRepresentation('slice')
+      read().setPlane('xy')
+      expect(hashOf().get('plane')).toBe('xy')
+
+      read().setMode('superposition')
+
+      expect(hashOf().get('mode')).toBe('superposition')
+      expect(hashOf().get('rep')).toBe('slice')
+      expect(hashOf().get('plane')).toBe('xz')
+    })
+
+    it('rewrites a link that asks for another plane to the one drawn', () => {
+      setHash('#mode=superposition&preset=1s-3dz2&rep=slice&plane=yz&obs=phase')
+
+      unbind = bindUrlState()
+
+      expect(read().plane).toBe('xz')
+      expect(window.location.hash).toBe('#mode=superposition&preset=1s-3dz2&rep=slice&plane=xz&obs=phase')
+    })
   })
 
   it('swallows a replaceState rate-limit error', () => {

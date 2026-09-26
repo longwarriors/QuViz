@@ -509,6 +509,12 @@ test('restores a deep link and writes state changes back without adding history'
   expect(await page.evaluate(() => window.history.length), 'a state change pushed history').toBe(
     historyLength,
   )
+
+  // The catalogue exports superposition slices on xz only. A link asking for xy is
+  // drawn on xz, and the scene identity and the rewritten hash must say xz as well.
+  await page.goto('./#mode=superposition&preset=1s-2pz&rep=slice&plane=xy&obs=phase')
+  await sceneReady(page, 'mode=superposition|representation=slice|', '|plane=xz|sliceObservable=phase|')
+  expect(hashOf(page.url()).get('plane'), 'the hash names a plane that is not drawn').toBe('xz')
   expectClean(ledger)
 })
 

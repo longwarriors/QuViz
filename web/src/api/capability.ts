@@ -1012,6 +1012,19 @@ function declaredChoice<T>(declared: readonly T[], requested: T | undefined, fal
   return requested !== undefined && declared.includes(requested) ? requested : fallback
 }
 
+/**
+ * The plane a slice cell with these declared planes is cut on for a requested
+ * one. The planner sends exactly this, and the store holds exactly this
+ * (useSceneStore's `reconcilePlane`), so the plane chips, the scene identity and
+ * the shared link name the plane that is drawn.
+ */
+export function declaredPlane(
+  planes: readonly PrincipalPlane[],
+  requested: PrincipalPlane | undefined,
+): PrincipalPlane {
+  return declaredChoice(planes, requested, DEFAULT_PLANE)
+}
+
 function parameterValue(inputs: SceneRequestInputs, id: ParameterId): number {
   return {
     samples: inputs.samples,
@@ -1093,7 +1106,7 @@ export function planForCapability(
     params[WIRE_NAME[id]] = clampToBound(bound, parameterValue(inputs, id))
   }
   if (capability.planes !== undefined) {
-    params[PLANE_PARAM] = declaredChoice(capability.planes, inputs.plane, DEFAULT_PLANE)
+    params[PLANE_PARAM] = declaredPlane(capability.planes, inputs.plane)
   }
   if (capability.observables !== undefined) {
     params[OBSERVABLE_PARAM] = declaredChoice(

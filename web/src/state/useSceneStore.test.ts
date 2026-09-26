@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { planSceneRequest, setStaticCatalog } from '../api/capability'
+import { capabilityFor, planSceneRequest, setStaticCatalog } from '../api/capability'
 import { superpositionIsosurfaceRequest } from '../api/requests'
 import { parseStaticSpec, type StaticManifest } from '../api/staticCatalog'
 import { requestKey } from '../api/transport'
@@ -639,6 +639,41 @@ describe('static catalogue pins', () => {
     // What the panel holds is what the planner would send (the catalogue lacks
     // the key here, so the plan is refused rather than re-spelled).
     expect(planSceneRequest(selectSceneRequestInputs(read())).status).toBe('not_precomputed')
+  })
+
+  it('holds a superposition slice on the one plane the catalogue exported, and gives the eigenstate its plane back', () => {
+    // The static catalogue exports superposition slices on xz only. The planner
+    // already falls back to xz for any other plane; the store has to say the
+    // same, or the plane chips, the scene identity and the shared link report
+    // a plane that is not the one drawn.
+    setStaticCatalog(manifest([]))
+    read().setRepresentation('slice')
+    read().setPlane('xy')
+    expect(read().plane).toBe('xy')
+
+    read().setMode('superposition')
+
+    expect(read().representation).toBe('slice')
+    expect(read().plane).toBe('xz')
+    const capability = capabilityFor(selectSceneRequestInputs(read()))
+    expect(capability).toMatchObject({ status: 'available', planes: ['xz'] })
+
+    read().setMode('eigenstate')
+    expect(read().plane).toBe('xy')
+  })
+
+  it('moves a linked plane onto the catalogued one whichever order the link applies in', () => {
+    // applyDeepLink sets the mode, then the plane, then the representation: the
+    // plane arrives while the isosurface (which cuts no plane) is standing.
+    setStaticCatalog(manifest([]))
+    read().setMode('superposition')
+    read().setPlane('yz')
+    read().setRepresentation('slice')
+    expect(read().plane).toBe('xz')
+
+    // And a plane asked for while the slice already stands.
+    read().setPlane('xy')
+    expect(read().plane).toBe('xz')
   })
 
   it('leaves live-mode time and charge alone', () => {

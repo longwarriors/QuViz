@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 
-import { capabilityFor, chargeBound, clampToBound, type ParameterBound } from '../api/capability'
+import {
+  capabilityFor,
+  chargeBound,
+  clampToBound,
+  declaredPlane,
+  type ParameterBound,
+} from '../api/capability'
 import { MINIMUM_SLICE_RESOLUTION } from '../api/sliceContract'
 import type {
   BasisKind,
@@ -59,6 +65,13 @@ interface SceneStore {
    * rather than one this store invented.
    */
   plane: PrincipalPlane
+  /**
+   * The plane the learner (or a link) chose while the slice on screen cannot
+   * be cut on it -- on the static site a superposition slice exists on xz only
+   * -- and undefined whenever `plane` is that choice. `plane` always names the
+   * plane that is drawn; this is what it returns to (see `reconcilePlane`).
+   */
+  displacedPlane: PrincipalPlane | undefined
   sliceObservable: SliceObservable
   samples: number
   seed: number
@@ -206,6 +219,35 @@ function snapTimeAu(state: SceneStore, timeAu: number): number {
 }
 
 /**
+ * The store update, with the slice plane moved onto the planes the cell that
+ * will be drawn declares.
+ *
+ * The planner only ever sends a declared plane (`declaredPlane` falls back to
+ * the route default xz), and on the static site a superposition slice declares
+ * xz alone, because the catalogue exported no other. A store that kept the xy
+ * or yz of the eigenstate slice the learner came from -- or of a link -- made
+ * the plane chips, the scene identity and the shared link all name a plane
+ * that was not the one drawn. The learner's own plane is put aside in
+ * `displacedPlane` rather than lost, and comes back as soon as a cell declares
+ * it again. A cell that cuts no plane leaves both alone.
+ */
+function reconcilePlane(state: SceneStore, next: Partial<SceneStore>): Partial<SceneStore> {
+  const merged = { ...state, ...next }
+  const capability = capabilityFor({
+    mode: merged.mode,
+    orbital: merged.orbital,
+    representation: merged.representation,
+    superpositionSliceResolutionFloor: merged.superpositionSliceResolutionFloor,
+    superpositionStreamlineSeedCountMax: merged.superpositionStreamlineSeedCountMax,
+  })
+  const planes = capability.status === 'available' ? capability.planes : undefined
+  if (planes === undefined) return next
+  const wanted = merged.displacedPlane ?? merged.plane
+  const plane = declaredPlane(planes, wanted)
+  return { ...next, plane, displacedPlane: plane === wanted ? undefined : wanted }
+}
+
+/**
  * The representation each mode can always serve, and therefore the last resort
  * when neither the requested nor the standing one is available.
  *
@@ -322,6 +364,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
   // routes.py: `plane: PrincipalPlane = PrincipalPlane.XZ`,
   // `observable: SliceObservable = SliceObservable.PROBABILITY_DENSITY`.
   plane: 'xz',
+  displacedPlane: undefined,
   sliceObservable: 'probability_density',
   samples: 28000,
   seed: 7,
@@ -362,7 +405,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
               state.superpositionDefaultRepresentation,
               state.superpositionStreamlineSeedCountMax,
             )
-      return {
+      return reconcilePlane(state, {
         mode,
         playing: false,
         representation,
@@ -380,7 +423,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
           state.seedCount,
           state.superpositionStreamlineSeedCountMax,
         ),
-      }
+      })
     }),
   setSuperposition: (
     superpositionTerms,
@@ -403,7 +446,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
         superpositionDefaultRepresentation,
         superpositionStreamlineSeedCountMax,
       )
-      return {
+      return reconcilePlane(state, {
         superpositionTerms,
         superpositionLabel,
         superpositionSliceResolutionFloor,
@@ -426,7 +469,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
           state.seedCount,
           superpositionStreamlineSeedCountMax,
         ),
-      }
+      })
     }),
   syncSuperpositionCapabilities: (
     terms,
@@ -443,7 +486,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
         state.representation,
         superpositionStreamlineSeedCountMax,
       )
-      return {
+      return reconcilePlane(state, {
         superpositionSliceResolutionFloor,
         superpositionStreamlineSeedCountMax,
         superpositionDefaultRepresentation,
@@ -462,7 +505,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
           state.seedCount,
           superpositionStreamlineSeedCountMax,
         ),
-      }
+      })
     }),
   invalidateSuperpositionStreamlineCapability: () =>
     set((state) => {
@@ -473,7 +516,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
         state.representation,
         undefined,
       )
-      return {
+      return reconcilePlane(state, {
         superpositionStreamlineSeedCountMax: undefined,
         representation,
         playing: false,
@@ -491,7 +534,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
           state.seedCount,
           undefined,
         ),
-      }
+      })
     }),
   setSuperpositionBasis: (superpositionBasis) => set({ superpositionBasis }),
   setSuperpositionZ: (superpositionZ) => {
@@ -511,7 +554,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
         state.representation,
         state.superpositionStreamlineSeedCountMax,
       )
-      return {
+      return reconcilePlane(state, {
         orbital,
         representation,
         resolution: clampResolution(
@@ -528,7 +571,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
           state.seedCount,
           state.superpositionStreamlineSeedCountMax,
         ),
-      }
+      })
     }),
   setRepresentation: (representation) =>
     set((state) => {
@@ -539,7 +582,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
         state.representation,
         state.superpositionStreamlineSeedCountMax,
       )
-      return {
+      return reconcilePlane(state, {
         representation: resolved,
         resolution: clampResolution(
           state.mode,
@@ -555,9 +598,9 @@ export const useSceneStore = create<SceneStore>()((set) => ({
           state.seedCount,
           state.superpositionStreamlineSeedCountMax,
         ),
-      }
+      })
     }),
-  setPlane: (plane) => set({ plane }),
+  setPlane: (plane) => set((state) => reconcilePlane(state, { plane, displacedPlane: undefined })),
   setSliceObservable: (sliceObservable) => set({ sliceObservable }),
   setSamples: (samples) => set({ samples }),
   setSeed: (seed) => set({ seed }),
@@ -599,7 +642,7 @@ export const useSceneStore = create<SceneStore>()((set) => ({
         state.representation,
         state.superpositionStreamlineSeedCountMax,
       )
-      return {
+      return reconcilePlane(state, {
         orbital,
         representation,
         resolution: clampResolution(
@@ -616,6 +659,6 @@ export const useSceneStore = create<SceneStore>()((set) => ({
           state.seedCount,
           state.superpositionStreamlineSeedCountMax,
         ),
-      }
+      })
     }),
 }))
