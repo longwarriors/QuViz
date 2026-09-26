@@ -31,8 +31,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     return { error: asError(error) }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo): void {
-    this.props.onError?.(error, info)
+  // React hands over the raw thrown value -- a string, even null -- whatever
+  // the parameter's type says, so it is normalised exactly as the fallback's is.
+  componentDidCatch(error: unknown, info: ErrorInfo): void {
+    this.props.onError?.(asError(error), info)
   }
 
   reset = (): void => {

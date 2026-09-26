@@ -103,6 +103,38 @@ describe('ErrorBoundary', () => {
   })
 })
 
+describe('ErrorBoundary reports what it shows', () => {
+  function NullBomb(): null {
+    throw null
+  }
+
+  it.each([
+    ['a thrown string', StringBomb, 'a bare string'],
+    ['a thrown null', NullBomb, 'null'],
+  ])('hands onError an Error for %s, as the fallback gets', async (_name, thrower, message) => {
+    // React passes the raw thrown value to componentDidCatch. App's crash
+    // handler reads `error.message`: a string became '三维场景无法显示：undefined'
+    // and a null threw inside componentDidCatch.
+    const onError = vi.fn()
+    const tree = await mount(
+      createElement(ErrorBoundary, {
+        onError,
+        fallback: (error: Error) => createElement(LabFailure, { title: '三维场景无法显示', error }),
+        children: createElement(thrower),
+      }),
+    )
+    try {
+      expect(tree.container.textContent).toContain(message)
+      expect(onError).toHaveBeenCalledOnce()
+      const reported: unknown = onError.mock.calls[0][0]
+      expect(reported).toBeInstanceOf(Error)
+      expect((reported as Error).message).toBe(message)
+    } finally {
+      await tree.unmount()
+    }
+  })
+})
+
 describe('asError / reloadPage', () => {
   it('keeps Errors and wraps everything else', () => {
     const error = new Error('x')
