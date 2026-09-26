@@ -62,3 +62,22 @@ def test_citation_extension_rejects_a_malformed_key() -> None:
     markdown = Markdown(extensions=[CitationExtension(bib_file=str(ROOT / "references.bib"))])
     with pytest.raises(ValueError, match="malformed citation"):
         markdown.convert("See [@griffiths2018qm p. 4].")
+
+
+def test_citation_extension_typesets_bibtex_ranges_as_en_dashes() -> None:
+    # Locators are written the BibTeX way ("131--197"); a reader must see an en
+    # dash, not two hyphens. The key, the anchor and the raw locator attribute
+    # keep exactly what the source says.
+    markdown = Markdown(extensions=[CitationExtension(bib_file=str(ROOT / "references.bib"))])
+    html = markdown.convert(
+        "See [@griffiths2018qm, ch. 4 (pp. 131--197); "
+        "@stodolna2013stark, pp. 213001-1--213001-4, especially Figs. 2--3]."
+    )
+    assert "Griffiths &amp; Schroeter, 2018, ch. 4 (pp. 131\u2013197)" in html
+    assert "Stodolna et al., 2013, pp. 213001-1\u2013213001-4, especially Figs. 2\u20133" in html
+    assert 'data-cite-keys="griffiths2018qm;stodolna2013stark"' in html
+    assert (
+        'data-cite-locators="ch. 4 (pp. 131--197);pp. 213001-1--213001-4, especially Figs. 2--3"'
+    ) in html
+    assert 'href="/references/index.md#griffiths2018qm"' in html
+    assert 'href="/references/index.md#stodolna2013stark"' in html

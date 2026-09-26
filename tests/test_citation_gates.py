@@ -849,6 +849,21 @@ def test_check_reports_a_crlf_copy_of_the_current_index_as_stale(tmp_path: Path)
     assert not render_reference_index.index_is_current(tmp_path / "missing.md", rendered)
 
 
+def test_index_typesets_bibtex_dashes_but_keeps_keys_anchors_and_urls() -> None:
+    # BibTeX writes a range as "--" and a dash as "---"; the index is read by
+    # people, so it shows an en dash and an em dash. Keys, anchors and URLs
+    # (a YouTube id contains "--") are identifiers and stay byte-exact.
+    rendered = render_reference_index.render(parse_bibtex_file(ROOT / "references.bib"))
+    assert "| **Pages** | 697\u2013723 |" in rendered
+    assert "pp. 131\u2013197, 10.1017/9781316995433.005" in rendered
+    assert "Pages 213001-1\u2013213001-4, especially Figs. 2\u20133" in rendered
+    assert "697\u2013723 \u2014 the volume" in rendered
+    assert "M--6_0F62pQ" in rendered
+    assert '<a id="floatheadphysics2025-orbitals"></a>' in rendered
+    rows = [line for line in rendered.splitlines() if line.startswith("| **")]
+    assert [row for row in rows if "--" in row and "M--6_0F62pQ" not in row] == []
+
+
 # --- C2: source-audit entries must be pinned, and the pin must be coherent ---
 
 SHA = "a351de1adbcdd14bb4d12dd50dff534fd0cb595f"

@@ -9,6 +9,7 @@ from quviz.docs.bibliography import (
     parse_bibtex_file,
     required_field_problems,
 )
+from quviz.docs.locators import typeset_dashes
 from quviz.docs.scan import cited_keys_in_tree, orphan_keys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,8 +76,13 @@ def test_generated_index_emits_every_canonical_field() -> None:
             elif field == "keywords":
                 for tag in value.split(","):
                     assert f"`{tag.strip()}`" in block, (key, field, tag)
+            elif field in {"commit", "doi", "url"}:
+                # Identifiers are emitted byte-exact (a YouTube id contains "--").
+                assert value in block, (key, field, value)
             else:
-                assert value.replace(r"\&", "&") in block, (key, field, value)
+                # Displayed text shows BibTeX's "--" and "---" as en and em dashes.
+                expected = typeset_dashes(value).replace(r"\&", "&")
+                assert expected in block, (key, field, value)
 
 
 def test_duplicate_keys_are_rejected() -> None:

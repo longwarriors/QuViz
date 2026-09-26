@@ -16,7 +16,7 @@ from markdown.extensions import Extension
 from markdown.inlinepatterns import InlineProcessor
 
 from quviz.docs.bibliography import BibEntry, Bibliography, parse_bibtex_file
-from quviz.docs.locators import CitationReference, parse_citation_group
+from quviz.docs.locators import CitationReference, parse_citation_group, typeset_dashes
 
 # Deliberately permissive: a strict key pattern silently fails to match a
 # citation that carries a locator, so ``[@key, p. 4]`` would pass through as
@@ -77,7 +77,8 @@ class CitationInlineProcessor(InlineProcessor):
             # to ``relative_to_docs``. The built href is therefore safe both
             # at the domain root and under a deployment subpath.
             link.set("href", f"/references/index.md#{ref.key}")
-            link.text = f"{label}, {ref.locator}" if ref.locator else label
+            # The label is read; the locator attribute above stays raw for tooling.
+            link.text = f"{label}, {typeset_dashes(ref.locator)}" if ref.locator else label
             link.tail = " ; " if index < len(references) - 1 else "]"
             titles.append(f"{ref.key}: {entry.fields.get('title', ref.key)}")
         span.set("title", " | ".join(titles))

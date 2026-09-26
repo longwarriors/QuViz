@@ -14,6 +14,7 @@ from quviz.docs.bibliography import (
     parse_bibtex_file,
     required_field_problems,
 )
+from quviz.docs.locators import typeset_dashes
 from quviz.docs.pins import validate_source_pins
 from quviz.docs.scan import cited_keys_in_tree, orphan_keys
 
@@ -38,9 +39,14 @@ def format_authors(entry: BibEntry) -> str:
 
 
 def _display_text(value: str) -> str:
-    """Convert the tiny TeX/Markdown subset present in bibliography fields."""
+    """Convert the tiny TeX/Markdown subset present in bibliography fields.
 
-    return value.replace(r"\&", "&").replace("|", r"\|").replace("\n", " ")
+    That subset includes BibTeX's ``--`` ranges and ``---`` dashes. URLs, DOIs
+    and revisions never come through here (``format_field_value``), so an
+    identifier that contains ``--`` stays byte-exact.
+    """
+
+    return typeset_dashes(value).replace(r"\&", "&").replace("|", r"\|").replace("\n", " ")
 
 
 ENTRY_TYPE_LABELS = {
