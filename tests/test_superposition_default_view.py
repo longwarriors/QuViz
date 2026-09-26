@@ -6,21 +6,40 @@ is the isosurface (``web/src/state/useSceneStore.ts`` ``ALWAYS_AVAILABLE``) --
 sends the route-default request ``resolution=65, probability_mass=0.90,
 time=0, basis=complex, Z = a_mu = 1``, and the server refuses it with 422.
 
-Root cause, measured on the finest-two schedule (129, 137) that the workload
-estimator selects for any multi-term state with an excited-s component:
+Root cause (corrected 2026-09-26: an earlier account blamed a saddle of
+``|Psi|^2`` near the 0.90 level; there is none). At t = 0 the state is real,
+``Psi = (psi_2s + psi_2p0) / sqrt(2) = (2 - r + z) exp(-r/2) / (8 sqrt(pi))``
+with Z = a_mu = 1. ``grad Psi`` vanishes only at (0, 0, -3), the extremum of
+the negative lobe (``|Psi|^2 = e^-3 / (4 pi) = 3.96e-3 bohr^-3``), and the
+origin is a cusp maximum (1.99e-2). ``|Psi|^2`` therefore has no saddle at any
+positive level: every level below 3.96e-3 bounds exactly two ball-like
+components, and the converged per-component Euler-characteristic signature
+is (2, 2).
 
-* the per-component Euler-characteristic signature of the 0.90 level set
-  changes with the grid -- (2, 2) at 129 and 145, (-14,) at 137, (-12,) at
-  161, (-4,) at 181 -- because the level lies close to a saddle value of
-  ``|Psi|^2`` where the two lobes nearly touch, and marching cubes opens and
-  closes spurious handles there;
-* the route answers 200 at 0.85 and below and inside the isolated 0.911-0.912
-  window, 422 from the two-grid gate on 0.86-0.91 and at 0.915, and 422 before
-  building from 0.92 upwards (the radial oracle asks for more than the 137 cap).
+What the capped grid sees is a different matter. ``|Psi|^2`` has a double
+zero on the nodal paraboloid ``r = 2 + z`` (vertex (0, 0, -1)). At the 0.90
+level (``c = 8.07e-5 bohr^-3`` on the 137 grid) the two components are
+separated at that vertex by a gap of only ``sqrt(64 pi e c)`` ~ 0.21 bohr,
+narrower than both spacings of the finest-two schedule (129, 137) that the
+workload estimator selects for any multi-term state with an excited-s
+component: 0.310 and 0.292 bohr. Whether a sample lands inside the gap depends
+on how the grid falls, so marching cubes on ``|Psi|^2`` bridges the lobes on
+some grids and not on others: (2, 2) at 129 and 145, (-14,) at 137, (-12,) at
+161, (-4,) at 181, and (2, 2) again at 201 and 257, whose spacings (0.198 and
+0.155 bohr) are below the gap. Contouring the signed real wavefunction at
+``+/-sqrt(c)`` gives (2, 2) on every one of those grids, 137 included.
 
-So the gate is right and the builder has no bug: there is no converged
-topology at 0.90 to publish, and a "safe" mass would be an island rather than
-a range. These tests pin the gate so that it cannot be loosened by accident.
+The route answers 200 at 0.85 and below and inside the isolated 0.911-0.912
+window, 422 from the two-grid gate on 0.86-0.91 and at 0.915, and 422 before
+building from 0.92 upwards (the radial oracle asks for more than the 137 cap).
+
+So the gate is right: the topology at 0.90 is well defined and converges, but
+the capped ``|Psi|^2`` builder cannot deliver it, and a "safe" mass would be an
+island rather than a range. A builder that contoured ``Re(exp(-i phi) Psi)`` at
+``+/-sqrt(c)`` for a state that is real up to one global phase, or refined the
+grid near nodal surfaces, could publish it. These tests pin the gate so that
+it cannot be loosened by accident, and pin the mechanism so that this account
+is checked by code rather than asserted in prose.
 
 Fix: ``GET /api/superposition/catalog`` publishes ``default_representation``,
 probed by running exactly that route-default request through the route's own
@@ -34,13 +53,18 @@ from __future__ import annotations
 
 from typing import Any
 
+import numpy as np
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from skimage.measure import marching_cubes
 
 from quviz.api import routes as routes_module
 from quviz.api.app import create_app
 from quviz.conventions import BasisKind
+from quviz.physics.hydrogenic import cartesian_to_spherical
+from quviz.physics.observables import probability_density
+from quviz.scene import builders as scene_builders
 
 client = TestClient(create_app(mount_frontend=False))
 
@@ -66,7 +90,45 @@ def test_route_default_isosurface_of_the_degenerate_preset_is_refused_by_the_gat
     assert "the validated grid cap 137" in detail
 
 
-def test_the_same_gate_accepts_a_level_away_from_the_saddle() -> None:
+def _component_signature(field: np.ndarray, level: float, spacing: float) -> tuple[int, ...]:
+    _, faces, _, _ = marching_cubes(field.astype(np.float32), level=level, spacing=(spacing,) * 3)
+    return scene_builders._mesh_component_euler_characteristics(faces)
+
+
+def test_the_refusal_is_a_sub_grid_gap_across_the_nodal_paraboloid_not_a_topology_change() -> None:
+    state = routes_module._parse_superposition(DEGENERATE_TERMS, BasisKind.COMPLEX, maximum_n=4)
+    extent = scene_builders.superposition_extent(state)
+    axis = np.linspace(-extent, extent, 137)
+    spacing = float(axis[1] - axis[0])
+    x, y, z = np.meshgrid(axis, axis, axis, indexing="ij")
+    radius, theta, phi = cartesian_to_spherical(x, y, z)
+    psi = state.evaluate(radius, theta, phi, time=0.0)
+    density = probability_density(psi)
+    level, _, _ = scene_builders._density_threshold_for_mass(
+        density, scene_builders._simpson_weights_3d(137, spacing), 0.9
+    )
+
+    # Real up to one global phase, and exactly the closed form the docstring uses.
+    aligned = psi * np.exp(-1j * np.angle(psi.flat[np.argmax(np.abs(psi))]))
+    assert float(np.max(np.abs(aligned.imag))) <= 1e-12 * float(np.max(np.abs(psi)))
+    closed_form = (2.0 - radius + z) * np.exp(-radius / 2.0) / (8.0 * np.sqrt(np.pi))
+    np.testing.assert_allclose(aligned.real, closed_form, rtol=0.0, atol=1e-12)
+
+    # The gap the level leaves at the paraboloid vertex (0, 0, -1) is below the spacing...
+    assert 0.20 < np.sqrt(64.0 * np.pi * np.e * level) < 0.22 < spacing
+    # ...so |Psi|^2 bridges the two lobes on this grid, while the signed wavefunction,
+    # contoured at the same level on the same grid, has the true two-ball topology.
+    assert _component_signature(density, level, spacing) != (2, 2)
+    root = float(np.sqrt(level))
+    signed = _component_signature(aligned.real, root, spacing) + _component_signature(
+        aligned.real, -root, spacing
+    )
+    assert tuple(sorted(signed)) == (2, 2)
+
+
+def test_the_same_gate_accepts_a_level_whose_nodal_gap_the_grid_resolves() -> None:
+    # At 0.80 the gap across the nodal paraboloid is ~0.34 bohr, wider than both
+    # scheduled spacings (0.310 and 0.292 bohr).
     response = client.get(
         "/api/superposition/isosurface",
         params={**ROUTE_DEFAULT_ISOSURFACE, "probability_mass": 0.8},

@@ -270,8 +270,10 @@ export function resolveRepresentation(
  * it cannot say the server will build it. The catalogue probes the
  * route-default isosurface of every preset and publishes
  * `default_representation` -- `'slice'` when that request is refused (today
- * 2s + 2p_z, whose 0.90 level set sits on a saddle of |Psi|^2 and fails the
- * two-grid topology gate). So when the store would otherwise open such a preset
+ * 2s + 2p_z: its 0.90 level set is two balls, but the gap between them across
+ * the nodal paraboloid r = 2 + z is ~0.21 bohr, narrower than the capped grid
+ * spacing, so marching cubes on |Psi|^2 bridges the lobes on some grids and the
+ * two-grid topology gate refuses). So when the store would otherwise open such a preset
  * on the isosurface, it asks for the published default instead, through
  * `resolveRepresentation` so the capability matrix keeps the last word.
  *
