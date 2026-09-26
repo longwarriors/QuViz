@@ -152,6 +152,60 @@ describe('GuideDialog', () => {
     }
   })
 
+  it('keeps Escape and the Tab trap working after focus has left the dialog', async () => {
+    // A click on the dialog's own text (nothing focusable) used to send focus
+    // to <body>, where the dialog's keydown handler never saw a key: Escape
+    // stopped closing it and Tab walked into the page behind the backdrop.
+    const onClose = vi.fn()
+    const pageListener = vi.fn()
+    document.addEventListener('keydown', pageListener)
+    const tree = await dialog(onClose)
+    try {
+      const root = tree.container.querySelector<HTMLElement>('[role="dialog"]')
+      if (root === null) throw new Error('no dialog')
+      // Focusable itself, so a click on its text lands focus on it, not on <body>.
+      // (The attribute, not `tabIndex`: that reads -1 on any plain div too.)
+      expect(root.getAttribute('tabindex')).toBe('-1')
+      const [first, last] = focusableWithin(root)
+
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      expect(document.activeElement).toBe(document.body)
+      await press(document.body, 'Tab')
+      expect(document.activeElement).toBe(first)
+
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      await press(document.body, 'Tab', true)
+      expect(document.activeElement).toBe(last)
+
+      // From the dialog element itself (where a text click leaves focus),
+      // Shift+Tab must not step back out into the page.
+      root.focus()
+      await press(root, 'Tab', true)
+      expect(document.activeElement).toBe(last)
+
+      ;(document.activeElement as HTMLElement | null)?.blur()
+      await press(document.body, 'Escape')
+      expect(onClose).toHaveBeenCalledOnce()
+      // Tab is the browser's to act on; the guide's Escape is the guide's alone.
+      const heard = pageListener.mock.calls.map(([event]) => (event as KeyboardEvent).key)
+      expect(heard).not.toContain('Escape')
+    } finally {
+      document.removeEventListener('keydown', pageListener)
+      await tree.unmount()
+    }
+  })
+
+  it('stops listening to the page once closed', async () => {
+    const onClose = vi.fn()
+    const tree = await mount(createElement(GuideDialog, { open: false, onClose }))
+    try {
+      await press(document.body, 'Escape')
+      expect(onClose).not.toHaveBeenCalled()
+    } finally {
+      await tree.unmount()
+    }
+  })
+
   it('switches tabs with the roving keyboard pattern and closes from the button or the backdrop', async () => {
     const onClose = vi.fn()
     const tree = await dialog(onClose)

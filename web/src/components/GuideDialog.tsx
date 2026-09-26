@@ -179,32 +179,48 @@ export function GuideDialog({ open, onClose }: { open: boolean; onClose: () => v
     return () => previous?.focus()
   }, [open])
 
+  // Escape and the Tab trap listen on the DOCUMENT, in the capture phase, not
+  // on the dialog: a listener on the dialog hears only keys pressed while
+  // focus is inside it, and focus can leave without the reader meaning to
+  // (a click on the guide's own text used to send it to <body>). Capturing
+  // also keeps an Escape meant for the guide from reaching the page's own
+  // Escape handling.
+  useEffect(() => {
+    if (!open) return undefined
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
+      const dialog = dialogRef.current
+      if (dialog === null) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        onClose()
+        return
+      }
+      if (event.key !== 'Tab') return
+      const items = focusableWithin(dialog)
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const active = document.activeElement
+      // The dialog element itself (tabIndex -1) counts as outside its tab
+      // order: from there Shift+Tab would otherwise step back into the page.
+      const inside = active !== dialog && dialog.contains(active)
+      if (event.shiftKey && (active === first || !inside)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (active === last || !inside)) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown, true)
+    return () => document.removeEventListener('keydown', onKeyDown, true)
+  }, [open, onClose])
+
   if (!open) return null
 
   const tabId = (id: GuideTab): string => `${baseId}-${id}-tab`
   const panelId = (id: GuideTab): string => `${baseId}-${id}-panel`
-
-  const onDialogKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      event.stopPropagation()
-      onClose()
-      return
-    }
-    if (event.key !== 'Tab' || dialogRef.current === null) return
-    const items = focusableWithin(dialogRef.current)
-    if (items.length === 0) return
-    const first = items[0]
-    const last = items[items.length - 1]
-    const active = document.activeElement
-    if (event.shiftKey && (active === first || !dialogRef.current.contains(active))) {
-      event.preventDefault()
-      last.focus()
-    } else if (!event.shiftKey && (active === last || !dialogRef.current.contains(active))) {
-      event.preventDefault()
-      first.focus()
-    }
-  }
 
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
     const next = nextRovingIndex(event.key, index, GUIDE_TABS.length)
@@ -228,7 +244,9 @@ export function GuideDialog({ open, onClose }: { open: boolean; onClose: () => v
         aria-modal="true"
         aria-labelledby={titleId}
         ref={dialogRef}
-        onKeyDown={onDialogKeyDown}
+        // Focusable, not tabbable: a click on the guide's text lands focus
+        // here instead of on <body>, behind the backdrop.
+        tabIndex={-1}
       >
         <div className="qv-dialog-head">
           <h2 id={titleId}>关于 QuViz 实验室</h2>
