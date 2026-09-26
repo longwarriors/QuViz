@@ -31,6 +31,7 @@ export const REQUIRED_PAGES_TESTS = Object.freeze({
     'restores a deep link and writes state changes back without adding history',
     'embed mode drops the lab chrome and links the same state back to the full lab',
     'serves the textbook under learn/ with typeset math and a figure that loads the lab',
+    'reflows every textbook page at phone width, long citations included',
     'answers only under the repository sub-path, with Pages content types',
   ]),
 })

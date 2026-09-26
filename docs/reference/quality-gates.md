@@ -149,7 +149,7 @@
 
     **前提与服务器**：`web/playwright.pages.config.ts` 要求先有一次完整构建；缺少 `build/pages/data/manifest.json` 时在加载阶段直接报错。随后以 `build_pages.py --skip-data --serve 4180` 重建实验室与教材、保留预计算数据，并严格按 Pages 子路径托管。
 
-    **覆盖范围**：`web/pages-e2e/site.spec.ts` 的 8 项测试覆盖：
+    **覆盖范围**：`web/pages-e2e/site.spec.ts` 的 9 项测试覆盖：
 
     - 开场场景只来自 `data/`（零 `/api` 请求、零离站请求）；
     - 切换表示法；
@@ -157,12 +157,13 @@
     - `1s + 2p_z` 按预计算帧格点播放并显示时间；
     - 深链接往返，且不产生历史记录；
     - embed 模式；
-    - `learn/` 教材的公式排版，以及嵌入图 iframe 就绪；
+    - `learn/` 教材的公式排版，嵌入图 iframe 就绪；嵌入实验室自己的「在实验室中打开」不被教材页遮挡、真实点击在新标签页打开同一状态，「关闭交互图」在加载后获得焦点、关闭后把焦点还给「加载交互图」；
+    - 每个教材页在 390 px 宽度下不横向滚动，1280 px 下引用不越出正文栏；
     - 子路径外一律 404。
 
     教材页只允许 `mkdocs.yml` 固定的 jsDelivr 前缀作为离站请求，因此需要网络。
 
-    **运行后审计**：Playwright 之后，`web/scripts/assert-pages-run.mjs` 以闭合集合审计 JSON 报告：固定 spec 与 8 个标题各恰好一次通过，拒绝 0 tests、skip、flaky、重复或额外测试。其正/负控在 `web/src/pagesGate.test.ts`；`web/src/guards.test.ts` 的零 skip 源码扫描同样覆盖 `web/pages-e2e/`。
+    **运行后审计**：Playwright 之后，`web/scripts/assert-pages-run.mjs` 以闭合集合审计 JSON 报告：固定 spec 与 9 个标题各恰好一次通过，拒绝 0 tests、skip、flaky、重复或额外测试。其正/负控在 `web/src/pagesGate.test.ts`；`web/src/guards.test.ts` 的零 skip 源码扫描同样覆盖 `web/pages-e2e/`。
 
     **未断言的部分**：Material 的 instant navigation 在本地端口上退化为整页跳转，所以不在这里断言；它由全栈门禁在 `mkdocs serve` 下断言；
 

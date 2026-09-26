@@ -268,10 +268,17 @@
   backdrop-filter: var(--qv-blur);
 }
 
+/* MathJax 给读屏器的 MathML 副本（mjx-assistive-mml）绝对定位、裁成 1px，但盒子按整条公式的宽度
+   从公式左端排开；行内公式落在行尾时，它把手机页面撑出横向滚动。right: 0 让它与公式本身同宽，
+   读屏内容不变。 */
+.md-typeset mjx-assistive-mml {
+  right: 0;
+}
+
+/* 引用组可以在词间换行：带定位符的多源引用在手机上远宽于视口，nowrap 会把它推出页面。 */
 .md-typeset .quviz-citation {
   color: var(--md-accent-fg-color);
   font-size: 0.92em;
-  white-space: nowrap;
   cursor: help;
 }
 

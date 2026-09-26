@@ -95,7 +95,7 @@ uv run --locked --no-sync python scripts/build_pages.py --skip-data --serve 4180
 npm --prefix web run test:pages
 ```
 
-它在上面的子路径下验证开场场景、表示法切换、未预计算提示、叠加态播放、深链接、嵌入模式与教材页（教材页需要网络以加载 MathJax），然后由 `assert-pages-run.mjs` 审计报告，只有恰好 8 项测试各运行一次且全部通过才算绿。
+它在上面的子路径下验证开场场景、表示法切换、未预计算提示、叠加态播放、深链接、嵌入模式、教材页及其手机宽度排版（教材页需要网络以加载 MathJax），然后由 `assert-pages-run.mjs` 审计报告，只有恰好 9 项测试各运行一次且全部通过才算绿。
 
 ## 视觉像素门禁（Docker）
 

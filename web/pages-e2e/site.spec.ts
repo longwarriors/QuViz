@@ -277,6 +277,14 @@ function htmlPages(directory: string): string[] {
   return pages.sort()
 }
 
+/** Every built textbook page -- the index and each chapter -- as paths relative to baseURL. */
+function textbookPages(): string[] {
+  return htmlPages(join(LEARN_ROOT, 'textbook')).map((file) => {
+    const directory = relative(LEARN_ROOT, join(file, '..')).split(sep).join('/')
+    return `learn/${directory}/`
+  })
+}
+
 /** The first built textbook page that embeds a figure, as a path relative to baseURL. */
 function firstFigurePage(): string {
   const textbook = join(LEARN_ROOT, 'textbook')
@@ -609,6 +617,44 @@ test('serves the textbook under learn/ with typeset math and a figure that loads
   await close.click()
   await expect(frame).toHaveCount(0)
   await expect(figure.getByRole('button', { name: /加载交互图/ })).toBeFocused()
+  expectClean(ledger)
+})
+
+test('reflows every textbook page at phone width, long citations included', async ({
+  page,
+  baseURL,
+}) => {
+  // Multi-source citations such as "[NIST ..., eq. 18.5.12 ; ...]" were white-space:
+  // nowrap and pushed 13 of 15 pages sideways at 390 px (WCAG 1.4.10), and over the
+  // table of contents on desktop.
+  const base = baseOf(baseURL)
+  const ledger = watch(page, base, textbookCdnPrefixes())
+  const pages = textbookPages()
+  expect(pages.length, 'the textbook index and its fourteen chapters').toBe(15)
+  const failures: string[] = []
+  for (const path of pages) {
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.goto(path)
+    await expect(page.locator('.arithmatex:not(:has(mjx-container))')).toHaveCount(0, SETTLE)
+    const phone = await page.evaluate(() => {
+      const root = document.documentElement
+      return root.scrollWidth > root.clientWidth ? root.scrollWidth : null
+    })
+    if (phone !== null) failures.push(`${path} at 390 px scrolls sideways to ${phone} px`)
+
+    await page.setViewportSize({ width: 1280, height: 800 })
+    const desktop = await page.evaluate(() => {
+      const article = document.querySelector('article')?.getBoundingClientRect()
+      if (article === undefined) return ['(no article)']
+      return [...document.querySelectorAll('.quviz-citation')]
+        .filter((citation) =>
+          [...citation.getClientRects()].some((line) => line.right > article.right + 0.5),
+        )
+        .map((citation) => (citation.textContent ?? '').slice(0, 60))
+    })
+    for (const citation of desktop) failures.push(`${path} at 1280 px: ${citation} crosses the article`)
+  }
+  expect(failures).toEqual([])
   expectClean(ledger)
 })
 
