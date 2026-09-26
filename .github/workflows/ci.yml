@@ -188,13 +188,17 @@ jobs:
           retention-days: 7
 
   web-visual:
-    # The screenshot suite, and the ONLY place it can run. web/playwright
-    # .config.ts throws at module load off Linux, on purpose: the baselines in
-    # web/e2e/__screenshots__ are SwiftShader's pixels on this runner image, and
-    # every other platform renders different ones -- so a developer reaching for
-    # `--update-snapshots` after a red local run would overwrite the CI
-    # baselines with their own machine's rendering and leave the suite green
-    # locally, red here, and describing no regression at all. Nothing in
+    # The screenshot suite, re-run here as a second opinion only. The verdict is
+    # local: scripts/visual-docker.ps1 (or its POSIX twin scripts/visual-docker.sh)
+    # runs the suite in the Playwright image pinned by digest, and the baselines
+    # in web/e2e/__screenshots__ are SwiftShader's pixels in THAT image, drawn by
+    # `-Mode update` and reviewed PNG by PNG. web/playwright.config.ts throws at
+    # module load off Linux, on purpose: every other graphics stack renders
+    # different pixels, so `--update-snapshots` on a developer machine would
+    # rewrite the baselines with that machine's rendering. For the same reason
+    # never regenerate the baselines from this job's artefacts: if this job and
+    # the Docker run disagree, the Docker run is the verdict and the difference
+    # is a runner-image drift to investigate, not a new answer key. Nothing in
     # check.ps1 or `npm run test` covers any of this.
     #
     # A separate job from `web` rather than two more steps of it: this one
