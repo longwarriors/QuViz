@@ -724,6 +724,9 @@ PHYSICS_REVIEW_PINS: tuple[ReviewPin, ...] = (
     ReviewPin("00-how-to-use.md", "控件是按这三层组织的", "控件怎样对应这三层"),
     # Step 7 re-verification finding 00-6.
     ReviewPin("00-how-to-use.md", "复制它发给别人", "带有它的完整地址"),
+    # Final-review TB-4 (ledger C7): the same page says 3s/4s isosurfaces are
+    # refused locally too, so local mode does not compute "any" combination.
+    ReviewPin("00-how-to-use.md", "参数范围内的任意组合", "带原因拒绝的组合除外"),
     ReviewPin(
         "01-wavefunction.md",
         "约化质量\n[@griffiths2018qm, ch. 4 (pp. 131--197)]",
