@@ -1,5 +1,6 @@
 [
   {
+    "default_representation": "isosurface",
     "id": "1s-2pz",
     "label": "1s + 2p_z (Bohr oscillation)",
     "note": "Dipole oscillates at omega = 3/8 hartree; the textbook radiating state.",
@@ -9,6 +10,7 @@
     "terms": "1,0,0,0.7071067811865476;2,1,0,0.7071067811865476"
   },
   {
+    "default_representation": "slice",
     "id": "2s-2pz",
     "label": "2s + 2p_z (degenerate, stationary)",
     "note": "Same energy, so nothing moves. A control: visible motion here is a bug.",
@@ -18,6 +20,7 @@
     "terms": "2,0,0,0.7071067811865476;2,1,0,0.7071067811865476"
   },
   {
+    "default_representation": "isosurface",
     "id": "1s-3dz2",
     "label": "1s + 3d_z2",
     "note": "omega = 4/9 hartree. No dipole coupling, so the breathing is quadrupolar.",
@@ -27,6 +30,7 @@
     "terms": "1,0,0,0.7071067811865476;3,2,0,0.7071067811865476"
   },
   {
+    "default_representation": "isosurface",
     "id": "2pplus-2pminus",
     "label": "2p(+1) + 2p(-1)",
     "note": "Degenerate: a real p orbital in disguise, with zero net current.",

@@ -765,22 +765,26 @@ const pragmaScannedSources = allFiles.filter(isPragmaScannedSource)
 /**
  * The Playwright suites -- the OTHER trees of specs in this repository.
  *
- * Both trees are outside `test.include`, so vitest never collects them, which means
- * every guard above is blind to it: `allowOnly: false` does not apply, and
+ * All three trees are outside `test.include`, so vitest never collects them, which
+ * means every guard above is blind to them: `allowOnly: false` does not apply, and
  * scripts/assert-no-skips.mjs derives its expected spec list from src/ and
- * would not miss a file it never expected. Its own authoritative gate is
- * scripts/assert-visual-run.mjs (a skipped test, an uncollected spec or an
- * --update-snapshots run all fail there), and this scan is its secondary guard
+ * would not miss a file it never expected.
+ * The authoritative gates are scripts/assert-visual-run.mjs (web/e2e),
+ * scripts/assert-fullstack-run.mjs (web/fullstack-e2e) and
+ * scripts/assert-pages-run.mjs (web/pages-e2e) -- a skipped test or an uncollected
+ * spec fails there -- and this scan is their secondary guard
  * exactly as the src scan is assert-no-skips.mjs's: it cannot see every
  * spelling, but when it hits it names the line.
  *
  * A missing directory throws here, at module load, rather than yielding an
- * empty list -- deleting either browser suite must be a red run, not a quiet one.
+ * empty list -- deleting any browser suite must be a red run, not a quiet one.
  */
 const VISUAL_E2E_ROOT = fileURLToPath(new URL('../e2e/', import.meta.url))
 const FULLSTACK_E2E_ROOT = fileURLToPath(new URL('../fullstack-e2e/', import.meta.url))
 const visualE2eSpecFiles = walk(VISUAL_E2E_ROOT).filter(isTestFile)
 const fullstackE2eSpecFiles = walk(FULLSTACK_E2E_ROOT).filter(isTestFile)
+const PAGES_E2E_ROOT = fileURLToPath(new URL('../pages-e2e/', import.meta.url))
+const pagesE2eSpecFiles = walk(PAGES_E2E_ROOT).filter(isTestFile)
 
 describe('development server contract', () => {
   it('keeps every same-origin FastAPI documentation route behind the Vite proxy', () => {
@@ -794,6 +798,13 @@ describe('development server contract', () => {
       '/openapi.json': 'http://127.0.0.1:8000',
       '/redoc': 'http://127.0.0.1:8000',
     })
+  })
+
+  it('builds with a relative base, so one bundle serves FastAPI "/" and a Pages sub-path', () => {
+    // An absolute base ('/QuViz/') breaks the fullstack gate, which serves
+    // web/dist at "/" through FastAPI; no base at all breaks every asset URL
+    // under /<repo>/ on GitHub Pages. The app has no router, so './' is safe.
+    expect(viteConfig.base).toBe('./')
   })
 })
 
@@ -980,12 +991,11 @@ describe('scan scope', () => {
     expect(testFiles).toContain('scene/color.test.ts')
   })
 
-  it('reaches both Playwright suites, which no other guard in this file sees', () => {
+  it('reaches all three Playwright suites, which no other guard in this file sees', () => {
     // Named one at a time as well as counted, because this scan passes
-    // VACUOUSLY over an empty list: a wrong E2E_ROOT, a renamed directory or a
+    // VACUOUSLY over an empty list: a wrong root, a renamed directory or a
     // suite deleted wholesale would otherwise leave the skip scan below green
-    // while covering nothing at all. These are the two specs playwright
-    // .config.ts's testDir collects today.
+    // while covering nothing at all.
     expect(visualE2eSpecFiles).toContain('slice.spec.ts')
     expect(visualE2eSpecFiles).toContain('webgl.spec.ts')
     expect(visualE2eSpecFiles.length).toBeGreaterThanOrEqual(2)
@@ -993,6 +1003,7 @@ describe('scan scope', () => {
     // collects `*.spec.ts` / `*.test.ts` only, and so does isTestFile.
     expect(visualE2eSpecFiles).not.toContain('fixtures.ts')
     expect(fullstackE2eSpecFiles).toEqual(['app.spec.ts'])
+    expect(pagesE2eSpecFiles).toEqual(['site.spec.ts'])
   })
 
   it('coverage-gates exactly the modules coverage-scope.json lists, and nothing excluded on purpose', () => {
@@ -1364,6 +1375,11 @@ describe('committed suite integrity', () => {
       withoutComments,
     )
     expect(hits, `forbidden test modifiers under fullstack-e2e/:\n${describeHits(hits)}`).toEqual([])
+  })
+
+  it('has no skipped, todo, focused or conditionally-run tests in the Pages suite', () => {
+    const hits = scan(pagesE2eSpecFiles, matchesForbiddenTestForm, PAGES_E2E_ROOT, withoutComments)
+    expect(hits, `forbidden test modifiers under pages-e2e/:\n${describeHits(hits)}`).toEqual([])
   })
 
   it('reads code and not prose when it scans the visual suite', () => {

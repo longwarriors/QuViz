@@ -2,12 +2,14 @@
  * What `Atmosphere` puts in the scene, and what it leaves behind when it goes.
  *
  * GO from the T0 harness spike: this component renders under
- * `@react-three/test-renderer` with nothing mocked -- including its two drei
- * children -- so the lights, the starfield and the grid asserted below are the
- * real three.js objects. Nothing here claims the scene LOOKS lit: no frame is
- * drawn in this process and the appearance of the lighting rig is PR-8C's
- * business. What is claimed is structural -- which objects exist, how the grid
- * scales with the scene, and that no GPU buffer survives unmount.
+ * `@react-three/test-renderer` with nothing mocked -- including its drei
+ * child -- so the lights and the grid asserted below are the real three.js
+ * objects. Nothing here claims the scene LOOKS lit: no frame is drawn in this
+ * process and the appearance of the lighting rig is PR-8C's business. What is
+ * claimed is structural -- which objects exist, how the grid scales with the
+ * scene, and that no GPU buffer survives unmount -- plus one number the grid's
+ * own shader decides from the live uniforms: how much of each grid fragment
+ * its distance fade lets through (`fadeAt` below).
  *
  * Harness facts from the spike this file depends on: specs cannot use JSX
  * (vitest.config.ts declares no React plugin, so esbuild compiles with the
@@ -18,10 +20,11 @@
  */
 import ReactThreeTestRenderer from '@react-three/test-renderer'
 import { createElement } from 'react'
-import type * as THREE from 'three'
+import * as THREE from 'three'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { Atmosphere } from './Atmosphere'
+import { Atmosphere, groundGrid } from './Atmosphere'
+import { cameraDirectionFor, cameraDirectionForPlane, DEFAULT_CAMERA_DIRECTION } from './camera'
 
 /* ------------------------------------------------------------- act scope */
 
@@ -84,22 +87,125 @@ function everyGeometry(renderer: Renderer): THREE.BufferGeometry[] {
   return found
 }
 
+/**
+ * The width of floor the grid's fade leaves anything on, for a scene extent.
+ *
+ * The fade runs out 4 extents from the nucleus and the floor lies 1.05 extents
+ * below it, so the drawn disc has radius sqrt(4² − 1.05²) extents; the plane is
+ * the square around that disc. Extents under 4 bohr count as 4.
+ */
+function floorWidth(extent: number): number {
+  const scale = Math.max(extent, 4)
+  return 2 * Math.sqrt((4 * scale) ** 2 - (1.05 * scale) ** 2)
+}
+
+/** The grid's plane: the one mesh `Atmosphere` adds. */
+function gridMesh(renderer: Renderer): THREE.Mesh {
+  const found = renderer.scene.children.find((child) => child.instance.type === 'Mesh')
+  if (found === undefined) throw new Error('no grid mesh in the scene')
+  return found.instance as THREE.Mesh
+}
+
+/* ---------------------------------------------------------- the grid fade */
+
+/** The uniforms drei's grid shader reads for its fade, as its `shaderMaterial` stores them. */
+interface GridUniforms {
+  fadeFrom: { value: number }
+  fadeDistance: { value: number }
+  fadeStrength: { value: number }
+  infiniteGrid: { value: boolean }
+  worldCamProjPosition: { value: THREE.Vector3 }
+}
+
+/**
+ * The factor drei's grid multiplies a grid fragment's alpha by, at a world
+ * point on the grid.
+ *
+ * Its fragment shader restated, not re-derived
+ * (`@react-three/drei/core/Grid.js`, fragment `main`):
+ *
+ *     vec3 from = worldCamProjPosition * vec3(fadeFrom);
+ *     float d = 1.0 - min(distance(from, worldPosition.xyz) / fadeDistance, 1.0);
+ *     gl_FragColor = vec4(color, (g1 + g2) * pow(d, fadeStrength));
+ *     if (gl_FragColor.a <= 0.0) discard;
+ *
+ * so a factor of 0 is a fragment that is never drawn, whatever line it lies
+ * on. `worldCamProjPosition` is the camera's foot on the grid plane, which drei
+ * writes from a `useFrame`; `gridSeenFrom` runs that frame first.
+ */
+function fadeAt(uniforms: GridUniforms, point: THREE.Vector3): number {
+  const from = new THREE.Vector3()
+    .copy(uniforms.worldCamProjPosition.value)
+    .multiplyScalar(uniforms.fadeFrom.value)
+  const d = 1 - Math.min(from.distanceTo(point) / uniforms.fadeDistance.value, 1)
+  return d ** uniforms.fadeStrength.value
+}
+
+const EXTENT = 20
+
+/**
+ * How far drei's `Bounds` stands the camera from a slice of this extent.
+ *
+ * `OrbitalCanvas` fits with margin 1.35 under a 42° camera, and `Bounds` puts
+ * the camera `margin * size / (2 atan(pi fov / 360))` from the centre of a box
+ * `size` wide. A slice is two extents wide: about 3.84 extents, 77 bohr here --
+ * three times the 24 bohr the grid used to fade out within, measured from the
+ * camera's own foot.
+ */
+const FITTED_DISTANCE = (1.35 * 2 * EXTENT) / (2 * Math.atan((Math.PI * 42) / 360))
+
+/** The directions the lab fits scenes from: its default, 2p_z's front view and two slice normals. */
+const FITTED_VIEWS: ReadonlyArray<readonly [string, readonly [number, number, number]]> = [
+  ['the three-quarter default', DEFAULT_CAMERA_DIRECTION],
+  ["2p_z's front view", cameraDirectionFor({ basis: 'real', l: 1, m: 0 })],
+  ['an xy slice, from above', cameraDirectionForPlane('xy')],
+  ['an xz slice, level', cameraDirectionForPlane('xz')],
+]
+
+/**
+ * Mount the grid under a camera this spec owns, standing at `position`, and run
+ * the frame in which drei measures the camera's foot on the grid.
+ *
+ * r3f keeps its camera out of the scene graph, so the camera is handed in.
+ * `advanceFrames` renders nothing, so nothing refreshes world matrices the way
+ * `WebGLRenderer.render` would; drei's frame reads the grid's, so the spec
+ * refreshes them first.
+ */
+async function gridSeenFrom(
+  position: THREE.Vector3,
+): Promise<{ renderer: Renderer; mesh: THREE.Mesh; uniforms: GridUniforms }> {
+  const camera = new THREE.PerspectiveCamera(42, 1.6, 0.01, 5000)
+  camera.position.copy(position)
+  camera.updateMatrixWorld(true)
+  const renderer = await ReactThreeTestRenderer.create(
+    createElement(Atmosphere, { showGrid: true, extent: EXTENT }),
+    { camera },
+  )
+  renderer.scene.instance.updateMatrixWorld(true)
+  await renderer.advanceFrames(1, 1 / 60)
+  const mesh = gridMesh(renderer)
+  const uniforms = (mesh.material as THREE.ShaderMaterial).uniforms as unknown as GridUniforms
+  return { renderer, mesh, uniforms }
+}
+
+/** A camera at the fitted distance along a view direction. */
+function fittedCamera(direction: readonly [number, number, number]): THREE.Vector3 {
+  return new THREE.Vector3(...direction).normalize().multiplyScalar(FITTED_DISTANCE)
+}
+
 /* ------------------------------------------------------------------ specs */
 
 describe('Atmosphere', () => {
-  it('lights the scene from four sources and hangs a starfield behind it', async () => {
+  it('lights neutrally and hangs no decoration in the data frame', async () => {
     const renderer = await render(false)
 
-    // Ambient plus a key light plus two coloured fills: a single light leaves
-    // the unlit side of a lobe pure black, which reads as absent geometry
-    // rather than as an unlit surface.
-    expect(typesIn(renderer)).toEqual([
-      'AmbientLight',
-      'DirectionalLight',
-      'PointLight',
-      'PointLight',
-      'Points',
-    ])
+    // Ambient plus one neutral key light. The starfield and the violet/cyan
+    // fills are gone: no data material takes the scene's lights (the
+    // isosurface carries its own neutral headlight), so they only ever added
+    // saturated colour that was not data (spec §4.4, "画布内").
+    expect(typesIn(renderer)).toEqual(['AmbientLight', 'DirectionalLight'])
+    const key = renderer.scene.children[1].instance as THREE.DirectionalLight
+    expect(key.color.getHexString()).toBe('ffffff')
 
     await renderer.unmount()
   })
@@ -114,66 +220,189 @@ describe('Atmosphere', () => {
     await including.unmount()
   })
 
-  it('scales and drops the grid with the extent of what is on screen', async () => {
+  it('lays the grid in the xy plane, below the object along z', async () => {
     const renderer = await render(true, 20)
-    const grid = renderer.scene.children.find((child) => child.instance.type === 'Mesh')
-    const mesh = grid?.instance as THREE.Mesh
+    const mesh = renderer.scene.children.find((child) => child.instance.type === 'Mesh')
+      ?.instance as THREE.Mesh
     const parameters = (mesh.geometry as THREE.PlaneGeometry).parameters
 
-    // The grid is a floor: it sits just below the object rather than through
-    // it, at a distance proportional to the object's own size, because a
-    // 1s orbital and a 6h orbital differ by two orders of magnitude in extent.
-    expect(mesh.position.y).toBeCloseTo(-1.05 * 20, 6)
-    expect(parameters.width).toBeCloseTo(2.4 * 20, 6)
-    expect(parameters.height).toBeCloseTo(2.4 * 20, 6)
+    // z is up (spec D8), so the floor is a z = const plane. drei's Grid draws
+    // in its local xz plane; a +90° turn about x lays it in world xy.
+    expect(mesh.position.z).toBeCloseTo(-1.05 * 20, 6)
+    expect(mesh.position.y).toBe(0)
+    expect(mesh.rotation.x).toBeCloseTo(Math.PI / 2, 12)
+    expect(parameters.width).toBeCloseTo(floorWidth(20), 6)
+    expect(parameters.height).toBeCloseTo(floorWidth(20), 6)
 
     await renderer.unmount()
   })
 
-  it('keeps the grid off the camera and out of the far distance at the extremes', async () => {
-    // A tiny scene: the floor is held at a minimum so it does not close in
-    // around the camera's own orbit distance.
+  it('keeps the grid off the camera for a tiny scene and fits the floor to a huge one', async () => {
     const tiny = await render(true, 0.5)
     const tinyMesh = tiny.scene.children.find((child) => child.instance.type === 'Mesh')
       ?.instance as THREE.Mesh
-    expect(tinyMesh.position.y).toBeCloseTo(-1.05 * 4, 6)
-    expect((tinyMesh.geometry as THREE.PlaneGeometry).parameters.width).toBeCloseTo(2.4 * 4, 6)
+    expect(tinyMesh.position.z).toBeCloseTo(-1.05 * 4, 6)
+    expect((tinyMesh.geometry as THREE.PlaneGeometry).parameters.width).toBeCloseTo(floorWidth(4), 6)
     await tiny.unmount()
 
-    // A huge scene: the plane is capped, because past this size the grid is
-    // beyond the fog anyway and the extra quad is fill cost for nothing.
+    // No size cap: a capped plane would cut the faded disc off in a hard
+    // square edge, which is what the fade exists to avoid.
     const huge = await render(true, 400)
     const hugeMesh = huge.scene.children.find((child) => child.instance.type === 'Mesh')
       ?.instance as THREE.Mesh
-    expect((hugeMesh.geometry as THREE.PlaneGeometry).parameters.width).toBe(100)
-    expect((hugeMesh.geometry as THREE.PlaneGeometry).parameters.height).toBe(100)
+    expect((hugeMesh.geometry as THREE.PlaneGeometry).parameters.width).toBeCloseTo(floorWidth(400), 6)
+    expect((hugeMesh.geometry as THREE.PlaneGeometry).parameters.height).toBeCloseTo(floorWidth(400), 6)
     await huge.unmount()
   })
 
   it('stands in for an unmeasured scene until the first asset arrives', async () => {
-    // `extent` is undefined between a scene change and its first payload.
     const renderer = await render(true)
     const mesh = renderer.scene.children.find((child) => child.instance.type === 'Mesh')
       ?.instance as THREE.Mesh
-    expect(mesh.position.y).toBeCloseTo(-1.05 * 8, 6)
+    expect(mesh.position.z).toBeCloseTo(-1.05 * 8, 6)
     await renderer.unmount()
   })
 
   it('leaves no undisposed geometry behind when it is unmounted', async () => {
     const renderer = await render(true, 20)
     const geometries = everyGeometry(renderer)
-    // The starfield's points and the grid's plane: if this ever reads 0 the
-    // audit below is vacuous.
-    expect(geometries.length).toBeGreaterThanOrEqual(2)
+    // The grid's plane: if this ever reads 0 the audit below is vacuous.
+    expect(geometries.length).toBeGreaterThanOrEqual(1)
     const disposals = geometries.map((geometry) => vi.spyOn(geometry, 'dispose'))
 
     await renderer.unmount()
 
-    // Atmosphere builds no geometry of its own, so it owns no dispose call --
-    // what it owes is that everything it MOUNTS is torn down. Both of its
-    // children hand their buffers to the reconciler as JSX children, which is
-    // what makes that automatic; a child that took ownership another way (or
-    // opted out with `dispose={null}`) would leak a buffer per scene change.
     disposals.forEach((dispose) => expect(dispose).toHaveBeenCalled())
+  })
+})
+
+describe('groundGrid: the floor scaled to the scene', () => {
+  // Extents the lab actually shows: the 4-bohr floor, 1s, 2p_z (18.67), 3d
+  // (33.53), and the n = 6-8 point clouds D22 measured with 1-bohr cells
+  // "close to one pixel apart".
+  const EXTENTS = [0.5, 4, 5.9, 8, 18.67, 33.53, 60, 150, 400]
+
+  it('keeps the n = 2 floor it had: 1-bohr cells in 5-bohr sections', () => {
+    expect(groundGrid(18.67)).toMatchObject({ cellSize: 1, sectionSize: 5 })
+  })
+
+  it.each(EXTENTS)('rules a few round sections across the object at extent %s', (extent) => {
+    const { cellSize, sectionSize } = groundGrid(extent)
+    const scale = Math.max(extent, 4)
+    // Two and a half to six and a half sections per extent: a floor, not a
+    // mesh that closes up into a grey sheet as the state grows.
+    expect(scale / sectionSize).toBeGreaterThanOrEqual(2.5)
+    expect(scale / sectionSize).toBeLessThanOrEqual(6.5)
+    expect(sectionSize / cellSize).toBeCloseTo(5, 12)
+    // A round 1, 2 or 5 times a power of ten, so a line falls on a round radius.
+    const mantissa = sectionSize / 10 ** Math.floor(Math.log10(sectionSize) + 1e-9)
+    expect([1, 2, 5].some((round) => Math.abs(mantissa - round) < 1e-9), String(sectionSize)).toBe(true)
+  })
+
+  it('scales every length with the scene, so a ten-times-larger state gets the same floor', () => {
+    for (const extent of [4.5, 18.67, 33.53]) {
+      const small = groundGrid(extent)
+      const large = groundGrid(10 * extent)
+      for (const key of ['drop', 'fadeDistance', 'size', 'cellSize', 'sectionSize'] as const) {
+        expect(large[key] / small[key], `${key} at ${extent}`).toBeCloseTo(10, 9)
+      }
+    }
+  })
+
+  it('keeps the floor just under the object, fading out where the plane ends (D22)', () => {
+    for (const extent of EXTENTS) {
+      const scale = Math.max(extent, 4)
+      const grid = groundGrid(extent)
+      expect(grid.drop).toBeCloseTo(1.05 * scale, 9)
+      expect(grid.fadeDistance).toBeCloseTo(4 * scale, 9)
+      expect(grid.size).toBeCloseTo(floorWidth(extent), 9)
+    }
+  })
+
+  it.each([18.67, 150])('draws the grid the function describes at extent %s', async (extent) => {
+    const renderer = await render(true, extent)
+    const mesh = gridMesh(renderer)
+    const uniforms = (mesh.material as THREE.ShaderMaterial).uniforms
+    const grid = groundGrid(extent)
+    expect(uniforms.cellSize.value).toBe(grid.cellSize)
+    expect(uniforms.sectionSize.value).toBe(grid.sectionSize)
+    expect(uniforms.fadeDistance.value).toBe(grid.fadeDistance)
+    expect(mesh.position.z).toBe(-grid.drop)
+    await renderer.unmount()
+  })
+
+  it('is drawn from above only, so it can never lie over the data or a slice', async () => {
+    const renderer = await render(true, 20)
+    const mesh = gridMesh(renderer)
+    mesh.updateMatrixWorld(true)
+    // drei's vertex shader draws `position.xzy` (Grid.js: `localPosition =
+    // position.xzy`), so a front face of the drawn plane is the swizzled
+    // triangle; with the +90° turn about x it faces down, and drei's default
+    // BackSide draws only the upper face. Seen from above, the floor lies under
+    // everything (1.05 extents below the object); seen from below it is culled.
+    expect((mesh.material as THREE.Material).side).toBe(THREE.BackSide)
+    const geometry = mesh.geometry as THREE.BufferGeometry
+    const index = geometry.getIndex()
+    const position = geometry.getAttribute('position')
+    if (index === null) throw new Error('the grid plane is not indexed')
+    const [a, b, c] = [0, 1, 2].map((corner) => {
+      const vertex = index.getX(corner)
+      return new THREE.Vector3(position.getX(vertex), position.getZ(vertex), position.getY(vertex)).applyMatrix4(
+        mesh.matrixWorld,
+      )
+    })
+    const frontNormal = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a))
+    expect(frontNormal.z).toBeLessThan(0)
+    await renderer.unmount()
+  })
+})
+
+describe("the grid's distance fade", () => {
+  // Regression: the fade used to be centred on the camera's foot with an
+  // absolute 24-bohr radius, and the fit stands the camera ~77 bohr away, so
+  // every grid fragment in view was discarded and the 地面网格 switch changed
+  // no pixel at all (D22's review, measured on the built lab).
+  it('fades from the nucleus, so the floor under the object is drawn from every fitted view', async () => {
+    const underNucleus: number[] = []
+    for (const [view, direction] of FITTED_VIEWS) {
+      const { renderer, mesh, uniforms } = await gridSeenFrom(fittedCamera(direction))
+      const floor = mesh.position.z
+      // Under the nucleus, under the middle of a side of the object's
+      // footprint, and under a corner of it.
+      const under = [
+        new THREE.Vector3(0, 0, floor),
+        new THREE.Vector3(EXTENT, 0, floor),
+        new THREE.Vector3(-EXTENT, EXTENT, floor),
+      ]
+      for (const point of under) {
+        expect(fadeAt(uniforms, point), `${view}, at ${point.toArray().join(', ')}`).toBeGreaterThan(0.2)
+      }
+      underNucleus.push(fadeAt(uniforms, under[0]))
+      await renderer.unmount()
+    }
+    // The same floor wherever the camera stands: orbiting moves the grid
+    // with the object, not with the viewer.
+    for (const factor of underNucleus) expect(factor).toBeCloseTo(underNucleus[0], 12)
+  })
+
+  it('runs the fade out exactly at the edge of the plane, so the floor never ends in a hard line', async () => {
+    const { renderer, mesh, uniforms } = await gridSeenFrom(fittedCamera(DEFAULT_CAMERA_DIRECTION))
+    // drei's infinite mode stretches the plane by 1 + fadeDistance in its
+    // vertex shader; off, the geometry measured below is the plane drawn.
+    expect(uniforms.infiniteGrid.value).toBe(false)
+    const parameters = (mesh.geometry as THREE.PlaneGeometry).parameters
+    expect(parameters.height).toBe(parameters.width)
+    const half = parameters.width / 2
+    const floor = mesh.position.z
+
+    // Each edge's midpoint is where the square comes closest to the nucleus:
+    // the fade has run out there, so it runs out everywhere along the edge.
+    for (const [x, y] of [[half, 0], [-half, 0], [0, half], [0, -half]]) {
+      expect(fadeAt(uniforms, new THREE.Vector3(x, y, floor))).toBeLessThan(1e-9)
+    }
+    // And the disc does reach it: just inside the edge the grid still draws.
+    expect(fadeAt(uniforms, new THREE.Vector3(0.9 * half, 0, floor))).toBeGreaterThan(0)
+
+    await renderer.unmount()
   })
 })

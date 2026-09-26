@@ -1,0 +1,72 @@
+name: Pages
+
+# The publisher of the static textbook site -- not a gate. CLAUDE.md makes local
+# verification final: `scripts/build_pages.py` and `npm run test:pages` prove the site
+# locally, and this workflow only re-runs the same script on master and deploys what it
+# wrote. tests/test_pages_workflow.py pins its structure (triggers, least-privilege
+# permissions, the exact build steps, the artifact and the environment);
+# tests/test_declared_versions.py pins its Node; tests/test_ci_workflows.py holds it to
+# the locked-install and single-setup-uv rules every workflow shares.
+#
+# Prerequisite (a maintainer action, not done by any commit): Settings -> Pages -> Build
+# and deployment -> Source = GitHub Actions. Until then configure-pages fails.
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # The exporter renders every precomputed scene; the render step dominates.
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      pages: read
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          enable-cache: true
+          python-version: "3.12"
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22.22.2"
+      - name: Sync
+        run: uv sync --locked --all-groups
+      - name: Install frontend dependencies
+        run: npm --prefix web ci --no-audit --no-fund
+      - name: Read the Pages site URL
+        id: pages
+        uses: actions/configure-pages@v6
+      # A full build, never --skip-data: the deployed data is rendered from this checkout.
+      - name: Build the site
+        env:
+          SITE_URL: ${{ steps.pages.outputs.base_url }}
+        run: uv run --locked --no-sync python scripts/build_pages.py --site-url "$SITE_URL"
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/pages
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

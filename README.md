@@ -22,6 +22,24 @@ Quantum state → Observable → Representation → Scene contract → GPU rende
 
 请先阅读文档中的[当前状态](docs/project/status.md)；愿景或路线图中的能力不代表今天已经实现。
 
+## 在线教材站
+
+教材站发布在 <https://longwarriors.github.io/QuViz/>，由 `.github/workflows/pages.yml` 在 master 更新后部署（仓库的 GitHub Pages 构建来源为 GitHub Actions）。
+
+- 根路径是全屏 3D 实验室的**静态教学版**：只读取构建时预计算的场景数据，没有 Python 后端。预计算目录之外的组合会如实显示“未预计算”及原因；任意参数的实时计算仍需本地 `quviz serve`。
+- `learn/` 是教材：按学习顺序排列的章节、公式、引用、思考题。每章的交互图都可以一键在实验室中打开。
+
+仓库已于 2026-09-26 从 `Atmoic-quantum-visualization` 更名为 `QuViz`（GitHub 会把旧仓库地址重定向过来，但 Pages 站点只在新地址上）。站点内部全部使用相对路径；`site_url` 在构建时由 `git remote get-url origin` 推导，发布 workflow 中则取自 `actions/configure-pages`，所以更名不需要改动构建脚本或配置。
+
+在本地构建并按与线上相同的子路径预览。首次完整构建要预计算全部场景数据，耗时从数分钟到数十分钟不等：
+
+```bash
+uv run --locked --no-sync python scripts/build_pages.py
+uv run --locked --no-sync python scripts/build_pages.py --skip-data --serve 4180
+```
+
+然后打开 `http://127.0.0.1:4180/QuViz/`。
+
 ## 项目结构
 
 ```text
@@ -137,6 +155,20 @@ npm --prefix web run build
 运行该 smoke 前还须已在仓库根执行 `uv sync --locked --all-groups`，测试服务器使用 `--no-sync`
 以确保执行期间不会静默改动环境。
 该命令在 Playwright 后审计 JSON 报告，0 tests、skip、重复/额外测试或错误测试目录都不会按绿色处理。
+
+静态教材站的浏览器门禁要求先完成一次完整构建。之后每次运行只重建实验室与教材、复用预计算数据，并在上面的子路径下验证开场场景、表示法切换、未预计算提示、叠加态播放、深链接、嵌入模式与教材页：
+
+```bash
+npm --prefix web run test:pages
+```
+
+视觉像素门禁只在按 digest 固定的 Linux 镜像中运行（在 Windows 上 `web/playwright.config.ts` 会直接拒绝加载），需要 Docker Desktop：
+
+```bash
+pwsh scripts/visual-docker.ps1
+```
+
+只有在有意改变画面时才运行 `pwsh scripts/visual-docker.ps1 -Mode update`，并在提交前逐张人工检查重写的五张基线。
 
 ## 关键科学约定
 

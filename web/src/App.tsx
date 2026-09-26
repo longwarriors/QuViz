@@ -1,281 +1,192 @@
-import { Atom, Eye, ListTree, PanelRightOpen, SlidersHorizontal } from 'lucide-react'
+import { PanelRightOpen } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import type { SceneStatus } from './api/types'
-import { ControlPanel, type ControlContext } from './components/ControlPanel'
+import { ControlPanel } from './components/ControlPanel'
+import { EmbedBar } from './components/EmbedBar'
+import { ErrorBoundary, LabFailure } from './components/ErrorBoundary'
+import { GuideDialog, shouldAutoOpenGuide } from './components/GuideDialog'
 import { Header } from './components/Header'
 import { Inspector } from './components/Inspector'
 import { Legend } from './components/Legend'
 import { LoadingOverlay } from './components/LoadingOverlay'
 import { OrbitalCanvas } from './components/OrbitalCanvas'
-import { representationLabel } from './components/sceneStatus'
-
-/** A clock reading, always with its unit and always to the same precision. */
-const timeText = (timeAu: number): string => `t=${timeAu.toFixed(1)} a.u.`
-
-/** The breakpoint where the permanent analysis rail becomes an overlay. */
-const COMPACT_WORKSPACE_QUERY = '(max-width: 1180px)'
-
-function compactWorkspaceQuery(): MediaQueryList | null {
-  if (typeof globalThis.matchMedia !== 'function') return null
-  return globalThis.matchMedia(COMPACT_WORKSPACE_QUERY)
-}
+import { SearchPill } from './components/SearchPill'
+import { StatusChip } from './components/StatusChip'
+import { TimePill } from './components/TimePill'
+import { COMPACT_WORKSPACE_QUERY, MOBILE_QUERY, useMediaQuery } from './components/useMediaQuery'
+import { WEBGL_UNAVAILABLE, WebGLGate } from './components/WebGLGate'
+import { useCatalogs } from './state/catalogs'
+import { isEmbedMode } from './state/urlState'
+import { useSceneStore } from './state/useSceneStore'
 
 /**
- * Whether the analysis rail has become an on-demand overlay -- live.
- *
- * CSS decides the geometry at this breakpoint, but JavaScript owns whether the
- * overlay is open. Subscribing to the same query keeps those two facts aligned
- * when a window is resized or desktop zoom crosses the breakpoint; without it,
- * a rail that was open on a wide screen can become an invisible, still-focusable
- * overlay on the next layout.
+ * The lab: a full-bleed canvas layer and a pointer-transparent overlay of
+ * glass panels. Every overlay child carries data-chrome, so hiding
+ * [data-chrome] leaves exactly the one <canvas> (the visual suite relies on it).
  */
-function useCompactWorkspace(): boolean {
-  const [compact, setCompact] = useState(() => compactWorkspaceQuery()?.matches === true)
+function LabShell() {
+  const compact = useMediaQuery(COMPACT_WORKSPACE_QUERY)
+  const mobile = useMediaQuery(MOBILE_QUERY)
+  const [embed] = useState(() => isEmbedMode())
+  const [status, setStatus] = useState<SceneStatus>({ loading: true })
+  const [controlsOpen, setControlsOpen] = useState(() => !mobile)
+  const [detailOpen, setDetailOpen] = useState(() => !compact)
+  const [guideOpen, setGuideOpen] = useState(
+    () => !embed && shouldAutoOpenGuide(window.location.hash),
+  )
+  // Why no scene is mounted at all (no WebGL, or the scene crashed), or null.
+  // The canvas is the only source of status, so without this the shell would
+  // wait for its first frame forever: a loading card over the notice, and a
+  // time pill and colour key for a picture that does not exist.
+  const [sceneFailure, setSceneFailure] = useState<string | null>(null)
+  const bloom = useSceneStore((state) => state.bloom)
+  const detailOpenerRef = useRef<HTMLButtonElement | null>(null)
+  const restoreDetailFocus = useRef(false)
+  const previousCompact = useRef(compact)
+  const previousMobile = useRef(mobile)
+  const handleStatus = useCallback((value: SceneStatus) => setStatus(value), [])
+  const handleWebGLUnavailable = useCallback(() => setSceneFailure(WEBGL_UNAVAILABLE), [])
+  const handleSceneCrash = useCallback(
+    (error: Error) => setSceneFailure(`三维场景无法显示：${error.message}`),
+    [],
+  )
+  const shownStatus: SceneStatus =
+    sceneFailure === null ? status : { loading: false, error: sceneFailure }
+
+  // One catalogue load per page, even for an embed that renders no controls:
+  // the time pill needs the selected mixture's period and the planner its floors.
+  // (The URL hash is bound once, before the first render, by main.tsx -- B11.)
+  const { superpositions } = useCatalogs()
 
   useEffect(() => {
-    const query = compactWorkspaceQuery()
-    if (query === null) return undefined
-    const onChange = (event: MediaQueryListEvent): void => setCompact(event.matches)
-    query.addEventListener('change', onChange)
-    setCompact(query.matches)
-    return () => query.removeEventListener('change', onChange)
+    // A permanent rail must not silently become a canvas-covering overlay when
+    // the window narrows; leave the visible opener and wait for intent.
+    const entered = compact && !previousCompact.current
+    previousCompact.current = compact
+    if (!entered) return
+    restoreDetailFocus.current = false
+    setDetailOpen(false)
+  }, [compact])
+
+  useEffect(() => {
+    const entered = mobile && !previousMobile.current
+    previousMobile.current = mobile
+    if (!entered) return
+    restoreDetailFocus.current = false
+    setControlsOpen(false)
+    setDetailOpen(false)
+  }, [mobile])
+
+  const openDetail = (): void => {
+    restoreDetailFocus.current = false
+    setDetailOpen(true)
+    // Weather-Lab: the controls fold to their round button when details open on a narrow screen.
+    if (compact || mobile) setControlsOpen(false)
+  }
+
+  const closeDetail = useCallback((): void => {
+    restoreDetailFocus.current = true
+    setDetailOpen(false)
   }, [])
 
-  return compact
-}
-
-/**
- * What the status bar says, as one place rather than a nested ternary inside
- * the footer.
- *
- * The five cases are ordered by how much they invalidate: an error and a
- * standing refusal both mean the numbers elsewhere on screen are not about a
- * current frame, `loading` means there is no frame at all, and `refreshing`
- * means there IS one but it is the previous one. Only the last case may say
- * the asset is ready, because only there is the asset on screen the one that
- * was asked for.
- */
-function statusLine(status: SceneStatus): { kind: string; text: string } {
-  if (status.error !== undefined) {
-    return { kind: 'error', text: `场景错误 · ${status.error}` }
+  const changeControls = (open: boolean): void => {
+    setControlsOpen(open)
+    if (open && mobile) setDetailOpen(false)
   }
-  if (status.unavailable !== undefined) {
-    return {
-      kind: 'unavailable',
-      text: `${representationLabel(status.unavailable.kind)}暂不可用 · ${status.unavailable.reason}`,
+
+  useEffect(() => {
+    if (detailOpen || !restoreDetailFocus.current) return
+    restoreDetailFocus.current = false
+    detailOpenerRef.current?.focus()
+  }, [detailOpen])
+
+  useEffect(() => {
+    if (!detailOpen || guideOpen) return undefined
+    const onKeyDown = (event: KeyboardEvent): void => {
+      // An Escape some chrome already consumed (the search pill's combobox
+      // closing itself, say) was that control's, not a request to close details.
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      event.preventDefault()
+      closeDetail()
     }
-  }
-  if (status.loading) {
-    return { kind: 'loading', text: '正在计算' }
-  }
-  if (status.refreshing === true) {
-    // Both times, always. Reporting only the requested one labels the frame on
-    // screen with a moment it does not show; reporting only the rendered one
-    // hides that a newer moment is on its way. The rendered time can be absent
-    // (a frame that arrived before the clock existed), and saying so is better
-    // than printing a number we do not have.
-    const showing =
-      status.renderedTimeAu !== undefined
-        ? `正在显示 ${timeText(status.renderedTimeAu)}`
-        : '正在显示上一帧'
-    const computing =
-      status.timeAu !== undefined ? `正在计算 ${timeText(status.timeAu)}` : '正在计算下一帧'
-    return { kind: 'refreshing', text: `${showing} · ${computing}` }
-  }
-  return { kind: 'ready', text: '科学资产已就绪' }
-}
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [closeDetail, detailOpen, guideOpen])
 
-/**
- * The footer line. Exported so its five cases can be driven directly: reaching
- * them through the whole shell would need a canvas, and the branch that matters
- * most (`refreshing`) only ever occurs mid-flight.
- */
-export function StatusBar({ status }: { status: SceneStatus }) {
-  const { kind, text } = statusLine(status)
+  const drawerOpen = mobile && (controlsOpen || detailOpen)
+
   return (
-    <footer className="statusbar">
-      <span data-status={kind}>
-        <i className={kind === 'ready' ? 'status-dot' : `status-dot ${kind}`} /> {text}
-      </span>
-      <span>QVPC/1 · Float32 · WebGL 2</span>
-      <span>QuViz 0.1.0</span>
-    </footer>
+    <div
+      className="qv-app"
+      data-embed={embed ? 'true' : undefined}
+      data-drawer-open={drawerOpen ? 'true' : 'false'}
+    >
+      <div className="qv-stage">
+        <ErrorBoundary
+          onError={handleSceneCrash}
+          fallback={(error, reset) => (
+            <LabFailure
+              title="三维场景无法显示"
+              error={error}
+              onRetry={() => {
+                setSceneFailure(null)
+                setStatus({ loading: true })
+                reset()
+              }}
+            />
+          )}
+        >
+          <WebGLGate embed={embed} onUnavailable={handleWebGLUnavailable}>
+            <OrbitalCanvas onStatus={handleStatus} />
+          </WebGLGate>
+        </ErrorBoundary>
+      </div>
+      <div className="qv-overlay">
+        {embed ? null : <Header onOpenGuide={() => setGuideOpen(true)} />}
+        <StatusChip status={shownStatus} />
+        {embed ? null : <ControlPanel open={controlsOpen} onOpenChange={changeControls} />}
+        {embed ? null : <SearchPill />}
+        {embed || detailOpen ? null : (
+          <button
+            type="button"
+            className="qv-detail-toggle qv-glass"
+            data-chrome=""
+            ref={detailOpenerRef}
+            aria-controls="science-inspector"
+            aria-expanded={false}
+            aria-label="打开科学详情"
+            title="打开科学详情"
+            onClick={openDetail}
+          >
+            <PanelRightOpen size={18} aria-hidden="true" />
+            <span>科学详情</span>
+          </button>
+        )}
+        {embed ? null : (
+          <Inspector status={shownStatus} open={detailOpen} onClose={closeDetail} mixtures={superpositions} />
+        )}
+        {sceneFailure === null ? <TimePill status={status} /> : null}
+        {sceneFailure === null ? (
+          <Legend status={status} bloom={bloom} defaultExpanded={!embed && !mobile} />
+        ) : null}
+        {embed ? <EmbedBar /> : null}
+        {/*
+          Keyed to `loading` alone, deliberately: `refreshing` means a frame is
+          still on screen and still true, and the status chip already says a
+          newer one is on its way.
+        */}
+        <LoadingOverlay visible={sceneFailure === null && status.loading} />
+        {embed ? null : <GuideDialog open={guideOpen} onClose={() => setGuideOpen(false)} />}
+      </div>
+    </div>
   )
 }
 
 export default function App() {
-  const compactWorkspace = useCompactWorkspace()
-  const [status, setStatus] = useState<SceneStatus>({ loading: true })
-  const [controlContext, setControlContext] = useState<ControlContext>('state')
-  // The wide rail is useful on first load; a compact overlay must wait for an
-  // explicit request so it does not cover the canvas merely because it exists.
-  const [inspectorOpen, setInspectorOpen] = useState(() => !compactWorkspace)
-  const [mobileSurface, setMobileSurface] = useState<'controls' | 'inspector' | null>('controls')
-  const inspectorOpenerRef = useRef<HTMLButtonElement | null>(null)
-  const stageInspectorOpenerRef = useRef<HTMLButtonElement | null>(null)
-  const mobileInspectorOpenerRef = useRef<HTMLButtonElement | null>(null)
-  const restoreInspectorFocusRef = useRef(false)
-  const previousCompactWorkspaceRef = useRef(compactWorkspace)
-  const handleStatus = useCallback((value: SceneStatus) => setStatus(value), [])
-
-  const openControls = (context: ControlContext): void => {
-    restoreInspectorFocusRef.current = false
-    setInspectorOpen(false)
-    setControlContext(context)
-    setMobileSurface('controls')
-  }
-
-  const openInspector = (opener: HTMLButtonElement): void => {
-    inspectorOpenerRef.current = opener
-    restoreInspectorFocusRef.current = false
-    setInspectorOpen(true)
-    setMobileSurface('inspector')
-  }
-
-  const closeInspector = useCallback((): void => {
-    restoreInspectorFocusRef.current = true
-    setInspectorOpen(false)
-    setMobileSurface((surface) => (surface === 'inspector' ? null : surface))
-  }, [])
-
-  useEffect(() => {
-    const enteredCompactWorkspace = compactWorkspace && !previousCompactWorkspaceRef.current
-    previousCompactWorkspaceRef.current = compactWorkspace
-    if (!enteredCompactWorkspace) return
-
-    // A permanent rail must not silently turn into a canvas-covering overlay
-    // when a window narrows. Leave a visible opener and wait for intent.
-    restoreInspectorFocusRef.current = false
-    setInspectorOpen(false)
-    setMobileSurface((surface) => (surface === 'inspector' ? null : surface))
-  }, [compactWorkspace])
-
-  useEffect(() => {
-    if (inspectorOpen || !restoreInspectorFocusRef.current) return
-    restoreInspectorFocusRef.current = false
-
-    const isRendered = (element: HTMLElement | null): element is HTMLElement => {
-      if (element === null || !element.isConnected) return false
-      for (let node: HTMLElement | null = element; node !== null; node = node.parentElement) {
-        const style = getComputedStyle(node)
-        if (style.display === 'none' || style.visibility === 'hidden' || node.inert) return false
-      }
-      return true
-    }
-    const opener = [
-      inspectorOpenerRef.current,
-      stageInspectorOpenerRef.current,
-      mobileInspectorOpenerRef.current,
-    ].find(isRendered)
-    opener?.focus()
-  }, [inspectorOpen])
-
-  useEffect(() => {
-    if (!inspectorOpen) return undefined
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape') return
-      event.preventDefault()
-      closeInspector()
-    }
-    document.addEventListener('keydown', onKeyDown)
-    return () => document.removeEventListener('keydown', onKeyDown)
-  }, [closeInspector, inspectorOpen])
-
   return (
-    <div className="app-shell">
-      <Header stateLabel={status.metadata?.label ?? status.superposition?.label} />
-      <main className="workspace" data-inspector-open={inspectorOpen}>
-        <ControlPanel
-          activeContext={controlContext}
-          onContextChange={setControlContext}
-          mobileOpen={mobileSurface === 'controls'}
-          onRequestClose={() => setMobileSurface(null)}
-        />
-        <section className="viewport-card" aria-label="量子态三维视口">
-          <div className="viewport-copy">
-            <span className="viewport-signal"><i />实时量子场</span>
-            <h1>氢样量子态</h1>
-            <p>拖动旋转 · 滚轮缩放 · 色彩表示 arg ψ，不表示电荷</p>
-          </div>
-          <OrbitalCanvas onStatus={handleStatus} />
-          <Legend status={status} />
-          <button
-            type="button"
-            className="stage-inspector-toggle"
-            ref={stageInspectorOpenerRef}
-            data-inspector-visible={inspectorOpen}
-            onClick={(event) => openInspector(event.currentTarget)}
-            aria-controls="science-inspector"
-            aria-expanded={inspectorOpen}
-            aria-label="打开科学详情"
-            title="打开科学详情"
-          >
-            <PanelRightOpen size={18} />
-            <span>科学详情</span>
-          </button>
-          {/*
-            Keyed to `loading` alone, deliberately. `refreshing` means a frame
-            is still on screen and still true; covering it with "Computing
-            quantum scene" would throw away the keep-last-frame behaviour the
-            fetch layer exists to provide. The status bar is what says a newer
-            frame is on its way.
-          */}
-          <LoadingOverlay visible={status.loading} />
-          <div className="corner-mark top-left" />
-          <div className="corner-mark bottom-right" />
-        </section>
-        <Inspector
-          status={status}
-          open={inspectorOpen}
-          mobileOpen={inspectorOpen && mobileSurface === 'inspector'}
-          onClose={closeInspector}
-        />
-      </main>
-      <nav className="mobile-actionbar" aria-label="移动端工作区">
-        <button
-          type="button"
-          className={mobileSurface === 'controls' && controlContext === 'state' ? 'active' : ''}
-          aria-pressed={mobileSurface === 'controls' && controlContext === 'state'}
-          onClick={() => openControls('state')}
-        >
-          <Atom size={20} />
-          <span>态</span>
-        </button>
-        <button
-          type="button"
-          className={
-            mobileSurface === 'controls' && controlContext === 'representation' ? 'active' : ''
-          }
-          aria-pressed={mobileSurface === 'controls' && controlContext === 'representation'}
-          onClick={() => openControls('representation')}
-        >
-          <SlidersHorizontal size={20} />
-          <span>参数</span>
-        </button>
-        <button
-          type="button"
-          className={mobileSurface === 'controls' && controlContext === 'display' ? 'active' : ''}
-          aria-pressed={mobileSurface === 'controls' && controlContext === 'display'}
-          onClick={() => openControls('display')}
-        >
-          <Eye size={20} />
-          <span>显示</span>
-        </button>
-        <button
-          type="button"
-          ref={mobileInspectorOpenerRef}
-          className={inspectorOpen && mobileSurface === 'inspector' ? 'active' : ''}
-          aria-pressed={inspectorOpen && mobileSurface === 'inspector'}
-          aria-controls="science-inspector"
-          aria-expanded={inspectorOpen && mobileSurface === 'inspector'}
-          onClick={(event) => openInspector(event.currentTarget)}
-        >
-          <ListTree size={20} />
-          <span>详情</span>
-        </button>
-      </nav>
-      <StatusBar status={status} />
-    </div>
+    <ErrorBoundary fallback={(error) => <LabFailure title="实验室遇到错误" error={error} />}>
+      <LabShell />
+    </ErrorBoundary>
   )
 }

@@ -10,8 +10,8 @@
 
     - ✅ **已门禁**：由 `make check` / `check.ps1` 在每次提交上自动强制，并指明测试位置；`check.ps1` 的每一步都在脚本自身所在的仓库根目录执行（启动时打印该路径），与调用者当前目录无关，因此从另一个 checkout 以绝对路径调用也不会混用两棵树（`tests/test_check_script.py`）；
     - 🌐 **仅 CI、需网络**：只由 GitHub Actions 执行，因为要访问网络，**不在** `make check` / `check.ps1` 内，本地提交不会触发；触发时机见各条目说明；
-    - 🖥️ **仅 CI、需 Linux/SwiftShader**：只由 GitHub Actions 的 Linux runner 执行，因为判据是像素，而像素由那台机器的图形栈决定，**不在** `make check` / `check.ps1` 内；与 🌐 的区别不是“需要网络”而是“需要那一个渲染环境”——它在别的平台上不是变慢或变不准，而是**根本不允许运行**；
-    - 🔗 **仅 CI、全栈集成**：由 CI 把真实后端、生产前端构建和浏览器接在同一进程树中执行，**不在** `make check` / `check.ps1` 内；可在准备好锁定依赖与 Chromium 的本地 checkout 手动复现，但本地通过不替代 CI runner 的结果；
+    - 🖥️ **固定 Linux 镜像、需 Docker**：判据是像素，而像素由图形栈决定，所以只在按 digest 固定的 `mcr.microsoft.com/playwright:v1.62.1-noble` 容器里运行（`pwsh scripts/visual-docker.ps1`，POSIX 宿主用 `bash scripts/visual-docker.sh`），**不在** `make check` / `check.ps1` 内；按项目原则以本地容器结果为判据，CI 的 `web-visual` job 运行同一套件只作复核；与 🌐 的区别不是“需要网络”而是“需要那一个渲染环境”——它在 Windows/macOS 宿主上不是变慢或变不准，而是**根本不允许直接运行**；
+    - 🔗 **本地浏览器集成**：把真实后端或真实构建产物、生产前端构建和 Chromium 接在同一进程树中执行，耗时长且需要先构建，所以**不在** `make check` / `check.ps1` 内；按项目原则（不依赖 CI）以本地运行结果为判据，CI 若也运行（`web-fullstack`）只作复核；
     - 🧑 **人工门禁**：必须人工复核，无法自动化，评审时逐条确认；
     - 🕒 **计划中**：已列入[路线图](../project/roadmap.md)，当前**没有**任何自动检查。
 
@@ -27,7 +27,8 @@
 - ✅ 已知 $\langle r^p\rangle$ — `test_expectation_radial_matches_known_closed_forms` 与 `tests/test_pr7_radial_moments.py`；高阶门禁以 1s 闭式独立验证 $p=31,60,170$，并用 $n=6,l=5,p=60$ circular-state Gamma 比率排除 1s 特化；同时要求节点折半与连续两次计算域扩张收敛，不可表示的 $p=200$ 明确报 overflow，不返回 `inf`；
 - ✅ `SuperpositionState`→scene/API 链路中的约化质量只有一个真源：`a_mu=m_e/μ` 同时决定 $a_\mu/Z$ 空间尺度、`reduced_mass_ratio=1/a_mu` 能量/相位、概率流 prefactor 与 scene extent — `test_energy_scales_with_reduced_mass_ratio` 及 `tests/test_pr7_mass_hamiltonian.py`；低层 energy primitive 保留显式 ratio 参数；
 - ✅ $\theta\in[0,\pi]$、$\phi\in[0,2\pi)$ 角度范围约定 — `test_cartesian_to_spherical_uses_documented_angle_ranges`；
-- ✅ Condon–Shortley 相位与实轨道 Cartesian 形式（$\ell=1,2$） — `test_real_p_harmonics_match_cartesian_directions`、`test_real_d_harmonics_match_cartesian_closed_forms`。
+- ✅ Condon–Shortley 相位与实轨道 Cartesian 形式（$\ell=1,2$） — `test_real_p_harmonics_match_cartesian_directions`、`test_real_d_harmonics_match_cartesian_closed_forms`；
+- ✅ 径向分布 `radial_profile`：256 点梯形积分与 1 相差不超过 $10^{-3}$，末点外解析尾概率不超过 $10^{-3}$，节点数为 $n-\ell-1$ 且 2s/3s/3p 节点等于闭式根、每个节点两侧 $R_{n\ell}$ 变号，$\langle r\rangle$ 为解析值且与数值积分相差小于 0.5%，1s/2p/3d/4f/2s 的最可几半径分别对照 $a/Z$、$4a/Z$、$9a/Z$、$16a/Z$、$(3+\sqrt5)a/Z$，能级梯与 metadata 同一约化质量约定，按 $a_\mu/Z$ 缩放时 `r_bohr` 逐位协变，`radial_density` 与 `most_probable_r_bohr` 在 9 位有效数字内协变；缩放溢出时为 `null` 并附 warning — `tests/test_radial_profile.py`。
 
 !!! info "为什么这些门禁要用独立参照"
 
@@ -76,13 +77,15 @@
 - ✅ 含径向节点的单一 s 态使用一维径向拓扑 oracle、有界自适应网格和最终连通分量复核 — 2s 在 mass=0.9 从请求 81 自动升至实际 123 并得到 3 个正确边界分量；3s/4s 及高质量 2s 在需求超过内部 129 上限时 fail-closed；
 - ✅ 非零激发 s 分量的多项叠加态绝不按系数容差冒充纯 s 态；$10^{-3}$、$10^{-8}$、$10^{-12}$ 近纯 2s 必须在 137 上限的最细 129/137 两级通过逐分量 Euler、density level 与质量门禁，等权 2s+2p 及“粗网格先稳定、最细网格再失稳”的反例均 fail-closed。精确零伴项被剔除后仍走径向 oracle；只构建并计费会参与判决的最细两个拓扑网格与最终诊断，真实 builder 的逐 term 完整立方网格求值记录必须与 estimator 逐项一致；两项 129/137 成本低于 16M，三项成本高于上限并在 builder 前拒绝 — `tests/test_scene_contract.py`、`tests/test_api.py`；
 - ✅ 有限盒真实质量变化与 render-grid alias 分开报告 — `tests/test_pr7_scene_diagnostics.py`；2p+4p 的同宇称离散漂移必须超过保守有限盒变化界至少 $10^6$ 倍，1s+2p 的反宇称质量必须在半周期保持不变，同能隙相干相消的四项负控制不得误报 phase-dependent error；
-- 🕒 不含激发 s 分量的一般多项叠加态及 $n>4$ 的通用拓扑证明；当前质量/alias 诊断不等于拓扑证书。
+- 🕒 不含激发 s 分量的一般多项叠加态及 $n>4$ 的通用拓扑证明；当前质量/alias 诊断不等于拓扑证书；
+- ✅ 叠加态预设的开场表示法由服务端实测：目录对 route 默认等值面请求（65、0.90、$t=0$、$Z=a_\mu=1$）先按 complex、再按 real basis 送进同一 workload guard 与 builder，第一次被拒即发布 `default_representation` 为 `slice`（两种 basis 都成功才发布 `isosurface`）；`2s-2pz` 当前发布 `slice`（0.86–0.91 与 0.915 被最细双网格拓扑门禁拒绝，0.85 以下与孤立的 0.911/0.912 通过）。前端选择该预设或切入叠加态时不再默认发出必然 422 的等值面请求，用户显式选择等值面仍照发 — `tests/test_superposition_default_view.py`、`web/src/api/client.test.ts`、`web/src/state/useSceneStore.test.ts`、`web/src/components/ControlPanel.test.tsx`。
 
 ## API 数值失败与缓存
 
 - ✅ 可归因于请求的 `ValueError`、具名 `ScientificComputationError`、`FloatingPointError` 与 `OverflowError` 在全部七类科学资产 builder 路径上转成保留原因的 422；普通 `RuntimeError` 家族不再 blanket catch。唯一的第三方边界例外是 `skimage.measure.marching_cubes` 自身抛出的**精确** `RuntimeError`：builder 就地包装为 `ScientificComputationError`，所以极小但合法的 `1s, Z=1e-20` float32 等值面塌缩返回带原因的 422；该调用点注入 `RecursionError`，以及路由注入 `RecursionError`/`AssertionError` 的负控制仍为 500 — `tests/test_api.py`；
 - ✅ float64 极值采用“普通输入保留原算术，只有直接中间量接近边界或已经溢出/下溢才转入 100 位十进制复算”的门禁：径向归一化在 `float.__pow__` 舍入边界不再泄漏裸 `(34, 'Result too large')`，径向自变量在 `Z=a_mu=1e308` 时先安全约去共同尺度而不静默归零，密度 floor 与径向节点在最大有限值及最小次正规数边界按精确二进制输入正确舍入，NumPy 标量进入兜底也不会泄漏类型错误；最终结果确实不可表示才抛含参数语境的 `ValueError` 并由 HTTP 保留为可读 422；普通切片 golden 仍逐字节不变 — `tests/test_hydrogenic.py`、`tests/test_api.py`、`tests/test_slice_contract.py`；
-- ✅ 两类 slice 只保留私有 builder LRU，public builder 返回 deep copy，HTTP route 不再重复缓存大 payload；相同路由调用仍逐次经过 public builder，且调用方变异不能污染下一次结果 — `tests/test_api.py`、`tests/test_slice_builders.py`。
+- ✅ 两类 slice 只保留私有 builder LRU，public builder 返回 deep copy，HTTP route 不再重复缓存大 payload；相同路由调用仍逐次经过 public builder，且调用方变异不能污染下一次结果 — `tests/test_api.py`、`tests/test_slice_builders.py`；
+- ✅ 静态目录导出逐字节等于实时服务：进程内 ASGI 回放与 FastAPI `TestClient` 对点云（含 `X-QuViz-*` 头）、等值面、两种 422 与百分号编码的叠加态切片逐字节相同；响应体按 SHA-256 前 24 位去重命名，`manifest.json` 条目按键排序、`version` 为排序后 `(key, file, status)` 三元组摘要，单进程与进程池输出逐字节相同；5xx、404 或传输异常中止且不留下 manifest — `tests/test_export_asgi.py`、`tests/test_export_static_site.py`、`tests/test_cli.py`。
 
 ## 前端
 
@@ -95,23 +98,74 @@
 - 🔗 源码 checkout 的真实全栈浏览器门禁 — `web/fullstack-e2e/app.spec.ts` 不拦截 `/api`：`web/playwright.fullstack.config.ts` 先生产构建 SPA，再从仓库根运行文档化入口 `quviz serve`，由 FastAPI 的生产挂载直接托管 `web/dist`。单条线性产品旅程依次验证默认点云、2p_z 等值面、概率密度切片、catalog 提供的 3d complex 概率流示例、3d 等值面与默认解析叠加态；每个目标请求都必须 2xx，query 的有序键值集合（含重复键）必须与 UI 状态逐项相等，QVPC/1 响应头、资产规模、图例、能量与 settled scene identity 必须到达，且所有并发 API 请求结束并连续 500 ms 无新 API 活动后仍无 request failure、非 2xx、page error 或 console error。同源 OpenAPI 链接还真实读取 Swagger HTML 与 schema；Vite 开发配置把 `/docs`、`/openapi.json`、`/redoc` 和 `/api` 代理到同一后端。`npm run test:fullstack` 使用专用 `127.0.0.1:8765`；Playwright 后的 `assert-fullstack-run.mjs` 对 JSON 报告作闭合集合审计，要求绑定到正确 rootDir/testDir 的固定 spec 与标题恰好有一个 project execution 和一个 passing result，拒绝 0 tests、skip、flaky、重试掩盖、重复、额外测试或顶层错误；其 23 个合成正/负控在 `web/src/fullstackGate.test.ts`。CI 的 `web-fullstack` job 锁定 Python 3.12、Node 22、两份 lockfile、Chromium 安装、完整执行顺序与失败工件上传顺序；`tests/test_check_script.py` 钉住该 job 和完整 npm 入口。边界如实保留：这证明源码检出环境的生产挂载，不证明当前 wheel 已包含 `web/dist`；JSON 审计证明固定标题实际通过，不解析测试体内六段旅程与断言的 AST，保持同名标题却删弱测试体仍依赖代码评审，后续需增加内容 manifest；
 - ✅ 前端零 skip — `npm run test` 在 vitest 之后运行 `web/scripts/assert-no-skips.mjs` 核对 `coverage/vitest-results.json` 的运行结果：任何非 passed 的测试、缺席的 spec 文件或非零 pending/todo/failed 计数都失败；`web/src/guards.test.ts` 另对 spec 源码扫描 skip/todo/only/skipIf/runIf 的各种拼写与受门禁模块里的 coverage ignore 注释。该源码扫描同时覆盖 `web/e2e/` 与 `web/fullstack-e2e/` 下的 Playwright spec——那些文件不在 `test.include` 里，vitest 从不收集，`allowOnly: false` 与 `assert-no-skips.mjs` 因此都看不见它们（后者的期望清单由 `src/` 推导，一个它从未期望过的文件不会被“漏掉”）。`web/e2e/` 的权威门禁是 `assert-visual-run.mjs`，`web/fullstack-e2e/` 的权威门禁是 `assert-fullstack-run.mjs`，源码扫描是二者的第二层；两棵 Playwright spec 树都先用 TypeScript 解析器把注释涂白再逐行匹配，因为正文会解释“为什么这里断言而不是 skip”并因此写出那个调用（实测：直接扫原文会在 `webgl.spec.ts:13` 命中一段散文）；字符串字面量**不**涂白，所以 `runner['sk' + 'ip']` 之类的拼写仍然可见；
 - ✅ 场景 GPU 资源 dispose — 五个场景组件各有两条断言（卸载时释放、换 payload 时释放被取代的那一份）：`web/src/scene/ElectronCloud.test.tsx`、`OrbitalSurface.test.tsx`、`CurrentStreamlines.test.tsx`、`Atmosphere.test.tsx` 与 `SliceField.test.tsx`；切片一层同时覆盖 texture、geometry 与 material 三者（`leaves no GPU resource behind when it goes`、`rebuilds the texture when a new payload arrives, and drops the old one`）。断言的是 `dispose` 被调用，不是显存实际回落——后者要测量，属于[路线图](../project/roadmap.md)的性能预算；
-- 🖥️ 切片渲染的截图回归 — 测试位置：`web/e2e/slice.spec.ts`（五张已提交基线统一为 `672×704`：`2pz-real-xz` 的节线必须**水平**，`2p+1-phase-xy` 的相位必须逆时针缠绕一整圈且原点是遮罩留下的洞，`degenerate-*-xz` 在 $t=0$ 与 $t=8.4$ 必须是**同一张**图，`1s2pz-t0` / `-t8.4` 是相差半个 Bohr 周期的两张；固定桌面壳把 canvas 尺寸与控制栏/Inspector 内容高度解耦）、`web/e2e/webgl.spec.ts`（渲染器字符串仍是 ANGLE/SwiftShader、WebGL2 仍可用——是**断言**而不是 `skip`，因为“没有 WebGL2”恰好是让每张基线失效的那个条件）、`web/e2e/fixtures.ts`（六份切片 payload 与两份 catalog 逐字节取自 `tests/fixtures/visual/`，由 `scripts/write_visual_fixtures.py` 写、`tests/test_visual_fixtures.py` 重建并比对，所以一次 diff 只能是关于渲染的，不会变成关于服务器今天返回了什么的争论）。正向像素比较使用 `threshold: 0.02` 与 `maxDiffPixelRatio: 0.001`；半周期、转置与 2% 平面尺寸错误三个负对照即使分别放宽到 `0.05` / `0.1` / `0.1` 也必须拒绝，且运行时守卫禁止负对照阈值比正向阈值更严格；几何负控的 `includeAA: false` 只排除单像素抗锯齿边缘，2% 尺寸变异保留了多像素实色带。运行方式：`npm run test:visual` = `playwright test` 之后 `web/scripts/assert-visual-run.mjs`；后者读 Playwright 自己的 JSON 报告，对被跳过的用例、根本没被收集的 spec 文件、以及 `updateSnapshots != 'none'`（即 `--update-snapshots` 这种“把自己刚画的东西写成答案”的运行）一律 exit 1——它的审计逻辑由 `web/src/visualGate.test.ts` 在普通 vitest 套件里用合成报告验证，因为 Playwright 本身在 Windows 开发机上按设计跑不起来。CI 接线：`.github/workflows/ci.yml` 的 `web-visual` job（`ubuntu-latest`、`working-directory: web`、`npm ci --no-audit --no-fund`、`npx --no-install playwright install --with-deps chromium`、`npm run test:visual`，失败时上传 `web/playwright-report` 与 `web/test-results`，保留 7 天），由 `tests/test_check_script.py` 按 YAML 结构钉住：job 本身、runner、工作目录、两条安装命令的**逐字拼写**、gate 步骤及其必须排在浏览器安装之后、与 `web` job 同一个 Node 版本、以及“除失败上传外任何步骤都不得带 `if:`，上传的 `if:` 必须恰好是 `failure()`“（实测四种改法各自变红：删 job、给 gate 步骤加 `if:`、把上传的 `if:` 改成 `always()`、把 `--no-install` 去掉）。`web/src/guards.test.ts` 的零 skip 源码扫描同时覆盖 `web/e2e/`；
+- 🖥️ 切片渲染的截图回归 — 测试位置：`web/e2e/slice.spec.ts`（五张已提交基线统一为 `1280×800`（全屏画布即视口；截图前隐藏全部 `[data-chrome]` 浮层，基线只含画布像素）：`2pz-real-xz` 的节线必须**水平**，`2p+1-phase-xy` 的相位必须逆时针缠绕一整圈且原点是遮罩留下的洞，`degenerate-*-xz` 在 $t=0$ 与 $t=8.4$ 必须是**同一张**图，`1s2pz-t0` / `-t8.4` 是相差半个 Bohr 周期的两张）、`web/e2e/webgl.spec.ts`（渲染器字符串仍是 ANGLE/SwiftShader、WebGL2 仍可用——是**断言**而不是 `skip`，因为“没有 WebGL2”恰好是让每张基线失效的那个条件）、`web/e2e/fixtures.ts`（六份切片 payload 与两份 catalog 逐字节取自 `tests/fixtures/visual/`，由 `scripts/write_visual_fixtures.py` 写、`tests/test_visual_fixtures.py` 重建并比对，所以一次 diff 只能是关于渲染的，不会变成关于服务器今天返回了什么的争论）。正向像素比较使用 `threshold: 0.02` 与 `maxDiffPixelRatio: 0.001`（1280×800 帧即 1,024 像素预算，三个负控的实测余量记录在 `slice.spec.ts` 的校准注释中）；半周期、转置与 2% 平面尺寸错误三个负对照即使分别放宽到 `0.05` / `0.1` / `0.1` 也必须拒绝，且运行时守卫禁止负对照阈值比正向阈值更严格；几何负控的 `includeAA: false` 只排除单像素抗锯齿边缘，2% 尺寸变异保留了多像素实色带。运行方式：`pwsh scripts/visual-docker.ps1`（POSIX 宿主用 `bash scripts/visual-docker.sh`）在按 digest 固定的 `mcr.microsoft.com/playwright:v1.62.1-noble` 容器中执行 `npm run test:visual` = `playwright test` 之后 `web/scripts/assert-visual-run.mjs`；后者读 Playwright 自己的 JSON 报告，对被跳过的用例、根本没被收集的 spec 文件、以及 `updateSnapshots != 'none'`（即 `--update-snapshots` 这种“把自己刚画的东西写成答案”的运行）一律 exit 1——它的审计逻辑由 `web/src/visualGate.test.ts` 在普通 vitest 套件里用合成报告验证，因为 Playwright 本身在 Windows 开发机上按设计跑不起来。CI 接线：`.github/workflows/ci.yml` 的 `web-visual` job（`ubuntu-latest`、`working-directory: web`、`npm ci --no-audit --no-fund`、`npx --no-install playwright install --with-deps chromium`、`npm run test:visual`，失败时上传 `web/playwright-report` 与 `web/test-results`，保留 7 天），由 `tests/test_check_script.py` 按 YAML 结构钉住：job 本身、runner、工作目录、两条安装命令的**逐字拼写**、gate 步骤及其必须排在浏览器安装之后、与 `web` job 同一个 Node 版本、以及“除失败上传外任何步骤都不得带 `if:`，上传的 `if:` 必须恰好是 `failure()`“（实测四种改法各自变红：删 job、给 gate 步骤加 `if:`、把上传的 `if:` 改成 `always()`、把 `--no-install` 去掉）。`web/src/guards.test.ts` 的零 skip 源码扫描同时覆盖 `web/e2e/`；
 - ✅ 视觉门禁完整性 — `assert-visual-run.mjs` 使用闭合集合钉住 2 个 spec、8 个必需测试标题及其恰好一次执行；Playwright 的 JSON 报告不记录普通 assertion，所以同一脚本再用锁定的 TypeScript AST 解析器把 7 条正向截图比较、3 条 `.not.toHaveScreenshot` 机制负控和 3 条 WebGL/SwiftShader 断言钉到各自精确测试标题。删测试、换标题、把断言改成注释、拿额外绿测试顶账、复制同名执行或从错误 spec 报告都会由 `visualGate.test.ts` 的负控制变红；
 - 🧑 UI 不能隐藏关键警告和单位。
 
 !!! warning "截图门禁不覆盖什么，以及它到底多出了哪一句"
 
-    **`check.ps1` / `make check` 完全不覆盖视觉映射。** `web/playwright.config.ts` 在非 Linux 上于**模块加载时**直接抛错，所以这条门禁在开发机上不是“没跑”，而是**不允许跑**。这不是洁癖：基线是 Linux CI 镜像上 SwiftShader（Chromium 的软件光栅化器）画出来的像素，Windows 与 macOS 的字体栅格化、次像素定位和可用的 ANGLE 后端都不同，同一份代码在那里渲染出可见不同的图。真正的危险不是本机全红，而是本机全红之后有人顺手敲 `--update-snapshots`——那会**用这台机器的像素覆盖掉 CI 基线**，此后套件本地绿、CI 红，并且不再描述任何回归。所以守卫是抛错而不是 `skip`：`skip` 之下 `--update-snapshots` 照样能写。
+    **`check.ps1` / `make check` 完全不覆盖视觉映射。** `web/playwright.config.ts` 在非 Linux 上于**模块加载时**直接抛错，所以这条门禁在 Windows/macOS 宿主上不是“没跑”，而是**不允许跑**，只能进入按 digest 固定的 Linux 容器：`pwsh scripts/visual-docker.ps1`（POSIX 宿主用 `bash scripts/visual-docker.sh`）。
+
+    这不是洁癖：基线是该镜像里 SwiftShader（Chromium 的软件光栅化器）画出来的像素。Windows 与 macOS 的字体栅格化、次像素定位和可用的 ANGLE 后端都不同，同一份代码在那里会渲染出可见不同的图。真正的危险不是宿主上全红，而是全红之后有人顺手敲 `--update-snapshots`：那会**用这台机器的像素覆盖掉基线**，此后套件在宿主上绿、在固定镜像里红，并且不再描述任何回归。所以守卫是抛错而不是 `skip`：`skip` 之下 `--update-snapshots` 照样能写。
+
+    容器脚本在 `npm ci` 之前先检查镜像自带的 Node 是否满足 `web/package.json` 的 `engines`；镜像版本号必须等于精确固定的 `@playwright/test`。`tests/test_visual_docker.py` 以桩 `docker` 执行脚本并钉住这两点。
 
     **每一条截图声明都另有一条与平台无关的 vitest 断言。** 图片多出来的只有一句：**固定的 Linux/Chromium/SwiftShader WebGL 管线确实把它光栅化成了这些像素**。对照关系是：行主序布局与“样本 (row, col) 落在第 `4 * (row * resolution + col)` 个字节“由 `scene/sliceTexture.test.ts` 断言；这里能抓渲染器自己的索引或 uv 转置，但输入 payload 本身已经被转置时仍会满足客户端契约，所以 `slice.spec.ts` 另用一个转置 fixture 作端到端负控；被遮罩的样本渲染成**全透明且为黑**、极小振幅仍不透明、色标按切片自身极值归一化，同样在 `sliceTexture.test.ts`；相位色轮的周期性、$\pm A$ 两极不同色、零点为消色中性、发散色标的色相反对称由 `scene/sliceColor.test.ts` 断言；$u\times v=n$ 的右手标架、`xz` 的 $-\hat y$ 法向、以及“遮罩样本经 `sliceValueAt` 读作 `null` 而不是哨兵 `0.0`“由 `api/sliceContract.test.ts` 断言；四项纹理采样与色彩空间决定（两个 `NearestFilter`、`flipY = false`、`SRGBColorSpace`）、quad 尺寸规则与三张主平面各自的朝向由 `scene/SliceField.test.tsx` 断言；视点是平面自己的法向由 `scene/camera.test.ts` 断言。这就是分工：数值断言说“映射是对的”，截图只说“这条正确的映射确实被固定软件栅格环境画成了这些像素”。反过来读同样成立——一张绿的截图**不能**替代上述任何一条，也不能证明真实 GPU 或其他浏览器的行为。
 
-    **基线的产生方式是刻意昂贵的。** `updateSnapshots: 'none'` 让“缺失基线”成为失败而不是被静默写入的答案键（Playwright 的默认值 `'missing'` 会把新断言的第一次运行变成它自己的答案键，包括 bug）。第一次 CI 运行因此按设计失败，人从失败工件里的 `test-results/<test>/<name>-actual.png` 逐张检查之后才提交答案键；五张 Linux/SwiftShader PNG 现已位于 `web/e2e/__screenshots__/slice.spec.ts/`。任何生产或阈值改动都仍须让同一 SHA 的 CI 运行对这些既有基线通过，不能在开发机上更新快照来消除差异。
+    **基线的产生方式是刻意昂贵的。** `updateSnapshots: 'none'` 让“缺失基线”成为失败，而不是被静默写入的答案键；Playwright 的默认值 `'missing'` 会把新断言的第一次运行变成它自己的答案键，包括 bug。
+
+    有意改变画面时只走一条路：
+
+    1. 在固定容器里运行 `pwsh scripts/visual-docker.ps1 -Mode update`，重写五张 PNG 并立即再比较一次。同一环境下刚画的图都对不上，说明渲染不确定，而不是基线问题。
+    2. 由人逐张检查：节线水平且正瓣在上；相位逆时针缠绕一圈且原点是洞；简并态两时刻同图；1s + 2p_z 在 $t=0$ 与 $t=8.4$ 分别偏向 $+z$ 与 $-z$；画面里没有任何浮层。
+    3. 重测 `web/e2e/slice.spec.ts` 的校准表。
+    4. check 模式通过后才提交。
+
+    `assert-visual-run.mjs` 拒绝 update 运行产生的报告，所以一次 update 永远不能冒充一次比较。
 
 !!! info "QVPC/1 的跨语言黄金向量"
 
     `tests/fixtures/qvpc_golden.bin` 是同一份字节流的**双向契约**：Python 侧断言编码器逐字节复现它，TypeScript 侧断言解析器能解出 `qvpc_golden.json` 里的值。
 
     单方面修改 wire format 会同时打破两侧——已验证：把 `POINT_CLOUD_STRIDE` 从 5 改成 6，Python 立刻 2 个测试变红；即使有人重新生成黄金字节把 Python 弄绿，TypeScript 仍有 5 个测试变红。
+
+## 静态教材站与发布
+
+- ✅ `scripts/build_pages.py` 自身的决定 — `tests/test_build_pages.py` 钉住以下各项：
+    - `site_url` 由 ssh/https 形式的 GitHub remote 推导；`<owner>.github.io` 用户站点落在根路径；非 GitHub remote 直接拒绝并要求 `--site-url`，而不是猜测。
+    - 生成的 `build/mkdocs.pages.yml` 由 MkDocs 自己的 `load_config` 校验通过。负控：只含 `INHERIT`、`site_url`、`extra` 的最小写法会失败，因为继承来的相对路径改为相对 `build/` 解析（MkDocs 先报 `theme.custom_dir`，`docs_dir` 同理）；`theme.name` 与 `theme.custom_dir` 与 `mkdocs.yml` 的声明互校。
+    - 预览服务器只在仓库子路径下应答：`/` 302 到子路径，子路径外 404，目录补斜杠 301，`..` 与反斜杠拒绝；`.bin` 为 `application/octet-stream`，`.json` 为 `application/json`。
+    - 编排按固定顺序调用导出、枚举、渲染、`build:pages` 与 MkDocs；`--skip-data` 复用上次数据，缺少 `manifest.json` 时在任何步骤之前失败；导出器写出其他格式的 manifest 时停在构建实验室之前。构建记录 `build/pages-build.json` 只在整站通过体积上限后写出，失败的构建（含超限）不留下上一次的记录。
+    - `--workers` 默认取 CPU 数且最多 8，与导出器自己的默认相同；超出导出器接受的 1–32 时在任何步骤之前拒绝。二者都与 `quviz.export.static_site` 的 `default_worker_count()`、`MAXIMUM_WORKERS` 互校。
+    - 实验室构建若会覆盖 `data/`、`learn/` 或带 sourcemap 即失败；整站超过 GitHub Pages 1 GB 上限时构建失败；
+- ✅ 发布 workflow 的结构 — `tests/test_pages_workflow.py` 钉住 `.github/workflows/pages.yml` 的以下各项，每类篡改都有负控：
+    - 只在 master push 与手动触发时运行。
+    - 顶层只读权限；`build` 只有 `contents: read` 与 `pages: read`；`deploy` 只有 `pages: write` 与 `id-token: write`，并使用 `github-pages` environment。
+    - 构建步骤逐项固定：锁定安装；`actions/configure-pages` 的 `base_url` 传给 `--site-url`；完整重建而非 `--skip-data`；上传 `build/pages`。
+    - 任何步骤不得带 `if:` / `continue-on-error:`；action 只能引用版本 tag。
+
+    Node 版本由 `tests/test_declared_versions.py` 对**所有** workflow 的 `actions/setup-node` 步骤统一钉为 `.node-version`；锁定安装与 setup-uv 版本由 `tests/test_ci_workflows.py` 对所有 workflow 统一检查。该 workflow 是发布器而不是门禁：可发布的判据是本地的完整构建与 `npm run test:pages`；
+- 🔗 静态站浏览器门禁 — `npm --prefix web run test:pages`。
+
+    **前提与服务器**：`web/playwright.pages.config.ts` 要求先有一次完整构建；缺少 `build/pages/data/manifest.json` 时在加载阶段直接报错。随后以 `build_pages.py --skip-data --serve 4180` 重建实验室与教材、保留预计算数据，并严格按 Pages 子路径托管。
+
+    **覆盖范围**：`web/pages-e2e/site.spec.ts` 的 9 项测试覆盖：
+
+    - 开场场景只来自 `data/`（零 `/api` 请求、零离站请求）；
+    - 切换表示法；
+    - 未预计算的组合显示中文原因；
+    - `1s + 2p_z` 按预计算帧格点播放并显示时间；
+    - 深链接往返，且不产生历史记录；
+    - embed 模式；
+    - `learn/` 教材的公式排版，嵌入图 iframe 就绪；嵌入实验室自己的「在实验室中打开」不被教材页遮挡、真实点击在新标签页打开同一状态，「关闭交互图」在加载后获得焦点、关闭后把焦点还给「加载交互图」；
+    - 每个教材页在 390 px 宽度下不横向滚动，1280 px 下引用不越出正文栏；
+    - 子路径外一律 404。
+
+    教材页只允许 `mkdocs.yml` 固定的 jsDelivr 前缀作为离站请求，因此需要网络。
+
+    **运行后审计**：Playwright 之后，`web/scripts/assert-pages-run.mjs` 以闭合集合审计 JSON 报告：固定 spec 与 9 个标题各恰好一次通过，拒绝 0 tests、skip、flaky、重复或额外测试。其正/负控在 `web/src/pagesGate.test.ts`；`web/src/guards.test.ts` 的零 skip 源码扫描同样覆盖 `web/pages-e2e/`。
+
+    **未断言的部分**：Material 的 instant navigation 在本地端口上退化为整页跳转，所以不在这里断言；它由全栈门禁在 `mkdocs serve` 下断言；
 
 ## 文档与引用 { #docs-and-citations }
 
@@ -127,11 +181,25 @@
 - 🕒 引用内容漂移检查（当前没有任何门禁比对页面内容）；
 - ✅ `references.bib` 中未被正文引用的孤儿键 — `tests/test_bibliography.py::test_every_bibliography_entry_is_cited_or_marked_tooling`；代码块、行内代码与块级 HTML 注释里的引用不算正文，正文行内的注释按 python-markdown 的行为计入（`tests/test_citation_gates.py`）；
 - ✅ `source-audit` 条目的 `commit` 与 URL 中 SHA 一致、tag 或无法与 tag 区分的 ref 需要与之相等的 `version`、明确的分支 URL 一律拒绝、非代码托管来源带访问日期（完整规则见[添加和维护引用](../how-to/cite-sources.md#enforced-rules)） — `test_repository_bibliography_has_coherent_source_pins`；
-- 🔗 MkDocs 在真实 Chromium 中完成渲染 — `npm run test:fullstack` 同时启动生产应用与
-  `mkdocs serve --strict`：直达页面和 `navigation.instant` 换页后的全部 `.arithmatex` 都必须
-  生成 `mjx-container`，架构页 Mermaid 必须生成 SVG，Python API 必须出现 Phase 0 的
-  superposition / planes / models / slices / streamlines 模块；本地请求、console 或 page error
-  任一非空即失败，并由 `web-fullstack` CI 作业执行；
+- ✅ 教材交互图脚本 — `tests/test_quviz_figure_js.py` 在 Node 中用最小假 DOM 执行真实的 `docs/assets/javascripts/quviz-figure.js`，逐条检查以下行为：
+  - `extra.quviz.lab_url` 相对教材站点根（Material `__config.base`，只在首次整页加载时解析）而不是相对当前页解析；
+  - 点击前不产生任何 iframe；iframe 带 `loading="lazy"`、`sandbox`、`allow="fullscreen"` 与图注标题；
+  - 同一页只保留一个活动交互图；`document$` 重复触发不会重复升级；
+  - 缺失 meta、非 http(s) 地址或带 `embed=` 的深链接一律禁用按钮并显示原因。
+- ✅ 教材章节契约 — `tests/test_textbook.py` 对 `docs/textbook/` 做两类检查：
+  - 每个 `quviz-figure` 的 `data-lab` 必须同时满足实验室深链接语法，并落在静态预计算目录之内（目录的 $n$ 上限、基、表示法、平面、场与预设直接取自导出器的 `quviz.export.catalog_spec.DEFAULT_SPEC`，不另抄一份）：
+    - 本征态 $n\le4$，量子数合法；
+    - 叠加态只用服务端目录的四个预设，时刻必须是与 `nextTimeAu` 相同的播放帧，并按 JavaScript 的数字写法拼写；
+    - 流线只用于复基 $m\ne0$ 的本征态，或 $t\ne0$ 时的振荡叠加态；
+    - 已知会被服务端拒绝的组合不得入图；
+    - 第 0 章引用的「未预计算」原因句必须与 `web/src/api/capability.ts` 的 `NOT_PRECOMPUTED_DETAIL` 逐字一致。
+  - 每章的二级标题 id 与图的深链接必须和注册表逐字一致；每一页（含附录）至少一张交互图，图注以“图 章号.序号”（附录用字母）开头；编号章节必须包含学习目标、常见误区、至少 3 道带答案的思考题与延伸阅读，且不得出现 `/api/`、测试路径等开发者术语。
+- 🔗 MkDocs 在真实 Chromium 中完成渲染 — `npm run test:fullstack` 同时启动生产应用与 `mkdocs serve --strict`，并逐项检查：
+    - 直达页面和 `navigation.instant` 换页后的全部 `.arithmatex` 都必须生成 `mjx-container`；
+    - 架构页 Mermaid 必须生成 SVG；
+    - Python API 必须出现 Phase 0 的 superposition / planes / models / slices / streamlines 模块；
+    - 从参考文献页即时导航进入教材第 1 章后：页头仍带 `<meta name="quviz-lab">`；交互图占位卡已由 `document$` 重新升级；“在实验室中打开”指向 `extra.quviz.lab_url` 下的正确深链接；页面没有自动加载任何 iframe；
+    - 本地请求、console 或 page error 任一非空即失败；这些检查由 `web-fullstack` CI 作业执行。
 - 🧑 已知纠错不可被旧教程重新引入；
 - 🧑 引用是否真正支持正文声明；
 - 🧑 “已实现”“已验证”“计划中”三个状态不得混写。

@@ -1546,6 +1546,20 @@ def test_npm_fullstack_script_runs_the_pinned_config_then_audits_its_report() ->
     )
 
 
+PAGES_SCRIPT = (
+    "playwright test --config=playwright.pages.config.ts && node scripts/assert-pages-run.mjs"
+)
+
+
+def test_npm_pages_script_runs_the_pinned_config_then_audits_its_report() -> None:
+    scripts = json.loads(WEB_PACKAGE_JSON.read_text(encoding="utf-8"))["scripts"]
+    assert scripts.get("test:pages") == PAGES_SCRIPT, (
+        "web/package.json's `test:pages` script must run exactly the reviewed Playwright "
+        "config, then reject a skipped or empty report; found "
+        f"{scripts.get('test:pages')!r}"
+    )
+
+
 def test_fullstack_browser_gate_also_starts_and_exercises_mkdocs() -> None:
     """A successful HTML build alone must not certify client-side docs rendering."""
 
@@ -1567,6 +1581,10 @@ def test_fullstack_browser_gate_also_starts_and_exercises_mkdocs() -> None:
         "quviz.scene.streamlines",
         "__quvizInstantNavigation",
         ".quviz-citation__link",
+        'meta[name="quviz-lab"]',
+        ".quviz-figure__open",
+        'a[href$="textbook/01-wavefunction/"]',
+        "textbook-document-swap",
     ):
         assert browser_contract in spec, (
             f"the full-stack browser smoke no longer asserts {browser_contract!r}; "
@@ -1848,6 +1866,14 @@ WEB_SCRIPTS = (
     "assert-fullstack-run.mjs",
     "assert-no-skips.d.mts",
     "assert-no-skips.mjs",
+    # The Pages suite's post-run gate (`npm run test:pages`), the counterpart of
+    # ``assert-fullstack-run.mjs`` for web/pages-e2e/: Playwright exits 0 for a run
+    # that skipped or collected nothing, so the JSON report is audited against a
+    # closed manifest of reviewed titles. It runs in no ``npm test`` stage
+    # (``NPM_TEST_STAGES`` above is exact) and reads only Playwright's own report;
+    # web/src/pagesGate.test.ts exercises it in the ordinary vitest suite.
+    "assert-pages-run.d.mts",
+    "assert-pages-run.mjs",
     # The visual suite's post-run gate, and the counterpart of
     # ``assert-no-skips.mjs``: ``playwright test`` exits 0 for a run in which
     # every test was skipped, for one that collected no spec file at all, and

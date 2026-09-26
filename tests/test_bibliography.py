@@ -9,6 +9,7 @@ from quviz.docs.bibliography import (
     parse_bibtex_file,
     required_field_problems,
 )
+from quviz.docs.locators import typeset_dashes
 from quviz.docs.scan import cited_keys_in_tree, orphan_keys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,8 +76,13 @@ def test_generated_index_emits_every_canonical_field() -> None:
             elif field == "keywords":
                 for tag in value.split(","):
                     assert f"`{tag.strip()}`" in block, (key, field, tag)
+            elif field in {"commit", "doi", "url"}:
+                # Identifiers are emitted byte-exact (a YouTube id contains "--").
+                assert value in block, (key, field, value)
             else:
-                assert value.replace(r"\&", "&") in block, (key, field, value)
+                # Displayed text shows BibTeX's "--" and "---" as en and em dashes.
+                expected = typeset_dashes(value).replace(r"\&", "&")
+                assert expected in block, (key, field, value)
 
 
 def test_duplicate_keys_are_rejected() -> None:
@@ -127,3 +133,24 @@ def test_every_bibliography_entry_is_cited_or_marked_tooling() -> None:
 # tests/test_citation_gates.py (quviz.docs.pins.validate_source_pins); the
 # github-only "non-empty commit or version" check that used to sit here let
 # ``commit = {latest}`` through.
+
+
+PRIVATE_SOURCES = ("claude-fable-audit",)
+PRIVATE_SOURCE_PAGES = ["project/status.md", "references/source-audit.md"]
+
+
+def test_private_sources_are_labelled_and_cited_only_on_developer_pages() -> None:
+    bibliography = parse_bibtex_file(ROOT / "references.bib")
+    docs = ROOT / "docs"
+    for key in PRIVATE_SOURCES:
+        assert "私有链接" in bibliography.entries[key].fields.get("note", "")
+        citing = sorted(
+            path.relative_to(docs).as_posix()
+            for path in docs.rglob("*.md")
+            if f"@{key}" in path.read_text(encoding="utf-8")
+        )
+        assert citing == PRIVATE_SOURCE_PAGES
+        for page in citing:
+            for line in (docs / page).read_text(encoding="utf-8").splitlines():
+                if f"@{key}" in line:
+                    assert "私有链接" in line, (page, line)

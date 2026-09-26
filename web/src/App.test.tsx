@@ -1,24 +1,28 @@
 /** @vitest-environment jsdom */
-import { act, createElement, useEffect } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { act, createElement, useEffect, type ReactNode } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import App, { StatusBar } from './App'
-import type { SceneStatus } from './api/types'
+import App from './App'
+import type { SceneStatus, SuperpositionMetadata, SuperpositionPreset } from './api/types'
+import { GUIDE_SEEN_KEY } from './components/GuideDialog'
 import { mount, type MountedTree } from './test/mount'
 
 /**
- * The status the mocked canvas will report. Hoisted because `vi.mock` factories
- * run before the module body, and mutable because each test drives the shell
- * with a different one.
+ * The shell, measured with its heavy children replaced: the canvas becomes a
+ * source of SceneStatus values, the control panel and the detail panel become
+ * open/close probes. What is under test is the layout contract -- chrome vs
+ * canvas, drawers, embed mode, focus, guide -- not those components.
  */
 const reported = vi.hoisted(() => ({ current: { loading: true } as SceneStatus }))
+const embed = vi.hoisted(() => ({ current: false }))
+const webgl = vi.hoisted(() => ({ current: true }))
+const crash = vi.hoisted(() => ({ scene: false, shell: false }))
+const binding = vi.hoisted(() => ({ bound: 0 }))
+const catalogue = vi.hoisted(() => ({ superpositions: [] as SuperpositionPreset[] }))
 
-// The real canvas wants WebGL. What this file measures is the SHELL: what the
-// status bar says about a status, and which of the two overlays that status
-// produces -- so the canvas is reduced to the one thing App uses it for, a
-// source of `SceneStatus` values.
 vi.mock('./components/OrbitalCanvas', () => ({
   OrbitalCanvas: ({ onStatus }: { onStatus: (status: SceneStatus) => void }) => {
+    if (crash.scene) throw new Error('WebGL context lost')
     useEffect(() => {
       onStatus(reported.current)
     }, [onStatus])
@@ -26,73 +30,110 @@ vi.mock('./components/OrbitalCanvas', () => ({
   },
 }))
 
-vi.mock('./components/ControlPanel', () => ({
-  ControlPanel: ({
-    activeContext,
-    mobileOpen,
-    onRequestClose,
-  }: {
-    activeContext?: string
-    mobileOpen?: boolean
-    onRequestClose?: () => void
-  }) =>
-    createElement(
-      'section',
-      {
-        'data-mock-controls': true,
-        'data-active-context': activeContext,
-        'data-mobile-open': mobileOpen,
-      },
-      createElement(
-        'button',
-        { type: 'button', 'data-mock-close-controls': true, onClick: onRequestClose },
-        'close controls',
+vi.mock('./components/ControlPanel', async () => {
+  const { createElement: element } = await import('react')
+  return {
+    ControlPanel: ({ open, onOpenChange }: { open?: boolean; onOpenChange?: (open: boolean) => void }) =>
+      element(
+        'section',
+        { 'data-mock-controls': '', 'data-chrome': '', 'data-open': String(open) },
+        element('button', { type: 'button', 'data-mock-toggle-controls': '', onClick: () => onOpenChange?.(!open) }, 'toggle'),
       ),
-    ),
-}))
-
-vi.mock('./components/Inspector', () => ({
-  Inspector: ({
-    open,
-    mobileOpen,
-    onClose,
-  }: {
-    open?: boolean
-    mobileOpen?: boolean
-    onClose?: () => void
-  }) =>
-    createElement(
-      'aside',
-      {
-        'data-mock-inspector': true,
-        'data-open': open,
-        'data-mobile-open': mobileOpen,
-      },
-      createElement(
-        'button',
-        { type: 'button', 'data-mock-close-inspector': true, onClick: onClose },
-        'close inspector',
-      ),
-    ),
-}))
-
-afterEach(() => {
-  vi.unstubAllGlobals()
+  }
 })
 
-async function statusBar(status: SceneStatus): Promise<MountedTree> {
-  return mount(createElement(StatusBar, { status }))
+vi.mock('./components/Inspector', async () => {
+  const { createElement: element } = await import('react')
+  return {
+    Inspector: ({
+      open,
+      onClose,
+      mixtures,
+    }: {
+      open?: boolean
+      onClose?: () => void
+      mixtures?: ReadonlyArray<{ id: string }>
+    }) => {
+      if (crash.shell) throw new Error('inspector exploded')
+      return element(
+        'aside',
+        {
+          'data-mock-inspector': '',
+          'data-chrome': '',
+          'data-open': String(open),
+          'data-mixtures': (mixtures ?? []).map((mixture) => mixture.id).join(','),
+          id: 'science-inspector',
+        },
+        element('button', { type: 'button', 'data-mock-close-inspector': '', onClick: onClose }, 'close'),
+      )
+    },
+  }
+})
+
+vi.mock('./components/WebGLGate', async (importOriginal) => {
+  const { createElement: element, useLayoutEffect } = await import('react')
+  return {
+    ...(await importOriginal<typeof import('./components/WebGLGate')>()),
+    // The real gate's contract: the scene, or its notice plus one onUnavailable report.
+    WebGLGate: ({ children, onUnavailable }: { children: ReactNode; onUnavailable?: () => void }) => {
+      const supported = webgl.current
+      useLayoutEffect(() => {
+        if (!supported) onUnavailable?.()
+      }, [supported, onUnavailable])
+      return supported ? children : element('div', { 'data-webgl-unavailable': '', 'data-chrome': '' }, 'no WebGL')
+    },
+  }
+})
+
+vi.mock('./state/catalogs', () => ({
+  useCatalogs: () => ({
+    orbitals: [],
+    superpositions: catalogue.superpositions,
+    orbitalStatus: 'ready',
+    superpositionStatus: 'ready',
+  }),
+  ensureCatalogsLoaded: () => undefined,
+}))
+
+vi.mock('./state/urlState', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./state/urlState')>()),
+  isEmbedMode: () => embed.current,
+  // Counted only to prove the shell never calls it: main.tsx binds (B11).
+  bindUrlState: () => {
+    binding.bound += 1
+    return () => undefined
+  },
+}))
+
+interface MediaStub {
+  change(query: string, matches: boolean): Promise<void>
+  listenerCount(): number
 }
 
-function line(tree: MountedTree): HTMLElement {
-  const node = tree.container.querySelector<HTMLElement>('[data-status]')
-  if (node === null) throw new Error('the status bar reports no status at all')
-  return node
-}
-
-async function shell(status: SceneStatus): Promise<MountedTree> {
-  reported.current = status
-  return mount(createElement(App))
+function stubMedia(initial: Readonly<Record<string, boolean>>): MediaStub {
+  const lists = new Map<string, { matches: boolean; listeners: Set<(event: MediaQueryListEvent) => void> }>()
+  vi.stubGlobal('matchMedia', (query: string) => {
+    const existing = lists.get(query) ?? { matches: initial[query] === true, listeners: new Set() }
+    lists.set(query, existing)
+    return {
+      get matches() {
+        return existing.matches
+      },
+      addEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => existing.listeners.add(listener),
+      removeEventListener: (_type: string, listener: (event: MediaQueryListEvent) => void) => existing.listeners.delete(listener),
+    }
+  })
+  return {
+    async change(query, matches) {
+      const list = lists.get(query)
+      if (list === undefined) throw new Error(`nobody asked about ${query}`)
+      list.matches = matches
+      await interact(() => {
+        for (const listener of [...list.listeners]) listener({ matches } as MediaQueryListEvent)
+      })
+    },
+    listenerCount: () => [...lists.values()].reduce((total, list) => total + list.listeners.size, 0),
+  }
 }
 
 async function interact(body: () => void): Promise<void> {
@@ -103,321 +144,82 @@ async function interact(body: () => void): Promise<void> {
   try {
     await act(async () => body())
   } finally {
-    if (had) {
-      scope.IS_REACT_ACT_ENVIRONMENT = previous
-    } else {
-      delete scope.IS_REACT_ACT_ENVIRONMENT
-    }
+    if (had) scope.IS_REACT_ACT_ENVIRONMENT = previous
+    else delete scope.IS_REACT_ACT_ENVIRONMENT
   }
 }
 
-async function press(button: HTMLButtonElement): Promise<void> {
-  await interact(() => button.click())
+async function shell(status: SceneStatus = { loading: false }): Promise<MountedTree> {
+  reported.current = status
+  return mount(createElement(App))
 }
 
-interface CompactWorkspaceStub {
-  readonly asked: string[]
-  readonly listeners: ReadonlySet<(event: MediaQueryListEvent) => void>
-  change(matches: boolean): Promise<void>
-}
+const q = <T extends Element = HTMLElement>(tree: MountedTree, selector: string): T | null =>
+  tree.container.querySelector<T>(selector)
 
-function stubCompactWorkspace(matches: boolean): CompactWorkspaceStub {
-  const asked: string[] = []
-  const listeners = new Set<(event: MediaQueryListEvent) => void>()
-  const query = {
-    matches,
-    media: '(max-width: 1180px)',
-    addEventListener(_type: 'change', listener: (event: MediaQueryListEvent) => void): void {
-      listeners.add(listener)
-    },
-    removeEventListener(_type: 'change', listener: (event: MediaQueryListEvent) => void): void {
-      listeners.delete(listener)
-    },
-  }
-  vi.stubGlobal('matchMedia', (value: string) => {
-    asked.push(value)
-    return query
-  })
-  return {
-    asked,
-    listeners,
-    async change(next: boolean): Promise<void> {
-      query.matches = next
-      await interact(() => {
-        for (const listener of [...listeners]) {
-          listener({ matches: next } as MediaQueryListEvent)
-        }
-      })
-    },
-  }
-}
-
-describe('StatusBar says which frame the numbers describe', () => {
-  it('names the rendered time AND the in-flight time while refreshing', async () => {
-    const tree = await statusBar({
-      loading: false,
-      refreshing: true,
-      renderedTimeAu: 3.6,
-      timeAu: 9.0,
-      triangleCount: 4096,
-    })
-    try {
-      expect(line(tree).dataset.status).toBe('refreshing')
-      expect(line(tree).textContent).toContain('正在显示 t=3.6 a.u.')
-      expect(line(tree).textContent).toContain('正在计算 t=9.0 a.u.')
-      // The unqualified ready text would present the OLD frame's diagnostics
-      // as the current ones.
-      expect(line(tree).textContent).not.toContain('科学资产已就绪')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('still says a stale frame is stale when it does not know the frame time', async () => {
-    const tree = await statusBar({ loading: false, refreshing: true, timeAu: 9 })
-    try {
-      expect(line(tree).dataset.status).toBe('refreshing')
-      expect(line(tree).textContent).toContain('正在计算 t=9.0 a.u.')
-      expect(line(tree).textContent).not.toContain('科学资产已就绪')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('names the frame on screen even when the requested time is missing', async () => {
-    const tree = await statusBar({ loading: false, refreshing: true, renderedTimeAu: 3.6 })
-    try {
-      expect(line(tree).dataset.status).toBe('refreshing')
-      expect(line(tree).textContent).toContain('正在显示 t=3.6 a.u.')
-      expect(line(tree).textContent).toContain('正在计算下一帧')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('reports a standing refusal with its kind and its reason, not as an error', async () => {
-    const reason = 'No route samples a time-dependent state as a point cloud.'
-    const tree = await statusBar({
-      loading: false,
-      unavailable: { kind: 'point_cloud', reason },
-    })
-    try {
-      expect(line(tree).dataset.status).toBe('unavailable')
-      expect(line(tree).textContent).toContain('电子云暂不可用')
-      expect(line(tree).textContent).not.toContain('point_cloud 暂不可用')
-      expect(line(tree).textContent).toContain(reason)
-      expect(line(tree).textContent).not.toContain('场景错误')
-      expect(line(tree).textContent).not.toContain('科学资产已就绪')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('reports an error with the message, not just the word', async () => {
-    const tree = await statusBar({ loading: false, error: 'HTTP 422 from /api/orbitals/isosurface' })
-    try {
-      expect(line(tree).dataset.status).toBe('error')
-      expect(line(tree).textContent).toContain('HTTP 422 from /api/orbitals/isosurface')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('says computing while there is nothing on screen', async () => {
-    const tree = await statusBar({ loading: true })
-    try {
-      expect(line(tree).dataset.status).toBe('loading')
-      expect(line(tree).textContent).toContain('正在计算')
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('says the asset is ready only when it is the current one', async () => {
-    const tree = await statusBar({ loading: false, renderedTimeAu: 12, pointCount: 28000 })
-    try {
-      expect(line(tree).dataset.status).toBe('ready')
-      expect(line(tree).textContent).toContain('科学资产已就绪')
-    } finally {
-      await tree.unmount()
-    }
-  })
+beforeEach(() => {
+  embed.current = false
+  webgl.current = true
+  crash.scene = false
+  crash.shell = false
+  binding.bound = 0
+  catalogue.superpositions = []
+  localStorage.setItem(GUIDE_SEEN_KEY, 'seen')
 })
 
-describe('App wires the canvas status to the shell', () => {
-  it('routes the arrived stationary or superposition label into the compact header', async () => {
-    const stationary = await shell({
-      loading: false,
-      metadata: {
-        state: { n: 2, l: 1, m: 0, z: 1, a_mu: 1, basis: 'real' },
-        label: '2p_z',
-        energy_hartree: -0.125,
-        length_unit: 'bohr',
-        observable: 'probability_density',
-        representation: 'point_cloud',
-        normalization: 'integral(|psi|^2 dV)=1',
-        coordinate_convention: 'theta=polar, phi=azimuth',
-        spherical_harmonic_convention: 'Condon-Shortley',
-        geometry_semantics: 'independent samples',
-        color_semantics: 'wave-function phase',
-        references: [],
-        warnings: [],
-      },
-    })
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.restoreAllMocks()
+  localStorage.clear()
+  window.history.replaceState(null, '', window.location.pathname)
+})
+
+describe('App: canvas and chrome', () => {
+  it('puts the scene on its own layer and marks every floating element as chrome', async () => {
+    const tree = await shell({ loading: true })
     try {
-      expect(stationary.container.querySelector('.topbar-context-compact')?.textContent).toBe('2p_z')
-    } finally {
-      await stationary.unmount()
-    }
-
-    const superposition = await shell({
-      loading: false,
-      superposition: {
-        terms: [],
-        label: '1s + 2p_z',
-        basis: 'real',
-        z: 1,
-        a_mu: 1,
-        reduced_mass_ratio: 1,
-        time_au: 0,
-        energy_expectation_hartree: -0.3125,
-        is_stationary: false,
-        length_unit: 'bohr',
-        observable: 'probability_density',
-        representation: 'point_cloud',
-        normalization: 'integral(|psi|^2 dV)=1',
-        coordinate_convention: 'theta=polar, phi=azimuth',
-        spherical_harmonic_convention: 'Condon-Shortley',
-        geometry_semantics: 'independent samples',
-        color_semantics: 'wave-function phase',
-        references: [],
-        warnings: [],
-      },
-    })
-    try {
-      expect(superposition.container.querySelector('.topbar-context-compact')?.textContent).toBe(
-        '1s + 2p_z',
-      )
-    } finally {
-      await superposition.unmount()
-    }
-  })
-
-  it('coordinates the mobile control sheet, detail sheet, and compact inspector trigger', async () => {
-    const tree = await shell({ loading: false })
-    try {
-      const mobileButtons = Array.from(
-        tree.container.querySelectorAll<HTMLButtonElement>('.mobile-actionbar button'),
-      )
-      expect(mobileButtons.map((button) => button.textContent)).toEqual(['态', '参数', '显示', '详情'])
-
-      await press(mobileButtons[2])
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.activeContext,
-      ).toBe('display')
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.mobileOpen,
-      ).toBe('true')
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-inspector]')?.dataset.open,
-      ).toBe('false')
-
-      const controlsClose = tree.container.querySelector<HTMLButtonElement>(
-        '[data-mock-close-controls]',
-      )
-      if (controlsClose === null) throw new Error('the mocked controls have no close action')
-      await press(controlsClose)
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.mobileOpen,
-      ).toBe('false')
-
-      await press(mobileButtons[0])
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.activeContext,
-      ).toBe('state')
-
-      await press(mobileButtons[1])
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-controls]')?.dataset.activeContext,
-      ).toBe('representation')
-
-      await press(mobileButtons[3])
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-inspector]')?.dataset.mobileOpen,
-      ).toBe('true')
-
-      const inspectorClose = tree.container.querySelector<HTMLButtonElement>(
-        '[data-mock-close-inspector]',
-      )
-      if (inspectorClose === null) throw new Error('the mocked inspector has no close action')
-      await press(inspectorClose)
-      expect(document.activeElement).toBe(mobileButtons[3])
-
-      const stageOpener = tree.container.querySelector<HTMLButtonElement>('.stage-inspector-toggle')
-      if (stageOpener === null) throw new Error('the stage has no inspector opener')
-      await press(stageOpener)
-      await interact(() => {
-        document.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
-        )
-      })
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-inspector]')?.dataset.open,
-      ).toBe('false')
-      expect(document.activeElement).toBe(stageOpener)
-
-      // If responsive layout hides the original mobile opener before the
-      // sheet closes, focus falls back to the now-visible stage action.
-      await press(mobileButtons[3])
-      const actionbar = tree.container.querySelector<HTMLElement>('.mobile-actionbar')
-      if (actionbar === null) throw new Error('the mobile actionbar disappeared')
-      actionbar.style.display = 'none'
-      stageOpener.style.display = 'inline-flex'
-      await press(inspectorClose)
-      expect(document.activeElement).toBe(stageOpener)
+      const overlay = q(tree, '.qv-overlay')
+      const children = Array.from(overlay?.children ?? [])
+      expect(children.length).toBeGreaterThanOrEqual(8)
+      for (const child of children) {
+        expect(child.hasAttribute('data-chrome'), child.outerHTML.slice(0, 60)).toBe(true)
+      }
+      expect(q(tree, '.qv-stage')?.hasAttribute('data-chrome')).toBe(false)
+      expect(q(tree, '.qv-stage [data-chrome]')).toBeNull()
     } finally {
       await tree.unmount()
     }
   })
 
-  it('keeps the compact overlay state aligned with the live 1180px layout query', async () => {
-    const workspace = stubCompactWorkspace(false)
-    const tree = await shell({ loading: false })
+  it('no longer tells every representation that colour means arg ψ (spec D9)', async () => {
+    const tree = await shell()
     try {
-      const shellNode = tree.container.querySelector<HTMLElement>('.workspace')
-      expect(shellNode?.dataset.inspectorOpen).toBe('true')
-      expect(workspace.asked).toContain('(max-width: 1180px)')
-      expect(workspace.listeners.size).toBe(1)
-
-      await workspace.change(true)
-      expect(shellNode?.dataset.inspectorOpen).toBe('false')
-
-      // Widening again must not override the explicit closed state. The same
-      // visible stage action can reopen either a rail or an overlay.
-      await workspace.change(false)
-      expect(shellNode?.dataset.inspectorOpen).toBe('false')
+      expect(q(tree, '.viewport-copy')).toBeNull()
+      expect(tree.container.textContent).not.toContain('色彩表示 arg ψ，不表示电荷')
+      expect(tree.container.textContent).not.toContain('实时量子场')
     } finally {
       await tree.unmount()
     }
-    expect(workspace.listeners.size).toBe(0)
   })
 
-  it('starts a compact workspace with a reachable opener instead of a hidden overlay', async () => {
-    stubCompactWorkspace(true)
-    const tree = await shell({ loading: false })
+  it('hands the superposition catalogue to the detail panel, which titles presets by it', async () => {
+    const preset = (id: string, terms: string): SuperpositionPreset => ({
+      id,
+      label: id,
+      terms,
+      period_au: 0,
+      note: '',
+      slice_resolution_floor: 65,
+      streamline_seed_count_max: 40,
+      default_representation: 'isosurface',
+    })
+    catalogue.superpositions = [
+      preset('1s-2pz', '1,0,0,0.7071067811865476;2,1,0,0.7071067811865476'),
+      preset('2s-2pz', '2,0,0,0.7071067811865476;2,1,0,0.7071067811865476'),
+    ]
+    const tree = await shell()
     try {
-      expect(tree.container.querySelector<HTMLElement>('.workspace')?.dataset.inspectorOpen).toBe(
-        'false',
-      )
-      expect(
-        tree.container.querySelector<HTMLElement>('[data-mock-inspector]')?.dataset.open,
-      ).toBe('false')
-      const opener = tree.container.querySelector<HTMLButtonElement>('.stage-inspector-toggle')
-      if (opener === null) throw new Error('the compact workspace has no inspector opener')
-      await press(opener)
-      expect(tree.container.querySelector<HTMLElement>('.workspace')?.dataset.inspectorOpen).toBe(
-        'true',
-      )
+      expect(q(tree, '[data-mock-inspector]')?.getAttribute('data-mixtures')).toBe('1s-2pz,2s-2pz')
     } finally {
       await tree.unmount()
     }
@@ -426,25 +228,18 @@ describe('App wires the canvas status to the shell', () => {
   it('shows the loading overlay only while there is no frame to keep', async () => {
     const tree = await shell({ loading: true })
     try {
-      expect(tree.container.querySelector('.loading-overlay')).not.toBeNull()
-      expect(tree.container.querySelector('.viewport-copy')?.textContent).toContain('实时量子场')
-      expect(tree.container.querySelector('.viewport-copy')?.textContent).toContain('氢样量子态')
-      expect(tree.container.querySelector('.viewport-copy')?.textContent).toContain('arg ψ')
+      expect(q(tree, '.loading-overlay')).not.toBeNull()
+      expect(q(tree, '[data-status]')?.getAttribute('data-status')).toBe('loading')
     } finally {
       await tree.unmount()
     }
   })
 
   it('keeps the last frame visible while refreshing: no overlay, but both times', async () => {
-    const tree = await shell({
-      loading: false,
-      refreshing: true,
-      renderedTimeAu: 3.6,
-      timeAu: 9.0,
-    })
+    const tree = await shell({ loading: false, refreshing: true, renderedTimeAu: 3.6, timeAu: 9.0 })
     try {
-      expect(tree.container.querySelector('.loading-overlay')).toBeNull()
-      const text = tree.container.querySelector('[data-status]')?.textContent ?? ''
+      expect(q(tree, '.loading-overlay')).toBeNull()
+      const text = q(tree, '[data-status]')?.textContent ?? ''
       expect(text).toContain('正在显示 t=3.6 a.u.')
       expect(text).toContain('正在计算 t=9.0 a.u.')
     } finally {
@@ -452,16 +247,275 @@ describe('App wires the canvas status to the shell', () => {
     }
   })
 
-  it('passes a standing refusal through to the shell', async () => {
+  it('passes a standing refusal through to the status and the legend', async () => {
     const reason = 'nothing implements this cell yet'
     const tree = await shell({ loading: false, unavailable: { kind: 'point_cloud', reason } })
     try {
-      expect(tree.container.querySelector('.loading-overlay')).toBeNull()
-      expect(tree.container.querySelector('[data-status]')?.textContent).toContain(reason)
-      // And the legend must not draw a phase wheel over an empty viewport.
-      expect(tree.container.querySelector('.legend')?.textContent).toContain(reason)
+      expect(q(tree, '.loading-overlay')).toBeNull()
+      expect(q(tree, '[data-status]')?.textContent).toContain(reason)
+      expect(q(tree, '.legend')?.textContent).toContain(reason)
     } finally {
       await tree.unmount()
     }
+  })
+
+  it('keys no colours for a failed first request, and keeps describing a frame kept after one', async () => {
+    const bare = await shell({ loading: false, error: 'topology did not converge' })
+    try {
+      expect(q(bare, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(bare, '.legend-title')?.textContent).toBe('无可绘制资产')
+      expect(q(bare, '.legend')?.textContent).toContain('topology did not converge')
+      expect(q(bare, '.legend .phase-dot, .legend .phase-wheel')).toBeNull()
+    } finally {
+      await bare.unmount()
+    }
+
+    const superposition = { basis: 'complex', representation: 'streamlines' } as unknown as SuperpositionMetadata
+    const kept = await shell({ loading: false, error: 'network down', superposition, maxSpeed: 0.5, lineCount: 3 })
+    try {
+      expect(q(kept, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(kept, '.legend-title')?.textContent).toBe('概率流速率 |j|/ρ')
+    } finally {
+      await kept.unmount()
+    }
+  })
+
+  it('says why there is no scene when WebGL is unavailable, keeping the chrome usable', async () => {
+    webgl.current = false
+    const tree = await shell()
+    try {
+      expect(q(tree, '.qv-stage [data-webgl-unavailable]')).not.toBeNull()
+      expect(q(tree, 'header.qv-header')).not.toBeNull()
+      // No canvas will ever report: the shell must stop waiting for one rather
+      // than cover the notice with a loading card and describe a picture that
+      // does not exist.
+      expect(q(tree, '.loading-overlay')).toBeNull()
+      expect(q(tree, '.qv-time-pill')).toBeNull()
+      expect(q(tree, '.legend')).toBeNull()
+      expect(q(tree, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(tree, '[data-status]')?.textContent).toContain('此设备无法创建 WebGL 画布')
+    } finally {
+      await tree.unmount()
+    }
+
+    embed.current = true
+    const embedded = await shell()
+    try {
+      expect(q(embedded, '.qv-stage [data-webgl-unavailable]')).not.toBeNull()
+      expect(q(embedded, '.loading-overlay')).toBeNull()
+      expect(q(embedded, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(embedded, 'a.qv-embed-open')).not.toBeNull()
+    } finally {
+      await embedded.unmount()
+    }
+  })
+
+  it('contains a crashed scene and offers a retry, and a crashed shell shows the lab failure', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    crash.scene = true
+    const scene = await shell()
+    try {
+      expect(q(scene, '.qv-stage [role="alert"]')?.textContent).toContain('三维场景无法显示')
+      expect(q(scene, 'header.qv-header')).not.toBeNull()
+      // The crashed canvas reports nothing more: the shell says so itself.
+      expect(q(scene, '.loading-overlay')).toBeNull()
+      expect(q(scene, '.qv-time-pill')).toBeNull()
+      expect(q(scene, '.legend')).toBeNull()
+      expect(q(scene, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(scene, '[data-status]')?.textContent).toContain('WebGL context lost')
+      crash.scene = false
+      await interact(() => q<HTMLButtonElement>(scene, '.qv-stage [role="alert"] button')?.click())
+      expect(q(scene, '.qv-stage [role="alert"]')).toBeNull()
+      // The remounted canvas reports again, and the scene chrome comes back.
+      expect(q(scene, '[data-status]')?.getAttribute('data-status')).toBe('ready')
+      expect(q(scene, '.qv-time-pill')).not.toBeNull()
+      expect(q(scene, '.legend')).not.toBeNull()
+    } finally {
+      await scene.unmount()
+    }
+
+    crash.shell = true
+    const whole = await shell()
+    try {
+      expect(q(whole, '[role="alert"]')?.textContent).toContain('实验室遇到错误')
+      expect(q(whole, '.qv-overlay')).toBeNull()
+    } finally {
+      await whole.unmount()
+    }
+  })
+})
+
+describe('App: panels on desktop, compact and phone widths', () => {
+  it('opens both panels on a wide screen and keeps the detail panel closed after narrowing', async () => {
+    const media = stubMedia({ '(max-width: 1180px)': false, '(max-width: 820px)': false })
+    const tree = await shell()
+    try {
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('true')
+      expect(q(tree, '[data-mock-controls]')?.dataset.open).toBe('true')
+      expect(q(tree, '.qv-detail-toggle')).toBeNull()
+
+      await media.change('(max-width: 1180px)', true)
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('false')
+      // Widening again does not override the reader's (or the layout's) closed state.
+      await media.change('(max-width: 1180px)', false)
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('false')
+    } finally {
+      await tree.unmount()
+    }
+    expect(media.listenerCount()).toBe(0)
+  })
+
+  it('starts a compact workspace with a reachable opener, and opening it folds the controls', async () => {
+    stubMedia({ '(max-width: 1180px)': true, '(max-width: 820px)': false })
+    const tree = await shell()
+    try {
+      const opener = q<HTMLButtonElement>(tree, '.qv-detail-toggle')
+      expect(opener?.getAttribute('aria-label')).toBe('打开科学详情')
+      expect(opener?.hasAttribute('data-chrome')).toBe(true)
+      await interact(() => opener?.click())
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('true')
+      expect(q(tree, '[data-mock-controls]')?.dataset.open).toBe('false')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('uses one bottom drawer at a time on a phone', async () => {
+    const media = stubMedia({ '(max-width: 1180px)': true, '(max-width: 820px)': true })
+    const tree = await shell()
+    try {
+      const app = q(tree, '.qv-app')
+      expect(q(tree, '[data-mock-controls]')?.dataset.open).toBe('false')
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('false')
+      expect(app?.dataset.drawerOpen).toBe('false')
+      expect(q(tree, '.legend')?.dataset.expanded).toBe('false')
+
+      await interact(() => q<HTMLButtonElement>(tree, '.qv-detail-toggle')?.click())
+      expect(app?.dataset.drawerOpen).toBe('true')
+      await interact(() => q<HTMLButtonElement>(tree, '[data-mock-toggle-controls]')?.click())
+      expect(q(tree, '[data-mock-controls]')?.dataset.open).toBe('true')
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('false')
+      await media.change('(max-width: 820px)', false)
+      await media.change('(max-width: 820px)', true)
+      expect(q(tree, '[data-mock-controls]')?.dataset.open).toBe('false')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('closes the detail panel on Escape and returns focus to its opener', async () => {
+    stubMedia({ '(max-width: 1180px)': false, '(max-width: 820px)': false })
+    const tree = await shell()
+    try {
+      // Only Escape closes it: another key reaching the document leaves it open.
+      await interact(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
+      })
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('true')
+      await interact(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+      })
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('false')
+      expect(document.activeElement).toBe(q(tree, '.qv-detail-toggle'))
+
+      await interact(() => q<HTMLButtonElement>(tree, '.qv-detail-toggle')?.click())
+      await interact(() => q<HTMLButtonElement>(tree, '[data-mock-close-inspector]')?.click())
+      expect(document.activeElement).toBe(q(tree, '.qv-detail-toggle'))
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('lets Escape in the open search close the search alone, focus back on its pill', async () => {
+    // The real SearchPill: its input consumes Escape (preventDefault) and the
+    // native event still bubbles to the document, where the page's own Escape
+    // must not treat it as a second, unhandled press.
+    stubMedia({ '(max-width: 1180px)': false, '(max-width: 820px)': false })
+    const tree = await shell()
+    try {
+      await interact(() => q<HTMLButtonElement>(tree, '.qv-search-pill')?.click())
+      const input = q<HTMLInputElement>(tree, '.qv-search input[role="combobox"]')
+      expect(input).not.toBeNull()
+      expect(document.activeElement).toBe(input)
+      await interact(() => {
+        input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+      })
+      expect(q(tree, '.qv-search input')).toBeNull()
+      expect(q(tree, '[data-mock-inspector]')?.dataset.open).toBe('true')
+      expect(q(tree, '.qv-detail-toggle')).toBeNull()
+      expect(document.activeElement).toBe(q(tree, '.qv-search-pill'))
+    } finally {
+      await tree.unmount()
+    }
+  })
+})
+
+describe('App: embed mode and the guide', () => {
+  it('embeds only the canvas, legend, time pill, status and an open-in-lab link', async () => {
+    embed.current = true
+    localStorage.clear()
+    const tree = await shell()
+    try {
+      expect(q(tree, '.qv-app')?.dataset.embed).toBe('true')
+      expect(q(tree, 'header.qv-header')).toBeNull()
+      expect(q(tree, '[data-mock-controls]')).toBeNull()
+      expect(q(tree, '.qv-search')).toBeNull()
+      expect(q(tree, '[data-mock-inspector]')).toBeNull()
+      expect(q(tree, '[role="dialog"]')).toBeNull()
+      expect(q(tree, '.legend')?.dataset.expanded).toBe('false')
+      expect(q(tree, '.qv-time-pill')).not.toBeNull()
+      expect(q(tree, '[data-status]')).not.toBeNull()
+      const link = q<HTMLAnchorElement>(tree, 'a.qv-embed-open')
+      expect(link?.textContent).toBe('在实验室中打开')
+      expect(link?.target).toBe('_blank')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('opens the guide on a first visit, from the header later, and never over a deep link', async () => {
+    localStorage.clear()
+    const first = await shell()
+    try {
+      expect(q(first, '[role="dialog"]')?.getAttribute('aria-modal')).toBe('true')
+      await interact(() => q<HTMLButtonElement>(first, 'button[aria-label="关闭指南"]')?.click())
+      expect(q(first, '[role="dialog"]')).toBeNull()
+      await interact(() => q<HTMLButtonElement>(first, 'button[data-action="open-guide"]')?.click())
+      expect(q(first, '[role="dialog"]')).not.toBeNull()
+      // While the guide is up, the page's own Escape (focus fell to the body,
+      // e.g. after a click on the dialog's text) leaves the panel under it alone...
+      await interact(() => {
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+      })
+      expect(q(first, '[data-mock-inspector]')?.dataset.open).toBe('true')
+      // ...and Escape in the guide closes the guide alone.
+      await interact(() => {
+        q(first, '[role="dialog"]')?.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+        )
+      })
+      expect(q(first, '[role="dialog"]')).toBeNull()
+      expect(q(first, '[data-mock-inspector]')?.dataset.open).toBe('true')
+    } finally {
+      await first.unmount()
+    }
+
+    localStorage.clear()
+    window.history.replaceState(null, '', '#mode=eigenstate&n=3')
+    const linked = await shell()
+    try {
+      expect(q(linked, '[role="dialog"]')).toBeNull()
+    } finally {
+      await linked.unmount()
+    }
+  })
+
+  it('leaves the URL binding to main.tsx: the shell never binds it a second time', async () => {
+    // B11's bootstrap binds once per page. A second binding here would add a
+    // second store subscriber and a second catalogue fetch for preset links.
+    const tree = await shell()
+    await tree.update(createElement(App))
+    await tree.unmount()
+    expect(binding.bound).toBe(0)
   })
 })

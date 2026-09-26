@@ -108,8 +108,8 @@ export function SliceField({ data }: SliceFieldProps) {
     // chosen by arithmetic that is only defined on sRGB-encoded channels: the
     // ramp's monotone-luminance claim is checked in sliceColor.test.ts through
     // the WCAG transfer function, and NEUTRAL_DEPTH is set so the neutral lands
-    // "on #383838 ... about 1.7:1 against this scene's background" -- a ratio
-    // that comes out at 1.69 only if #383838 is the colour a viewer sees.
+    // "on #383838 ... about 1.6:1 against this scene's background" -- a ratio
+    // that comes out at 1.64 only if #383838 is the colour a viewer sees.
     // Declaring the texture NoColorSpace made the renderer read each byte as a
     // LINEAR value and then encode it on the way out, so the neutral reached the
     // screen at #818181 (measured) and the plane's dark baseline came up a light
@@ -150,7 +150,7 @@ export function SliceField({ data }: SliceFieldProps) {
         // sits deep in the fog range -- far past its far distance once the
         // viewport is tall and narrow. Measured on the first CI bootstrap: the
         // centre of the 1s + 2p_z section rendered at luminance 9.6, which is
-        // the fog colour #050a13 to the byte. A colormap is data; blending it
+        // the fog colour of the time (#050a13) to the byte. A colormap is data; blending it
         // towards a colour that means "far away" makes the legend's colours
         // stop being the rendered ones, and the closer the picture is to
         // filling the frame, the less of it survives.

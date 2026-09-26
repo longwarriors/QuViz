@@ -18,7 +18,7 @@ renders them as author-year labels.
 | **Journal** | Mathematical Proceedings of the Cambridge Philosophical Society |
 | **Volume** | 43 |
 | **Issue** | 1 |
-| **Pages** | 50--67 |
+| **Pages** | 50–67 |
 | **DOI** | [10.1017/S0305004100023197](https://doi.org/10.1017/S0305004100023197) |
 | **Keywords** | `physics`, `numerics` |
 
@@ -56,7 +56,7 @@ renders them as author-year labels.
 | **Journal** | Journal of Computational Physics |
 | **Volume** | 47 |
 | **Issue** | 3 |
-| **Pages** | 412--433 |
+| **Pages** | 412–433 |
 | **DOI** | [10.1016/0021-9991(82)90091-2](https://doi.org/10.1016/0021-9991(82)90091-2) |
 | **Keywords** | `physics`, `numerics` |
 
@@ -71,7 +71,7 @@ renders them as author-year labels.
 | **Edition** | 3 |
 | **Publisher** | Cambridge University Press |
 | **DOI** | [10.1017/9781316995433](https://doi.org/10.1017/9781316995433) |
-| **Notes** | Chapter-level DOIs are registered and are used as citation locators: ch. 1 The Wave Function, pp. 3--24, 10.1017/9781316995433.002; ch. 4 Quantum Mechanics in Three Dimensions, pp. 131--197, 10.1017/9781316995433.005; ch. 11 Quantum Dynamics, pp. 402--445, 10.1017/9781316995433.012. QuViz cites the normalized hydrogenic wavefunction at eq. (4.89), p. 151; the virial applications at problem 3.37, p. 125 and problem 4.48, eq. (4.218), p. 187; and hydrogenic probability current at problem 4.49, eqs. (4.220)--(4.221), pp. 187--188. Page ranges and chapter metadata were checked against the Cambridge/Crossref record. |
+| **Notes** | Chapter-level DOIs are registered and are used as citation locators: ch. 1 The Wave Function, pp. 3–24, 10.1017/9781316995433.002; ch. 4 Quantum Mechanics in Three Dimensions, pp. 131–197, 10.1017/9781316995433.005; ch. 11 Quantum Dynamics, pp. 402–445, 10.1017/9781316995433.012. QuViz cites the normalized hydrogenic wavefunction at eq. (4.89), p. 151; the virial applications at problem 3.37, p. 125 and problem 4.48, eq. (4.218), p. 187; and hydrogenic probability current at problem 4.49, eqs. (4.220)–(4.221), pp. 187–188. Page ranges and chapter metadata were checked against the Cambridge/Crossref record. |
 | **Keywords** | `physics`, `foundations` |
 
 <a id="probability-current-wikipedia"></a>
@@ -100,7 +100,7 @@ renders them as author-year labels.
 | **Issue** | 21 |
 | **Pages** | 213001 |
 | **DOI** | [10.1103/PhysRevLett.110.213001](https://doi.org/10.1103/PhysRevLett.110.213001) |
-| **Notes** | Pages 213001-1--213001-4, especially Figs. 2--3, establish the specific mapping: for hydrogen Stark states separable in parabolic coordinates, the near-atom wavefunction along the bound coordinate and the far continuum projection share the observed nodal count. This is not a general node-preservation theorem for arbitrary measurement operators. |
+| **Notes** | Pages 213001-1–213001-4, especially Figs. 2–3, establish the specific mapping: for hydrogen Stark states separable in parabolic coordinates, the near-atom wavefunction along the bound coordinate and the far continuum projection share the observed nodal count. This is not a general node-preservation theorem for arbitrary measurement operators. |
 | **Keywords** | `experiment`, `physics`, `measurement` |
 
 ## Symmetry and chemical interpretation
@@ -144,11 +144,11 @@ renders them as author-year labels.
 | **Editors** | Hargittai, Istvan |
 | **Year** | 1986 |
 | **Book title** | Symmetry: Unifying Human Understanding |
-| **Pages** | 697--723 |
+| **Pages** | 697–723 |
 | **Publisher** | Pergamon |
 | **ISBN** | 9780080339863 |
 | **DOI** | [10.1016/B978-0-08-033986-3.50050-1](https://doi.org/10.1016/B978-0-08-033986-3.50050-1) |
-| **Notes** | The same text was published simultaneously as a journal article, DOI 10.1016/0898-1221(86)90419-0, in Computers & Mathematics with Applications 12(3-4), 697--723 --- the volume was issued both as a journal number and as this edited book. The book-chapter DOI is cited because QuViz refers to the edited book; the journal DOI is an alternative identifier for the same text. Crossref lists the publisher of the chapter record as Elsevier, which absorbed Pergamon. |
+| **Notes** | The same text was published simultaneously as a journal article, DOI 10.1016/0898-1221(86)90419-0, in Computers & Mathematics with Applications 12(3-4), 697–723 — the volume was issued both as a journal number and as this edited book. The book-chapter DOI is cited because QuViz refers to the edited book; the journal DOI is an alternative identifier for the same text. Crossref lists the publisher of the chapter record as Elsevier, which absorbed Pergamon. |
 | **Keywords** | `chemistry`, `symmetry`, `hybridization` |
 
 ## Visualization and teaching
@@ -201,7 +201,7 @@ renders them as author-year labels.
 | **Journal** | Journal of Chemical Education |
 | **Volume** | 90 |
 | **Issue** | 1 |
-| **Pages** | 129--131 |
+| **Pages** | 129–131 |
 | **DOI** | [10.1021/ed300393s](https://doi.org/10.1021/ed300393s) |
 | **Keywords** | `visualization`, `sampling`, `education` |
 
@@ -217,6 +217,7 @@ renders them as author-year labels.
 | **Year** | 2026 |
 | **Accessed** | 2026-08-22 |
 | **Source URL** | [https://claude.ai/code/artifact/e9c58805-458b-446a-9913-b80e9c108bc4](https://claude.ai/code/artifact/e9c58805-458b-446a-9913-b80e9c108bc4) |
+| **Notes** | 私有链接：该 claude.ai artifact 只有项目维护者登录后可见，公开读者无法打开；这里仅作为开发审计留痕引用，其中的结论已在 docs/project/status.md 逐条复核。 |
 | **Keywords** | `source-audit`, `software`, `project-audit` |
 
 <a id="comenius2025-quantum-theory-ps03"></a>
@@ -230,7 +231,7 @@ renders them as author-year labels.
 | **Year** | 2025 |
 | **Accessed** | 2026-08-25 |
 | **Source URL** | [https://davinci.fmph.uniba.sk/~blazek1/QM/QM_2526/PS03.pdf](https://davinci.fmph.uniba.sk/~blazek1/QM/QM_2526/PS03.pdf) |
-| **Notes** | Problem 5 on PDF p. 4 asks students to explain why the FloatHeadPhysics video's 08:46--10:00 account is incorrect. It is cited only as independent audit corroboration, not as the source of the corrected probability measure. |
+| **Notes** | Problem 5 on PDF p. 4 asks students to explain why the FloatHeadPhysics video's 08:46–10:00 account is incorrect. It is cited only as independent audit corroboration, not as the source of the corrected probability measure. |
 | **Keywords** | `source-audit`, `physics`, `teaching` |
 
 <a id="evanescence"></a>
@@ -257,7 +258,7 @@ renders them as author-year labels.
 | **Year** | 2025 |
 | **Accessed** | 2026-08-25 |
 | **Source URL** | [https://www.youtube.com/watch?v=M--6_0F62pQ](https://www.youtube.com/watch?v=M--6_0F62pQ) |
-| **Notes** | YouTube video, 32:49. The node-based narrative is cited only for teaching; the claims at 05:05--10:00 and 21:58--30:18 require the corrections recorded in docs/references/corrections.md. |
+| **Notes** | YouTube video, 32:49. The node-based narrative is cited only for teaching; the claims at 05:05–10:00 and 21:58–30:18 require the corrections recorded in docs/references/corrections.md. |
 | **Keywords** | `source-audit`, `visualization`, `video`, `teaching` |
 
 <a id="mocquin2022-fdm"></a>

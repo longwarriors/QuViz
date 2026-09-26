@@ -28,6 +28,24 @@ npm --prefix web ci --no-audit --no-fund
 make check
 ```
 
+在此之上，按改动选最小而足够的验证（本项目不依赖 CI，本地结果即最终验证）：
+
+- **完整数据构建**只在预计算数据会变时需要：改动了导出器、目录规格、请求枚举器（`web/tools/`）、前端的请求构造（`web/src/api/`），或会改变这些请求答案的服务端场景构建与路由。先完整构建，再跑静态站门禁：
+
+  ```bash
+  uv run --locked --no-sync python scripts/build_pages.py
+  npm --prefix web run test:pages
+  ```
+
+- 其余的前端、教材或构建脚本改动复用上次的数据即可：`npm --prefix web run test:pages` 自己会以 `--skip-data` 重建实验室与教材。触及前后端接口时另跑 `npm --prefix web run test:fullstack`。
+- **Docker 像素门禁**只在改动了画进画布的内容（场景组件、着色器、配色、相机）时运行：
+
+  ```bash
+  pwsh scripts/visual-docker.ps1
+  ```
+
+  `pwsh scripts/visual-docker.ps1 -Mode update` 只用于有意改变画面：重写的基线必须逐张人工检查后才能提交。
+
 ## 新增科学实现
 
 - 先写解析极限、不变量或统计测试；

@@ -3,9 +3,14 @@ import { act, createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { OrbitalMetadata, SceneStatus, SuperpositionMetadata } from '../api/types'
+import type { OrbitalMetadata, SceneStatus, SuperpositionMetadata, SuperpositionPreset } from '../api/types'
 import { mount } from '../test/mount'
 import { Inspector } from './Inspector'
+
+vi.mock('./charts/ChartsPanel', async () => {
+  const { createElement: element } = await import('react')
+  return { ChartsPanel: () => element('p', { 'data-mock-charts': '' }, 'charts') }
+})
 
 function eigenstateMetadata(energyHartree: number): OrbitalMetadata {
   return {
@@ -76,6 +81,73 @@ function superpositionStatus(terms: SuperpositionMetadata['terms']): SceneStatus
     },
   }
 }
+
+/** The server's 1s + 2p_z catalogue entry (tests/fixtures/visual/catalog-superposition.json). */
+const BOHR_PRESET: SuperpositionPreset = {
+  id: '1s-2pz',
+  label: '1s + 2p_z (Bohr oscillation)',
+  terms: '1,0,0,0.7071067811865476;2,1,0,0.7071067811865476',
+  period_au: 16.755160819145562,
+  note: 'Dipole oscillates at omega = 3/8 hartree; the textbook radiating state.',
+  slice_resolution_floor: 65,
+  streamline_seed_count_max: 40,
+  default_representation: 'isosurface',
+}
+
+/** A superposition as the server reports it: its label is the ket string. */
+function arrivedMixture(terms: SuperpositionMetadata['terms'], ket: string): SceneStatus {
+  const status = superpositionStatus(terms)
+  status.superposition!.label = ket
+  return status
+}
+
+const BOHR_TERMS: SuperpositionMetadata['terms'] = [
+  { n: 1, l: 0, m: 0, coefficient_real: 0.7071067811865476, coefficient_imag: 0 },
+  { n: 2, l: 1, m: 0, coefficient_real: 0.7071067811865476, coefficient_imag: 0 },
+]
+const BOHR_KET = '0.707|1,0,0> + 0.707|2,1,0>'
+
+describe('Inspector title of a superposition', () => {
+  const titled = (status: SceneStatus, mixtures?: readonly SuperpositionPreset[]): string =>
+    renderToStaticMarkup(createElement(Inspector, { status, mixtures }))
+
+  it('titles a catalogue preset by its panel label and keeps the ket as the monospace subtitle', () => {
+    const markup = titled(arrivedMixture(BOHR_TERMS, BOHR_KET), [BOHR_PRESET])
+
+    expect(markup).toContain('<h2>1s + 2p_z · Bohr 振荡</h2>')
+    // Its own line, so a narrow panel wraps the ket between terms and never
+    // splits "complex basis" across lines.
+    expect(markup).toContain(
+      '<h2>1s + 2p_z · Bohr 振荡</h2><p class="qv-detail-sub qv-detail-ket">0.707|1,0,0&gt; + 0.707|2,1,0&gt;</p>' +
+        '<p class="qv-detail-sub">complex basis</p>',
+    )
+    expect(markup).not.toContain('<h2>0.707|1,0,0')
+  })
+
+  it('keeps the ket as the title of a custom superposition', () => {
+    const custom = [
+      { n: 1, l: 0, m: 0, coefficient_real: 0.6, coefficient_imag: 0 },
+      { n: 2, l: 1, m: 0, coefficient_real: 0.8, coefficient_imag: 0 },
+    ]
+    const markup = titled(arrivedMixture(custom, '0.6|1,0,0> + 0.8|2,1,0>'), [BOHR_PRESET])
+
+    expect(markup).toContain('<h2>0.6|1,0,0&gt; + 0.8|2,1,0&gt;</h2>')
+    expect(markup).toContain('<p class="qv-detail-sub">2 项叠加 · complex basis</p>')
+    expect(markup).not.toContain('Bohr 振荡')
+  })
+
+  it('titles by the ket until a catalogue has arrived to name it', () => {
+    const markup = titled(arrivedMixture(BOHR_TERMS, BOHR_KET))
+    expect(markup).toContain('<h2>0.707|1,0,0&gt; + 0.707|2,1,0&gt;</h2>')
+    expect(markup).not.toContain('qv-detail-ket')
+  })
+
+  it('leaves an eigenstate title and subtitle alone', () => {
+    const markup = titled(eigenstateStatus(-0.125), [BOHR_PRESET])
+    expect(markup).toContain('<h2>test eigenstate</h2>')
+    expect(markup).toContain('<p class="qv-detail-sub">ψ(2, 1, 0) · complex basis</p>')
+  })
+})
 
 describe('Inspector superposition coefficients', () => {
   it('preserves a negative real coefficient instead of displaying its magnitude', () => {
@@ -301,10 +373,26 @@ describe('Inspector reports every measured diagnostic', () => {
     const busy = render({ loading: true })
 
     expect(idle).toContain('<h2>暂无资产</h2>')
-    expect(idle).toContain('等待已验证 metadata')
+    expect(idle).toContain('等待已验证的元数据')
     expect(idle).toContain('<span class="energy-pill">—</span>')
     expect(idle).not.toContain('NaN')
     expect(busy).toContain('<h2>计算中…</h2>')
+  })
+
+  it('does not promise metadata that a failed or refused request will never bring', () => {
+    // No frame on screen: the request failed (e.g. the stored 422 of the
+    // 2s + 2p_z isosurface) or was refused. "Waiting" would be a false promise.
+    const failed = render({ loading: false, error: 'HTTP 422' })
+    const refused = render({
+      loading: false,
+      unavailable: { kind: 'isosurface', reason: '静态教材版未预计算这一组合。', refusal: 'not_precomputed' },
+    })
+
+    expect(failed).toContain('<h2>暂无资产</h2>')
+    expect(failed).toContain('<p class="qv-detail-sub">请求失败，没有元数据可显示</p>')
+    expect(failed).not.toContain('等待已验证的元数据')
+    expect(refused).toContain('<p class="qv-detail-sub">当前组合不可用，没有元数据可显示</p>')
+    expect(refused).not.toContain('等待已验证的元数据')
   })
 
   it('keeps the sign of a leading negative term and of a negative imaginary part', () => {
@@ -433,6 +521,55 @@ describe('Inspector reports every measured diagnostic', () => {
   })
 })
 
+/** Two diagnostics of the kind the server sends, verbatim (builders.py). */
+const DIAGNOSTICS = [
+  'finite-grid density integral is 0.991112: time-invariant quadrature error exceeds the reporting ' +
+    'tolerance even after accounting for the conservative finite-box tail bound; terms span n=[1, 2], ' +
+    'so the uniform cube under-resolves the compact scales.',
+  'grid resolution was increased from 65 to 81 to resolve the radial-node topology',
+]
+
+describe('Inspector numerical diagnostics', () => {
+  it('folds the server warnings into a closed 数值诊断 disclosure, each one verbatim in a warning card', async () => {
+    const tree = await mount(
+      createElement(Inspector, { status: { ...eigenstateStatus(-0.125), warnings: DIAGNOSTICS } }),
+    )
+    try {
+      const disclosure = tree.container.querySelector<HTMLDetailsElement>('details.qv-diagnostics')
+      if (disclosure === null) throw new Error('no diagnostics disclosure')
+      expect(disclosure.open).toBe(false)
+      expect(disclosure.querySelector('summary')?.textContent).toBe('数值诊断（2 条）')
+      const cards = [...disclosure.querySelectorAll('.warning-card')]
+      expect(cards.map((card) => card.textContent)).toEqual(DIAGNOSTICS)
+      // Every warning card is inside it: none is left filling the tab.
+      expect(tree.container.querySelectorAll('.warning-card')).toHaveLength(2)
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('keeps a scene error in plain sight, outside the folded diagnostics', async () => {
+    const tree = await mount(
+      createElement(Inspector, {
+        status: { ...eigenstateStatus(-0.125), error: 'stream ended early', warnings: DIAGNOSTICS.slice(1) },
+      }),
+    )
+    try {
+      const error = tree.container.querySelector('.warning-card.error')
+      expect(error?.textContent).toBe('场景错误 · stream ended early')
+      expect(error?.closest('details')).toBeNull()
+      expect(tree.container.querySelector('details.qv-diagnostics summary')?.textContent).toBe('数值诊断（1 条）')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('shows no disclosure when the server reported nothing to diagnose', () => {
+    expect(render({ ...eigenstateStatus(-0.125), warnings: [] })).not.toContain('qv-diagnostics')
+    expect(render(eigenstateStatus(-0.125))).not.toContain('数值诊断')
+  })
+})
+
 describe('Inspector disclosure', () => {
   it('associates every tab with its panel and supports the complete roving keyboard pattern', async () => {
     const onClose = vi.fn()
@@ -447,27 +584,27 @@ describe('Inspector disclosure', () => {
       const panels = Array.from(
         tree.container.querySelectorAll<HTMLElement>('[role="tabpanel"]'),
       )
-      expect(tabs.map((tab) => tab.textContent)).toEqual(['概览', '场景契约', '引用'])
-      expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1])
-      expect(panels).toHaveLength(3)
+      expect(tabs.map((tab) => tab.textContent)).toEqual(['概览', '图表', '场景契约', '引用'])
+      expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1, -1, -1])
+      expect(panels).toHaveLength(4)
       for (const [index, tab] of tabs.entries()) {
         expect(tab.getAttribute('aria-controls')).toBe(panels[index].id)
         expect(panels[index].getAttribute('aria-labelledby')).toBe(tab.id)
       }
 
-      await interact(() => tabs[1].click())
+      await interact(() => tabs[2].click())
       expect(tree.container.querySelector('.contract-panel')?.hasAttribute('hidden')).toBe(false)
 
-      tabs[1].focus()
+      tabs[2].focus()
       await interact(() => {
-        tabs[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+        tabs[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
       })
-      expect(document.activeElement).toBe(tabs[2])
-      expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, -1, 0])
+      expect(document.activeElement).toBe(tabs[3])
+      expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, -1, -1, 0])
       expect(tree.container.querySelector('.references-panel')?.hasAttribute('hidden')).toBe(false)
 
       await interact(() => {
-        tabs[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
+        tabs[3].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }))
       })
       expect(document.activeElement).toBe(tabs[0])
       expect(tree.container.querySelector('.overview-panel')?.hasAttribute('hidden')).toBe(false)
@@ -475,12 +612,12 @@ describe('Inspector disclosure', () => {
       await interact(() => {
         tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
       })
-      expect(document.activeElement).toBe(tabs[2])
+      expect(document.activeElement).toBe(tabs[3])
 
       await interact(() => {
-        tabs[2].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
+        tabs[3].dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
       })
-      expect(document.activeElement).toBe(tabs[2])
+      expect(document.activeElement).toBe(tabs[3])
 
       await interact(() => tree.container.querySelector<HTMLButtonElement>('.inspector-close')?.click())
       expect(onClose).toHaveBeenCalledOnce()
@@ -519,6 +656,29 @@ describe('Inspector disclosure', () => {
     } finally {
       await tree.unmount()
     }
+  })
+
+  it('mounts the charts only while their tab is open, so a closed tab asks nothing', async () => {
+    const tree = await mount(createElement(Inspector, { status: eigenstateStatus(-0.125) }))
+    try {
+      const tabs = Array.from(tree.container.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+      expect(tree.container.querySelector('[data-mock-charts]')).toBeNull()
+      await interact(() => tabs[1].click())
+      expect(tree.container.querySelector('.charts-panel')?.hasAttribute('hidden')).toBe(false)
+      expect(tree.container.querySelector('[data-mock-charts]')).not.toBeNull()
+      await interact(() => tabs[0].click())
+      expect(tree.container.querySelector('[data-mock-charts]')).toBeNull()
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('floats as chrome with the arrived label and energy in its title row', () => {
+    const markup = render(eigenstateStatus(-0.125))
+    expect(markup).toContain('data-chrome=""')
+    expect(markup).toContain('<h2>test eigenstate</h2>')
+    expect(markup).toContain('<span class="energy-pill">-0.125000 Ha</span>')
+    expect(markup).toContain('ψ(2, 1, 0) · complex basis')
   })
 
   it('treats a requested mobile sheet as visible even when the permanent rail is closed', async () => {

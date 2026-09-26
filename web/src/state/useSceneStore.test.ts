@@ -1,6 +1,10 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { planSceneRequest } from '../api/capability'
+import { capabilityFor, planSceneRequest, setStaticCatalog } from '../api/capability'
+import { superpositionIsosurfaceRequest } from '../api/requests'
+import { parseStaticSpec, type StaticManifest } from '../api/staticCatalog'
+import { requestKey } from '../api/transport'
 import { selectSceneRequestInputs } from '../components/sceneRequest'
 import { useSceneStore } from './useSceneStore'
 
@@ -8,6 +12,14 @@ const INITIAL = useSceneStore.getState()
 
 beforeEach(() => {
   useSceneStore.setState(INITIAL, true)
+})
+
+describe('presentation defaults', () => {
+  it('starts with Bloom off, so data colours reach the screen as the legend prints them', () => {
+    // Spec §5: slices went through Bloom 0.12 (and a Vignette) while
+    // SliceField.test proved only the texture bytes against the legend.
+    expect(INITIAL.bloom).toBe(0)
+  })
 })
 
 const read = () => useSceneStore.getState()
@@ -372,6 +384,7 @@ describe('resolution follows the bound of the representation actually shown', ()
       '1s + 3d_z²',
       103,
       24,
+      'isosurface',
     )
 
     expect(read().resolution).toBe(103)
@@ -412,7 +425,7 @@ describe('scene setters', () => {
     read().setTimeAu(12)
     read().setPlaying(true)
 
-    read().setSuperposition('1,0,0,1', '1s', 65, 40)
+    read().setSuperposition('1,0,0,1', '1s', 65, 40, 'isosurface')
 
     expect(read().superpositionTerms).toBe('1,0,0,1')
     expect(read().superpositionLabel).toBe('1s')
@@ -429,7 +442,7 @@ describe('scene setters', () => {
     })
     const terms = read().superpositionTerms
 
-    read().syncSuperpositionCapabilities(terms, 103, 24)
+    read().syncSuperpositionCapabilities(terms, 103, 24, 'isosurface')
     expect(read().superpositionSliceResolutionFloor).toBe(103)
     expect(read().superpositionStreamlineSeedCountMax).toBe(24)
     expect(read().resolution).toBe(103)
@@ -438,6 +451,7 @@ describe('scene setters', () => {
       'a mixture selected after this fetch began',
       201,
       7,
+      'isosurface',
     )
     expect(read().superpositionSliceResolutionFloor).toBe(103)
     expect(read().superpositionStreamlineSeedCountMax).toBe(24)
@@ -457,6 +471,7 @@ describe('scene setters', () => {
       '1s + 3d_z²',
       103,
       24,
+      'isosurface',
     )
 
     expect(read().superpositionStreamlineSeedCountMax).toBe(24)
@@ -476,7 +491,7 @@ describe('scene setters', () => {
     })
     const terms = read().superpositionTerms
 
-    read().syncSuperpositionCapabilities(terms, 65, 17)
+    read().syncSuperpositionCapabilities(terms, 65, 17, 'isosurface')
 
     expect(read().superpositionStreamlineSeedCountMax).toBe(17)
     expect(read().seedCount).toBe(17)
@@ -495,7 +510,7 @@ describe('scene setters', () => {
     })
     const terms = read().superpositionTerms
 
-    read().syncSuperpositionCapabilities(terms, 65, 0)
+    read().syncSuperpositionCapabilities(terms, 65, 0, 'isosurface')
 
     expect(read().superpositionStreamlineSeedCountMax).toBe(0)
     expect(read().representation).toBe('isosurface')
@@ -556,5 +571,191 @@ describe('scene setters', () => {
       autoRotate: true,
       showGrid: false,
     })
+  })
+})
+
+describe('static catalogue pins', () => {
+  const SPEC = parseStaticSpec(
+    JSON.parse(readFileSync(new URL('../../tools/fixtures/spec.json', import.meta.url), 'utf-8')),
+  )
+  const frameKey = (timeAu: number): string => {
+    const request = superpositionIsosurfaceRequest(INITIAL.superpositionTerms, 'complex', 1, 1, timeAu, 65, 0.9)
+    return requestKey(request.route, request.query)
+  }
+  const manifest = (keys: readonly string[]): StaticManifest => ({
+    format: 'quviz-static/1',
+    version: '0000000000000000',
+    spec: SPEC,
+    entries: Object.fromEntries(
+      keys.map((key) => [
+        key,
+        { file: 'files/000000000000000000000000.json', status: 200, content_type: 'application/json', headers: {} },
+      ]),
+    ),
+  })
+
+  afterEach(() => {
+    setStaticCatalog(null)
+  })
+
+  it('holds both charges at the catalogue Z', () => {
+    setStaticCatalog(manifest([]))
+    read().setOrbital({ z: 3 })
+    read().setSuperpositionZ(4)
+    expect(read().orbital.z).toBe(1)
+    expect(read().superpositionZ).toBe(1)
+  })
+
+  it('snaps a superposition time to the nearest exported frame', () => {
+    setStaticCatalog(manifest([frameKey(0), frameKey(0.6), frameKey(1.2)]))
+    read().setMode('superposition')
+    read().setTimeAu(0.5)
+    expect(read().timeAu).toBe(0.6)
+    read().setTimeAu(99)
+    expect(read().timeAu).toBe(1.2)
+  })
+
+  it('passes a time through when the cell itself is refused', () => {
+    // Frames ARE installed for the standing superposition -- and would be used
+    // if snapTimeAu looked up the clock lattice without first checking that the
+    // cell is available. point_cloud is a superposition cell the routes never
+    // implement (not_implemented, not a catalogue miss), forced past setMode's
+    // own resolution by writing the store directly, so this is discriminating:
+    // a snap that used the frames regardless of availability would clamp 0.5 to
+    // the nearest one (0.6) instead of leaving it alone.
+    setStaticCatalog(manifest([frameKey(0), frameKey(0.6), frameKey(1.2)]))
+    useSceneStore.setState({ mode: 'superposition', representation: 'point_cloud' })
+    read().setTimeAu(0.5)
+    expect(read().timeAu).toBe(0.5)
+  })
+
+  it('re-clamps the grid to the pinned value the planner will send', () => {
+    setStaticCatalog(manifest([]))
+    read().setOrbital({ n: 4, l: 3, m: 0 })
+    read().setRepresentation('isosurface')
+    expect(read().resolution).toBe(81)
+    read().setOrbital({ n: 2, l: 1 })
+    expect(read().resolution).toBe(65)
+    // What the panel holds is what the planner would send (the catalogue lacks
+    // the key here, so the plan is refused rather than re-spelled).
+    expect(planSceneRequest(selectSceneRequestInputs(read())).status).toBe('not_precomputed')
+  })
+
+  it('holds a superposition slice on the one plane the catalogue exported, and gives the eigenstate its plane back', () => {
+    // The static catalogue exports superposition slices on xz only. The planner
+    // already falls back to xz for any other plane; the store has to say the
+    // same, or the plane chips, the scene identity and the shared link report
+    // a plane that is not the one drawn.
+    setStaticCatalog(manifest([]))
+    read().setRepresentation('slice')
+    read().setPlane('xy')
+    expect(read().plane).toBe('xy')
+
+    read().setMode('superposition')
+
+    expect(read().representation).toBe('slice')
+    expect(read().plane).toBe('xz')
+    const capability = capabilityFor(selectSceneRequestInputs(read()))
+    expect(capability).toMatchObject({ status: 'available', planes: ['xz'] })
+
+    read().setMode('eigenstate')
+    expect(read().plane).toBe('xy')
+  })
+
+  it('moves a linked plane onto the catalogued one whichever order the link applies in', () => {
+    // applyDeepLink sets the mode, then the plane, then the representation: the
+    // plane arrives while the isosurface (which cuts no plane) is standing.
+    setStaticCatalog(manifest([]))
+    read().setMode('superposition')
+    read().setPlane('yz')
+    read().setRepresentation('slice')
+    expect(read().plane).toBe('xz')
+
+    // And a plane asked for while the slice already stands.
+    read().setPlane('xy')
+    expect(read().plane).toBe('xz')
+  })
+
+  it('leaves live-mode time and charge alone', () => {
+    read().setTimeAu(0.5)
+    read().setOrbital({ z: 3 })
+    expect(read().timeAu).toBe(0.5)
+    expect(read().orbital.z).toBe(3)
+  })
+})
+
+describe('catalogue default representation', () => {
+  const DEGENERATE_TERMS = '2,0,0,0.7071067811865476;2,1,0,0.7071067811865476'
+  const BOHR_TERMS = '1,0,0,0.7071067811865476;2,1,0,0.7071067811865476'
+
+  it('opens a preset whose published default is a slice on the slice (2s-2pz regression)', () => {
+    read().setMode('superposition')
+    expect(read().representation).toBe('isosurface')
+
+    read().setSuperposition(DEGENERATE_TERMS, '2s + 2p_z (degenerate, stationary)', 65, 40, 'slice')
+
+    expect(read().superpositionDefaultRepresentation).toBe('slice')
+    expect(read().representation).toBe('slice')
+    expect(planSceneRequest(selectSceneRequestInputs(read()))).toMatchObject({
+      status: 'available',
+      endpoint: '/api/superposition/slice',
+      params: { resolution: 65 },
+    })
+  })
+
+  it('keeps the isosurface for a preset that publishes it as its default', () => {
+    read().setMode('superposition')
+
+    read().setSuperposition(BOHR_TERMS, '1s + 2p_z (Bohr oscillation)', 65, 40, 'isosurface')
+
+    expect(read().representation).toBe('isosurface')
+  })
+
+  it('keeps a representation other than the isosurface when such a preset is chosen', () => {
+    useSceneStore.setState({ superpositionStreamlineSeedCountMax: 40 })
+    read().setMode('superposition')
+    read().setRepresentation('streamlines')
+
+    read().setSuperposition(DEGENERATE_TERMS, '2s + 2p_z', 65, 40, 'slice')
+
+    expect(read().representation).toBe('streamlines')
+  })
+
+  it('enters superposition mode on the selected preset default', () => {
+    useSceneStore.setState({ representation: 'isosurface', superpositionDefaultRepresentation: 'slice' })
+
+    read().setMode('superposition')
+
+    expect(read().representation).toBe('slice')
+  })
+
+  it('still honours an explicit isosurface request for such a preset', () => {
+    read().setMode('superposition')
+    read().setSuperposition(DEGENERATE_TERMS, '2s + 2p_z', 65, 40, 'slice')
+
+    read().setRepresentation('isosurface')
+
+    expect(read().representation).toBe('isosurface')
+  })
+
+  it('re-clicking the already-active superposition toggle does not override an explicit isosurface choice', () => {
+    read().setMode('superposition')
+    read().setSuperposition(DEGENERATE_TERMS, '2s + 2p_z', 65, 40, 'slice')
+    read().setRepresentation('isosurface')
+
+    // setMode('superposition') again, as the already-active 叠加态 button does
+    // on every re-click -- this must be a no-op, not a second "opening".
+    read().setMode('superposition')
+
+    expect(read().representation).toBe('isosurface')
+  })
+
+  it('records the published default on a catalogue sync without moving the picture', () => {
+    useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
+
+    read().syncSuperpositionCapabilities(read().superpositionTerms, 65, 40, 'slice')
+
+    expect(read().superpositionDefaultRepresentation).toBe('slice')
+    expect(read().representation).toBe('isosurface')
   })
 })

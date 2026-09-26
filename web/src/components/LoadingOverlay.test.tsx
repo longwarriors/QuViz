@@ -20,5 +20,6 @@ describe('LoadingOverlay covers the viewport only when there is nothing in it', 
     expect(markup).toContain('loading-overlay')
     expect(markup).toContain('正在构建量子场')
     expect(markup).toContain('采样 · 网格构建 · GPU 上传')
+    expect(markup).toContain('data-chrome=""')
   })
 })

@@ -948,10 +948,13 @@ const ALL_REPRESENTATIONS: Record<RepresentationKind, true> = {
 const EVERY_REPRESENTATION = Object.keys(ALL_REPRESENTATIONS) as RepresentationKind[]
 const EVERY_MODE: SceneKind[] = ['eigenstate', 'superposition']
 
-const CONTROL_PANEL = fileURLToPath(new URL('../components/ControlPanel.tsx', import.meta.url))
+/** The control-panel section that lists the representation rows (split out of ControlPanel.tsx in D11). */
+const CONTROL_PANEL = fileURLToPath(
+  new URL('../components/controls/RepresentationSection.tsx', import.meta.url),
+)
 
 /**
- * The `id` of each entry in ControlPanel.tsx's REPRESENTATIONS list.
+ * The `id` of each entry in RepresentationSection.tsx's REPRESENTATIONS list.
  *
  * Read from the source rather than imported, because that array is
  * module-private and this file must not be the reason it becomes part of the

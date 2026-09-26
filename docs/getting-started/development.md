@@ -9,7 +9,7 @@ uv run --locked ruff format .
 uv run --locked mypy
 uv run --locked --no-sync python scripts/render_reference_index.py --check
 uv run --locked --no-sync python scripts/render_openapi_reference.py --check
-uv run --locked --no-sync mkdocs serve
+uv run --locked --no-sync mkdocs serve -a 127.0.0.1:8001
 npm --prefix web run build
 ```
 
@@ -40,8 +40,8 @@ npm --prefix web run test:fullstack
 临时解析或改写依赖。
 Playwright 成功退出后，`assert-fullstack-run.mjs` 还会审计 JSON 报告，要求固定 spec 与标题
 恰好运行一次且通过；0 tests、全 skip、重复/额外执行、重试掩盖或错误 testDir 都会失败。
-这条门禁由 CI 的 `web-fullstack` job 执行，不在 `make check` / `check.ps1` 内。它验证源码
-checkout 的生产挂载路径；当前 wheel 是否携带静态前端仍是独立的发布验证项。
+本地运行即判据（本项目不依赖 CI）；CI 的 `web-fullstack` job 另行重跑。它不在 `make check` / `check.ps1` 内，
+验证的是源码 checkout 的生产挂载路径；当前 wheel 是否携带静态前端仍是独立的发布验证项。
 
 `npm run test` 不只是 vitest，而是一条以 `&&` 串起、逐段被 `tests/test_check_script.py`
 按精确元组钉住的链（少一段、多一段、换顺序都会变红）：
@@ -61,6 +61,57 @@ Windows PowerShell：
 ```powershell
 & .\scripts\check.ps1
 ```
+
+## 静态教材站（GitHub Pages）
+
+教材站由 `scripts/build_pages.py` 在本地组装到 `build/pages/`（`build/` 已被 `.gitignore` 忽略，预计算数据不入库）：
+
+```bash
+uv run --locked --no-sync python scripts/build_pages.py                            # 完整构建：预计算数据 + 实验室 + 教材
+uv run --locked --no-sync python scripts/build_pages.py --skip-data                # 复用上次的 build/pages/data，只重建实验室与教材
+uv run --locked --no-sync python scripts/build_pages.py --skip-data --serve 4180   # 重建后按仓库子路径预览
+```
+
+完整构建依次运行：
+
+1. `quviz export-static plan` 写出目录与规格；
+2. `web/tools/static-requests.ts` 由前端真实请求代码枚举 `requests.json`；
+3. `quviz export-static render --workers N` 通过 ASGI 逐字回放每个请求。N 默认与导出器相同，取 CPU 数且最多 8：每个进程峰值约 0.3–0.4 GB 内存。导出器只接受 1–32，超出范围时脚本在任何步骤之前拒绝；
+4. `npm --prefix web run build:pages` 构建实验室，输出到 `build/pages-web/`，不覆盖 `quviz serve` 挂载的 `web/dist`；
+5. 生成 `build/mkdocs.pages.yml` 并 `mkdocs build --strict` 到 `build/pages/learn/`。
+
+最后合并实验室文件、写入 `.nojekyll`，并打印体积报告（总量、各顶层目录、最大 10 个文件）。实验室构建里出现 sourcemap，或整站超过 GitHub Pages 的 1 GB 上限，构建都会失败。只有成功的构建才写出构建记录 `build/pages-build.json`（站点地址、子路径与数据版本）；构建一开始就删掉上一次的记录，所以失败的构建不会留下一份描述旧站点的记录。完整构建的耗时主要花在第 3 步。
+
+`site_url` 默认由 `git remote get-url origin` 推导为 `https://<owner>.github.io/<repo>/`，也可以用 `--site-url` 指定。它只影响教材的 sitemap、canonical 与预览子路径；实验室本身全部使用相对路径。`--serve` 在 `http://127.0.0.1:<端口>/<repo>/` 预览，并且只在这个子路径下应答，与 Pages 一致：`/` 跳转到子路径，子路径之外一律 404。所以任何写死根路径的资源都会在预览里暴露。预览与 Pages 的两处刻意差异如下：
+
+- 预览发送 `Cache-Control: no-cache`，不压缩；
+- Material 的 instant navigation 按 sitemap 重定位链接时只替换协议与主机名、不替换端口，所以在本地端口上退化为整页跳转，在 Pages 上正常。
+
+`.github/workflows/pages.yml` 在 master 更新时用同一脚本完整重建站点，`site_url` 取自 `actions/configure-pages`，然后部署。它是发布器而不是门禁：可发布的判据仍是本地的完整构建与浏览器门禁。首次使用前，需要维护者在仓库设置中把 Pages 的构建来源设为 GitHub Actions。
+
+静态站的浏览器门禁在一次完整构建之后运行，每次只重建实验室与教材：
+
+```bash
+npm --prefix web run test:pages
+```
+
+它在上面的子路径下验证开场场景、表示法切换、未预计算提示、叠加态播放、深链接、嵌入模式、教材页及其手机宽度排版（教材页需要网络以加载 MathJax），然后由 `assert-pages-run.mjs` 审计报告，只有恰好 9 项测试各运行一次且全部通过才算绿。
+
+## 视觉像素门禁（Docker）
+
+`web/playwright.config.ts` 在非 Linux 上直接拒绝加载：五张基线是固定镜像里 SwiftShader 的像素。本地运行需要 Docker Desktop（Linux 容器）：
+
+```powershell
+pwsh scripts/visual-docker.ps1                 # check：对照已提交基线（npm run test:visual）
+pwsh scripts/visual-docker.ps1 -Mode update    # 仅在有意改变画面时：重写基线后立即再比较一次
+pwsh scripts/visual-docker.ps1 -Fresh          # 忽略缓存，在容器内重新 npm ci
+```
+
+POSIX 宿主使用 `bash scripts/visual-docker.sh [check|update] [--fresh]`。
+
+镜像按 digest 固定为 `mcr.microsoft.com/playwright:v1.62.1-noble`，其版本号必须等于 `web/package.json` 精确固定的 `@playwright/test`。脚本先在镜像里执行 `node --version`，不满足 `engines` 就在 `npm ci` 之前退出。
+
+容器的 `node_modules` 放在名为 `quviz-visual-node-modules` 的 Docker 卷里，因为宿主的 `web/node_modules` 带有 Windows 原生绑定；锁文件未变时复用该卷。运行会在工作树里写入 `web/dist` 与 `web/test-results/`，`update` 模式还会改写 `web/e2e/__screenshots__/`。提交这些 PNG 之前必须逐张人工检查，标准见 `web/e2e/slice.spec.ts` 顶部。
 
 ## 提交前门禁
 

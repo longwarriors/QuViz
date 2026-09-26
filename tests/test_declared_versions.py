@@ -16,8 +16,10 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
@@ -28,6 +30,8 @@ WEB_NPMRC = ROOT / "web" / ".npmrc"
 NODE_VERSION = ROOT / ".node-version"
 NVMRC = ROOT / ".nvmrc"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+WORKFLOWS = ROOT / ".github" / "workflows"
+PAGES_WORKFLOW = WORKFLOWS / "pages.yml"
 
 Version = tuple[int, int, int]
 
@@ -129,10 +133,14 @@ def test_manifest_accepts_exactly_the_locked_jsdom_node_lines() -> None:
     assert _locked_node_engines("node_modules/jsdom") == declared
 
 
+def _minimum_node() -> str:
+    return ".".join(str(part) for part in min(_engine_lower_bounds(_node_engines_range())))
+
+
 def test_node_version_files_and_ci_pin_the_lowest_supported_runtime() -> None:
     """Local version managers and every front-end CI job use one exact baseline."""
 
-    minimum = ".".join(str(part) for part in min(_engine_lower_bounds(_node_engines_range())))
+    minimum = _minimum_node()
     assert NODE_VERSION.read_text(encoding="utf-8").strip() == minimum
     assert NVMRC.read_text(encoding="utf-8").strip() == minimum
 
@@ -142,6 +150,12 @@ def test_node_version_files_and_ci_pin_the_lowest_supported_runtime() -> None:
         "the three web, full-stack and visual setup-node steps must each pin a runtime"
     )
     assert set(ci_versions) == {minimum}
+
+    pages = PAGES_WORKFLOW.read_text(encoding="utf-8")
+    pages_versions = re.findall(r'^\s*node-version:\s*["\']?([^"\'\s]+)', pages, re.MULTILINE)
+    assert pages_versions == [minimum], (
+        "the Pages build's single setup-node step must pin the same runtime as CI"
+    )
 
 
 def test_npm_rejects_unsupported_node_instead_of_only_warning() -> None:
@@ -226,3 +240,56 @@ def test_a_doc_line_that_disagrees_with_engines_is_rejected(bullet: str, reason:
         and set(documented) == set(enforced)
     )
     assert not agrees, f"gate accepted a drifted Node.js prerequisite ({reason}): {bullet!r}"
+
+
+def setup_node_pin_problems(workflow: dict[str, Any], label: str, minimum: str) -> list[str]:
+    """Every ``actions/setup-node`` step in ``workflow`` that does not pin ``minimum``."""
+
+    problems: list[str] = []
+    jobs = workflow.get("jobs") or {}
+    for job_name, job in jobs.items():
+        for index, step in enumerate((job or {}).get("steps") or []):
+            if not str(step.get("uses", "")).startswith("actions/setup-node@"):
+                continue
+            inputs = step.get("with") or {}
+            where = f"{label} job `{job_name}` step {index}"
+            if "node-version-file" in inputs:
+                problems.append(
+                    f'{where} reads node-version-file; spell node-version: "{minimum}" so '
+                    "this gate compares it"
+                )
+            if str(inputs.get("node-version", "")) != minimum:
+                problems.append(
+                    f"{where} pins node-version {inputs.get('node-version')!r}, not {minimum!r}"
+                )
+    return problems
+
+
+def test_every_workflow_setup_node_step_pins_the_lowest_supported_runtime() -> None:
+    """Every workflow file, not only ci.yml: a new workflow cannot drift unpinned."""
+
+    minimum = _minimum_node()
+    files = sorted(WORKFLOWS.glob("*.yml")) + sorted(WORKFLOWS.glob("*.yaml"))
+    assert PAGES_WORKFLOW in files, "the Pages workflow is gone; this pin exists for it"
+    problems: list[str] = []
+    for path in files:
+        problems += setup_node_pin_problems(
+            yaml.safe_load(path.read_text(encoding="utf-8")), path.name, minimum
+        )
+    assert not problems, "\n".join(problems)
+
+
+@pytest.mark.parametrize(
+    ("inputs", "reason"),
+    [
+        ({}, "no node-version at all"),
+        ({"node-version": "22"}, "a floating major"),
+        ({"node-version": "24.15.0"}, "a supported but different runtime"),
+        ({"node-version-file": ".node-version"}, "a file the gate cannot compare"),
+    ],
+)
+def test_a_setup_node_step_that_drifts_from_the_pin_is_rejected(
+    inputs: dict[str, str], reason: str
+) -> None:
+    workflow = {"jobs": {"web": {"steps": [{"uses": "actions/setup-node@v6", "with": inputs}]}}}
+    assert setup_node_pin_problems(workflow, "<synthetic>", _minimum_node()), reason

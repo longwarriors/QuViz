@@ -1,6 +1,6 @@
 import { Bounds, OrbitControls, useBounds } from '@react-three/drei'
 import { Canvas, useThree } from '@react-three/fiber'
-import { Bloom, EffectComposer, Vignette } from '@react-three/postprocessing'
+import { Bloom, EffectComposer } from '@react-three/postprocessing'
 import { type ReactNode, useEffect, useLayoutEffect, useState } from 'react'
 import type { EffectComposer as EffectComposerImpl } from 'postprocessing'
 import * as THREE from 'three'
@@ -15,14 +15,17 @@ import {
   cameraDirectionForPlane,
   cameraUpForPlane,
   type CameraViewState,
+  WORLD_UP,
 } from '../scene/camera'
 import { CurrentStreamlines } from '../scene/CurrentStreamlines'
 import { ElectronCloud } from '../scene/ElectronCloud'
-import { fogRangeFor } from '../scene/fog'
+import { fogRangeFor, SCENE_BACKGROUND } from '../scene/fog'
 import { OrbitalSurface } from '../scene/OrbitalSurface'
 import { SceneReady } from '../scene/SceneReady'
 import { SliceField } from '../scene/SliceField'
 import { useSceneStore } from '../state/useSceneStore'
+import { AxisGizmo } from './AxisGizmo'
+import { SCENE_CANVAS_ID } from './sceneCapture'
 import { selectSceneRequestInputs } from './sceneRequest'
 import {
   sceneExtentBohr,
@@ -75,9 +78,6 @@ function RendererClearBoundary({
   return null
 }
 
-/** The colour depth fades into: the page's own background, so fog reads as distance. */
-const FOG_COLOR = '#050a13'
-
 /**
  * Closest the camera is ever placed to the nucleus when it is re-aimed.
  *
@@ -86,15 +86,6 @@ const FOG_COLOR = '#050a13'
  * the viewport.
  */
 const MINIMUM_ORBIT_DISTANCE = 10
-
-/**
- * Which way is up when nothing on screen argues for anything else.
- *
- * Written down because it has to be RESTORED, not merely defaulted: the camera
- * object outlives every asset, so an `up` a slice set and nobody cleared is a
- * permanent tilt on every scene drawn afterwards.
- */
-const DEFAULT_CAMERA_UP: [number, number, number] = [0, 1, 0]
 
 /**
  * How long drei's `Bounds` takes to ease the camera into a new scene's frame.
@@ -222,12 +213,12 @@ export function aimCamera(
   )
   // ALWAYS set, in both arms. A slice needs the frame's own v axis as up --
   // partly so screen +Y is v and the picture is the grid the server sampled
-  // rather than a rotation of it, and partly because the xz plane's normal is
-  // -y, so looking down it with the default up hands lookAt two parallel
+  // rather than a rotation of it, and partly because the xy plane's normal is
+  // +z, so looking down it with the world up hands lookAt two parallel
   // vectors and no basis to build from. Anything else needs that tilt GONE:
   // the camera outlives the asset, and an up set once and never cleared is a
   // tilt on every scene afterwards.
-  camera.up.set(...(plane === undefined ? DEFAULT_CAMERA_UP : cameraUpForPlane(plane)))
+  camera.up.set(...(plane === undefined ? WORLD_UP : cameraUpForPlane(plane)))
   camera.position.copy(direction.normalize().multiplyScalar(distance))
   camera.lookAt(0, 0, 0)
 }
@@ -284,7 +275,7 @@ export function FitOnAssetChange({
   return children
 }
 
-/** Tone mapping and depth fog, both scaled to the scene actually on screen. */
+/** Tone mapping, the scene background and depth fog, scaled to the scene actually on screen. */
 export function RendererSettings({
   exposure,
   fogStrength,
@@ -301,6 +292,15 @@ export function RendererSettings({
   }, [exposure, gl])
 
   useEffect(() => {
+    // Opaque and neutral: a saved PNG and the visual baselines no longer
+    // depend on whatever the page paints behind a transparent canvas.
+    scene.background = new THREE.Color(SCENE_BACKGROUND)
+    return () => {
+      scene.background = null
+    }
+  }, [scene])
+
+  useEffect(() => {
     const range = fogRangeFor(extent, fogStrength)
     if (range === null) {
       // "No fog" and "fog you cannot reach" are different statements; the
@@ -309,7 +309,7 @@ export function RendererSettings({
       scene.fog = null
       return undefined
     }
-    scene.fog = new THREE.Fog(FOG_COLOR, range.near, range.far)
+    scene.fog = new THREE.Fog(SCENE_BACKGROUND, range.near, range.far)
     return () => {
       scene.fog = null
     }
@@ -376,7 +376,7 @@ function SceneView({ state, asset, fitKey }: SceneViewProps) {
   const extent = sceneExtentBohr(asset)
   const reducedMotion = usePrefersReducedMotion()
   const renderer = useThree(({ gl }) => gl)
-  const presentationEffectsActive = usesPresentationEffects(asset)
+  const presentationEffectsActive = presentationChainActive(asset, state.bloom)
 
   return (
     <>
@@ -464,6 +464,18 @@ export function usesPresentationEffects(asset: SceneAsset | null): boolean {
 }
 
 /**
+ * Whether the post chain is mounted for the frame on screen.
+ *
+ * Bloom is the only presentation effect left and it defaults to 0; a Bloom of
+ * 0 mounts nothing, so by default slice and streamline pixels come straight
+ * from their unlit, un-tone-mapped materials -- the colours the legend's
+ * byte-checked stops name. The Vignette is gone for the same reason.
+ */
+export function presentationChainActive(asset: SceneAsset | null, bloom: number): boolean {
+  return bloom > 0 && usesPresentationEffects(asset)
+}
+
+/**
  * The WebGL surface, and nothing else.
  *
  * Every decision this component used to make -- what to fetch, what to keep on
@@ -475,8 +487,8 @@ export function usesPresentationEffects(asset: SceneAsset | null): boolean {
 export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
   const model = useSceneModel(onStatus)
   // Point clouds and isosurfaces use the adjacent phase legend as a data key.
-  // A full-frame bloom/vignette pass runs after material fog/tone-mapping
-  // flags and would therefore recolour even an explicitly unlit data layer.
+  // A full-frame bloom pass runs after material fog/tone-mapping flags and
+  // would therefore recolour even an explicitly unlit data layer.
   // Keep that presentation chain off those two representations. Slice pixels
   // retain their separately baselined pipeline; streamlines retain the legacy
   // speed presentation until each receives the same representation-level
@@ -485,7 +497,7 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
   // representation. During a cross-kind request the store leads the screen;
   // consulting it here would briefly recolour the old scientific frame (or
   // remove effects from the old presentation frame) before the response lands.
-  const showPresentationEffects = usesPresentationEffects(model.asset)
+  const showPresentationEffects = presentationChainActive(model.asset, model.state.bloom)
   // react-three/postprocessing creates this imperative composer in useMemo but
   // does not dispose it when its conditional component leaves. Own that gap at
   // the exposed ref boundary. The callback defers by one microtask so React's
@@ -494,8 +506,9 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
 
   return (
     <Canvas
+      id={SCENE_CANVAS_ID}
       dpr={[1, 2]}
-      camera={{ position: [10, 6, 12], fov: 42, near: 0.01, far: 500 }}
+      camera={{ position: [11, 11, 6.6], up: [0, 0, 1], fov: 42, near: 0.01, far: 500 }}
       gl={{
         antialias: true,
         alpha: true,
@@ -510,9 +523,12 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
       }}
     >
       <SceneView {...model} />
+      {/* Same flag as the composer below: the gizmo's Hud renders the scene
+          itself only while no composer does (see gizmoRenderPriority). */}
+      <AxisGizmo presentationChain={showPresentationEffects} />
       {showPresentationEffects ? (
-        /* Bloom and vignette read the rendered buffers back, so unlike
-           everything above them they cannot exist without a real renderer. */
+        /* Bloom reads the rendered buffer back, so it cannot exist without a
+           real renderer; it is mounted only while the viewer has turned it up. */
         <EffectComposer ref={composerRef} multisampling={0}>
           <Bloom
             intensity={model.state.bloom}
@@ -520,7 +536,6 @@ export function OrbitalCanvas({ onStatus }: OrbitalCanvasProps) {
             luminanceSmoothing={0.46}
             mipmapBlur
           />
-          <Vignette eskil={false} offset={0.18} darkness={0.76} />
         </EffectComposer>
       ) : null}
     </Canvas>

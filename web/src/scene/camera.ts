@@ -12,7 +12,8 @@ import type { BasisKind, PrincipalPlane } from '../api/types'
  *
  * A plain tuple rather than a three.js Vector3: this is arithmetic, it belongs
  * in the test suite, and importing three here would drag a WebGL harness in
- * with it. The caller normalises and scales it to its own orbit distance.
+ * with it. The caller normalises and scales it to its own orbit distance;
+ * `WORLD_UP` is the up vector for every non-slice view.
  */
 export type CameraDirection = readonly [number, number, number]
 
@@ -22,13 +23,29 @@ export interface CameraViewState {
   m: number
 }
 
-/** The neutral three-quarter view: nothing about the state argues for another. */
-export const DEFAULT_CAMERA_DIRECTION: CameraDirection = [1, 0.45, 1]
+/**
+ * Which way is up: +z, the textbook convention (spec D8). 2p_z's two lobes are
+ * stacked vertically on screen, as every chemistry text draws them; a y-up
+ * camera laid them on their side.
+ */
+export const WORLD_UP: CameraDirection = [0, 0, 1]
 
-/** Looking down +z: for a lobe pair lying along x. */
-const ALONG_Z: CameraDirection = [0, 0.35, 1]
-/** Looking down +x: for a lobe pair lying along y or z. */
-const ALONG_X: CameraDirection = [1, 0.35, 0]
+/**
+ * The neutral three-quarter view: azimuth 45° between +x and +y, about 23°
+ * above the xy plane. With z up, +x points to the viewer's lower left and +y
+ * to the right -- the standard right-handed drawing.
+ */
+export const DEFAULT_CAMERA_DIRECTION: CameraDirection = [1, 1, 0.6]
+
+/** From the front (−y): screen right ≈ +x, screen up = +z. p_x, p_z, d_z², d_xz. */
+const FROM_FRONT: CameraDirection = [0.2, -1, 0.3]
+/** From the side (+x): screen right ≈ +y, screen up = +z. p_y, d_yz. */
+const FROM_SIDE: CameraDirection = [1, 0.2, 0.3]
+/**
+ * From above (+z), tilted toward −y so the up vector is never parallel to the
+ * line of sight: screen right = +x, screen up ≈ +y. d_xy, d_x²−y².
+ */
+const FROM_ABOVE: CameraDirection = [0, -0.35, 1]
 
 /**
  * The canonical view direction for a state, as a fresh tuple.
@@ -46,13 +63,15 @@ function direction(state: CameraViewState | undefined): CameraDirection {
     return DEFAULT_CAMERA_DIRECTION
   }
   if (state.l === 1) {
-    // m = 1 is p_x (the real basis names the x combination m = +1 here), whose
-    // lobes lie along x and read best from +z.
-    return state.m === 1 ? ALONG_Z : ALONG_X
+    // Real basis (hydrogenic.py): m = +1 is p_x, m = −1 is p_y, m = 0 is p_z.
+    // The front view shows x across and z up; p_y needs the side view.
+    return state.m === -1 ? FROM_SIDE : FROM_FRONT
   }
   if (state.l === 2) {
-    // |m| = 2 are d_xy and d_x2-y2, both in the xy-plane.
-    return state.m === 2 || state.m === -2 ? ALONG_Z : ALONG_X
+    // |m| = 2 are d_x²−y² and d_xy, both in the xy plane: look from above.
+    if (state.m === 2 || state.m === -2) return FROM_ABOVE
+    // m = −1 is d_yz (the yz plane, seen from +x); d_z² and d_xz read from the front.
+    return state.m === -1 ? FROM_SIDE : FROM_FRONT
   }
   return DEFAULT_CAMERA_DIRECTION
 }

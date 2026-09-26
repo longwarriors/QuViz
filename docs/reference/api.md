@@ -16,7 +16,7 @@ FastAPI 自动生成 OpenAPI 文档 [@fastapi]。逐端点的查询参数、默�
 
 机械参数表见 [HTTP schema](http-schema.md#get-apiorbitalsmetadata)。
 
-返回 Scene metadata，不生成大数组。
+返回 Scene metadata，不生成大数组。其中 `radial_profile` 是该本征态的径向分布：`r_bohr` 为 256 个递增半径（从 $r=0$ 起，靠近原子核处更密，末点外的径向概率不超过 $10^{-3}$），`radial_density` 为 $P(r)=r^2|R_{n\ell}(r)|^2$（单位 bohr⁻¹，9 位有效数字），`nodes_bohr` 为 $n-\ell-1$ 个 Laguerre 根径向节点，`expectation_r_bohr` 为解析值 $\langle r\rangle=\tfrac{a_\mu}{2Z}[3n^2-\ell(\ell+1)]$，`most_probable_r_bohr` 为 $P(r)$ 全局极大（网格内细化，9 位有效数字），`energy_levels_hartree` 为 $k=1,\dots,\max(n+2,5)$ 的 $E_k$，与 `energy_hartree` 同一约化质量约定。它在 $Z=a_\mu=1$ 下计算一次，再按 $a_\mu/Z$ 精确缩放；`radial_density` 与 `most_probable_r_bohr` 都来自对 $R_{n\ell}$ 的求值，缩放后各自舍入到 9 位有效数字，使跨平台 libm 末位差异很不容易改变序列化后的数字，但这不是逐字节一致的保证——落在第九位有效数字进位边界上的 1 ulp 差异仍可能翻转它——`expectation_r_bohr` 走纯解析闭式、不求值 $R_{n\ell}$，不需要这一舍入；`nodes_bohr` 未作舍入，保留完整精度，不提供跨平台逐字节一致的承诺。缩放后的数字超出 float64 时为 `null`，并在 `warnings` 中说明。同一块也随等值面、流线与切片 payload 的本征态 metadata 一起下发。
 
 ## `GET /api/orbitals/point-cloud`
 
@@ -41,7 +41,7 @@ QVPC 坐标是 float32。若正的 $Z$ 仍小到使径向表范围超出 float32
 
 当前 3s 与 4s 的最低拓扑需求都超过该内部上限，因此公开 `resolution=49..81` 不存在可成功服务的取值；前端能力矩阵把这两个单态的等值面直接标为不可用并引导使用切片，而不是先发一个必然 422 的请求。2s 仍取决于 `probability_mass` 与数值门禁，不能按同一静态规则关闭。
 
-多项叠加态绝不按“系数很小”冒充纯 s 态。只要仍有非零的激发 s 分量，就改走通用双网格门禁：直接执行会参与判决的**最细两级**，通常为 129/137；若径向 oracle 给出的最低需求位于 130–136，则用该需求值/137。两级必须在逐连通分量 Euler 特征多重集、density level、有限网格质量与捕获质量上同时稳定；不会构建判决从未读取的更粗探针，也不会为它们计费。payload warning 明确称它为**经验网格收敛证据**，不是径向解析证明。无法在上限内收敛则 422。精确零系数会先从 active terms 中剔除，因此真正的单项态仍走解析 oracle。catalog 的 `2s-2pz` 是物理负控制而不是“所有 representation 默认参数均可服务”的保证：当前等值面门禁在 `probability_mass=0.911` 与 `0.912` 通过，默认 0.90 因最细两级拓扑不稳定而 fail-closed。
+多项叠加态绝不按“系数很小”冒充纯 s 态。只要仍有非零的激发 s 分量，就改走通用双网格门禁：直接执行会参与判决的**最细两级**，通常为 129/137；若径向 oracle 给出的最低需求位于 130–136，则用该需求值/137。两级必须在逐连通分量 Euler 特征多重集、density level、有限网格质量与捕获质量上同时稳定；不会构建判决从未读取的更粗探针，也不会为它们计费。payload warning 明确称它为**经验网格收敛证据**，不是径向解析证明。无法在上限内收敛则 422。精确零系数会先从 active terms 中剔除，因此真正的单项态仍走解析 oracle。catalog 的 `2s-2pz` 是物理负控制而不是“所有 representation 默认参数均可服务”的保证：当前等值面门禁在 `probability_mass=0.911` 与 `0.912` 通过，默认 0.90 因最细两级拓扑不稳定而 fail-closed。目录因此为该预设发布 `default_representation` 为 `slice`（见下文 `GET /api/superposition/catalog`）。
 
 返回 typed OpenAPI schema，包括 indexed mesh、法向、逐顶点相位、阈值、superlevel-set 质量、有限网格 $\int\rho dV$、网格间距和 Scene metadata。当前使用 JSON，生产规模可升级为 GLB 或自定义 mesh binary。
 
@@ -116,7 +116,7 @@ payload 体积是主要工程约束之一，但不是有效性的判据。实测
 
 ## `GET /api/superposition/catalog`
 
-无参数。返回 typed 叠加态预设列表，每项含 `id`、`label`、`terms`（可直接传给下面三个端点的查询串）、`period_au`、`note`、`slice_resolution_floor` 与 `streamline_seed_count_max`。前者由 slice builder 的同一个 extent CDF / Laguerre 径向特征计算生成，是该预设第一个可接受的奇数 uniform grid；后者在 route 默认 `arc_step` 下，用 current-field 端点同一份 estimator 和两道 workload guard 对 real/complex 两种 basis 取安全交集。二者对 $Z$ 与 $a_\mu$ 不变，因为相关长度与默认步长按同一尺度缩放。前端选择预设时在一次 store 写入中同时提升 resolution、收紧 seed count，不复制数值算法；当前 `1s-3dz2` 发布 103 与 24，其余三个预设的流线 seed 上限为 40。该 seed 上限只承诺省略 `arc_step` 的目录请求；未来若 UI 暴露显式步长，必须重新消费对应步长的服务端能力结果。
+无参数。返回 typed 叠加态预设列表，每项含 `id`、`label`、`terms`（可直接传给下面三个端点的查询串）、`period_au`、`note`、`slice_resolution_floor` 与 `streamline_seed_count_max`。前者由 slice builder 的同一个 extent CDF / Laguerre 径向特征计算生成，是该预设第一个可接受的奇数 uniform grid；后者在 route 默认 `arc_step` 下，用 current-field 端点同一份 estimator 和两道 workload guard 对 real/complex 两种 basis 取安全交集。二者对 $Z$ 与 $a_\mu$ 不变，因为相关长度与默认步长按同一尺度缩放。前端选择预设时在一次 store 写入中同时提升 resolution、收紧 seed count，不复制数值算法；当前 `1s-3dz2` 发布 103 与 24，其余三个预设的流线 seed 上限为 40。该 seed 上限只承诺省略 `arc_step` 的目录请求；未来若 UI 暴露显式步长，必须重新消费对应步长的服务端能力结果。每项还带 `default_representation`：目录构建时把 route 默认等值面请求（`resolution=65`、`probability_mass=0.90`、`time=0`、$Z=a_\mu=1$）先按 complex、再按 real basis 送进同一 workload guard 与 builder，第一次被拒即发布 `slice`（`slice_resolution_floor` 保证可建），两种 basis 都成功才发布 `isosurface`。当前只有 `2s-2pz` 发布 `slice`。该态在 $t=0$ 是实函数 $\Psi=(2-r+z)e^{-r/2}/(8\sqrt{\pi})$，$|\Psi|^2$ 在任何正水平上都没有鞍点：0.90 水平集的真实拓扑是两个球，逐分量 Euler 特征签名 (2, 2)，并且收敛。问题出在网格上：$|\Psi|^2$ 在节点抛物面 $r=2+z$ 上是二重零点，0.90 水平（137 点网格上 $c\approx8.07\times10^{-5}\,\text{bohr}^{-3}$）在抛物面顶点 $(0,0,-1)$ 处只给两瓣留下约 $\sqrt{64\pi e c}\approx0.21$ bohr 的间隙，窄于封顶双网格的间距（129/137 点为 0.310/0.292 bohr）。marching cubes 在 $|\Psi|^2$ 上是否把两瓣桥接起来取决于网格落点：129、145 点为 (2, 2)，137、161、181 点分别为 (−14)、(−12)、(−4)，间距小于间隙的 201、257 点又回到 (2, 2)；在同一水平按 $\pm\sqrt{c}$ 对带符号的实波函数取等值面，则上述每个网格（含 137）都得到 (2, 2)。所以最细双网格门禁如实拒绝：拓扑本身有定义，只是封顶在 137 的 $|\Psi|^2$ builder 交付不了它。结果按 `terms` 在进程内缓存，首个目录请求因此多花几秒（一次被拒的 2s + 2p_z 构建）。
 
 非简并两项态的默认尺度周期由 $2\pi/|E_b-E_a|$ 计算，不手写近似常数；前端再按当前 $a_\mu/Z^2$ 换算。简并预设的 `period_au` 为 0，用作 negative control：这类态的密度不应移动，UI 也不提供伪动画。
 

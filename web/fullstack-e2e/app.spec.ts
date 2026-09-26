@@ -165,6 +165,11 @@ test('serves the built product and completes every core scene path against FastA
   await expectSuccessful(health)
   await expect(health.json()).resolves.toMatchObject({ status: 'ok', version: '0.1.0' })
 
+  // The guide dialog opens on a first visit and is modal; this journey is a
+  // returning visitor's (src/components/GuideDialog.tsx GUIDE_SEEN_KEY).
+  await page.addInitScript(() => {
+    window.localStorage.setItem('quviz.guide.v1', 'seen')
+  })
   const initialPointCloud = waitForApi(page, '/api/orbitals/point-cloud')
   const documentResponse = await page.goto('/')
   expect(documentResponse, 'FastAPI returned no main-document response').not.toBeNull()
@@ -228,11 +233,11 @@ test('serves the built product and completes every core scene path against FastA
 
   await page
     .getByRole('navigation', { name: '控制上下文' })
-    .getByRole('button', { name: '态制备', exact: true })
+    .getByRole('button', { name: '量子态', exact: true })
     .click()
   const superposition = waitForApi(page, '/api/superposition/isosurface')
   await page
-    .locator('.state-composition-section')
+    .locator('[data-control-section="state-kind"]')
     .getByRole('button', { name: '叠加态', exact: true })
     .click()
   await expectApiSuccessful(await superposition, {
@@ -245,7 +250,7 @@ test('serves the built product and completes every core scene path against FastA
     probability_mass: '0.9',
   })
   await expectSettled(page, 'superposition', 'isosurface', '2 项叠加')
-  await expect(page.locator('.topbar-context-value')).toContainText('1s + 2p_z (Bohr oscillation)')
+  await expect(page.locator('button[data-mixture="1s-2pz"]')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.energy-pill')).toHaveText('-0.312500 Ha')
 
   await expect
@@ -314,6 +319,32 @@ test('serves the built product and completes every core scene path against FastA
   const citationTarget = new URL(page.url()).hash.slice(1)
   expect(citationTarget).not.toBe('')
   await expect(page.locator(`[id="${citationTarget}"]`)).toHaveCount(1)
+
+  // Textbook figures are enhanced on every Material document swap, not only on
+  // full loads. The lab URL comes from the theme's quviz-lab meta tag; nothing
+  // may load before the reader asks (the live lab here is on 8765, not 8000).
+  await page.evaluate(() => {
+    ;(window as Window & { __quvizInstantNavigation?: string }).__quvizInstantNavigation =
+      'textbook-document-swap'
+  })
+  const chapterLink = page.locator('a[href$="textbook/01-wavefunction/"]').first()
+  await expect(chapterLink).toHaveCount(1)
+  await chapterLink.dispatchEvent('click')
+  await expect(page).toHaveURL(/\/textbook\/01-wavefunction\/$/)
+  expect(
+    await page.evaluate(
+      () => (window as Window & { __quvizInstantNavigation?: string }).__quvizInstantNavigation,
+    ),
+    'navigation.instant reloaded the chapter, so document$ re-enhancement was not exercised',
+  ).toBe('textbook-document-swap')
+  await expect(page.locator('meta[name="quviz-lab"]')).toHaveAttribute('content', 'http://127.0.0.1:8000/')
+  const figure = page.locator('figure.quviz-figure').first()
+  await expect(figure.locator('.quviz-figure__load')).toBeVisible()
+  await expect(figure.locator('.quviz-figure__open')).toHaveAttribute(
+    'href',
+    'http://127.0.0.1:8000/#mode=eigenstate&n=1&l=0&m=0&basis=real&rep=point_cloud',
+  )
+  await expect(page.locator('figure.quviz-figure iframe')).toHaveCount(0)
 
   expect(failedApiRequests, 'an API fetch failed before receiving an HTTP response').toEqual([])
   expect(failedApiResponses, 'an API endpoint returned a non-2xx response').toEqual([])

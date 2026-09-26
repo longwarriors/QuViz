@@ -1,15 +1,18 @@
 <div class="hero" markdown>
 
+<span class="quviz-pill">教学预览</span>
+
 # QuViz
 
 **从薛定谔方程、波函数与概率流，到浏览器中的可信三维科学可视化。**
 
-QuViz 将科学计算与前端渲染分开：Python 负责状态、observable、采样与验证；
+QuViz 是一本可以动手的氢原子量子力学教材：每章的交互图都是真实计算出的量子态，点开就能在三维实验室里
+旋转、切片、播放时间演化。科学计算与前端渲染分开：Python 负责状态、observable、采样与验证；
 React/Three.js 负责点云、等值面、相位和交互。任何图形都必须保留它所代表的物理量、
 坐标约定、单位、归一化和来源键。
 
-[Phase 0 教程](tutorials/phase-0-walkthrough.md){ .md-button .md-button--primary }
-[安装与启动](getting-started/installation.md){ .md-button }
+[开始学习](textbook/index.md){ .md-button .md-button--primary }
+<a class="md-button" data-quviz-lab="" hidden>打开实验室</a>
 [查看真实状态](project/status.md){ .md-button }
 
 </div>
@@ -53,7 +56,8 @@ React Three Fiber 把 Three.js 场景纳入 React 的组件和状态体系，而
 
 ## 从哪里开始
 
-- [Phase 0 交互工作流](tutorials/phase-0-walkthrough.md)：按当前界面复现点云、等密度面、切片、概率流与解析含时叠加态；
+- [教材](textbook/index.md)：按学习顺序讲氢原子的波函数、能级、径向分布、相位、概率流与含时叠加态，每章配交互图；
+- [Phase 0 交互工作流](tutorials/phase-0-walkthrough.md)：在本地实时版实验室中复现点云、等密度面、切片、概率流与解析含时叠加态；
 - [安装与启动](getting-started/installation.md)：从锁文件复现开发模式或单服务预览；
 - [愿景与边界](project/vision.md)：长期问题域与不可混淆的概念；
 - [当前状态](project/status.md)：逐项实现、验证与缺陷账本；

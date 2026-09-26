@@ -4,17 +4,20 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   capabilityFor,
+  NOT_PRECOMPUTED_DETAIL,
   planSceneRequest,
   type Capability,
   type CapabilityInputs,
+  type ParameterBound,
   type ParameterId,
 } from '../api/capability'
 import { PRINCIPAL_PLANES, SLICE_OBSERVABLES } from '../api/sliceContract'
 import type { OrbitalParameters, RepresentationKind } from '../api/types'
+import { resetCatalogs } from '../state/catalogs'
 import { useSceneStore, type SceneMode } from '../state/useSceneStore'
 import { mount, type MountedTree } from '../test/mount'
 import { ControlPanel } from './ControlPanel'
-import { nextTimeAu, selectSceneRequestInputs } from './sceneRequest'
+import { selectSceneRequestInputs } from './sceneRequest'
 
 /**
  * The panel's answer to "can this cell be drawn?" must come from
@@ -30,8 +33,12 @@ import { nextTimeAu, selectSceneRequestInputs } from './sceneRequest'
  * its own opinion about that cell keeps rendering the old answer and goes red.
  */
 const capabilityOverride = vi.hoisted(() => ({
-  current: null as ((inputs: CapabilityInputs) => Capability) | null,
+  current: null as ((inputs: CapabilityInputs) => Capability | null) | null,
 }))
+
+const orbitalCatalogueFailure = vi.hoisted(() => ({ current: false }))
+/** Replaces B8's chargeBound(): the static build pins Z through it, not through runtimeMode. */
+const chargeOverride = vi.hoisted(() => ({ current: null as ParameterBound | null }))
 
 const superpositionCatalogueFailure = vi.hoisted(() => ({
   current: null as Error | null,
@@ -44,6 +51,7 @@ vi.mock('../api/capability', async (importOriginal) => {
     ...actual,
     capabilityFor: (inputs: CapabilityInputs): Capability =>
       capabilityOverride.current?.(inputs) ?? actual.capabilityFor(inputs),
+    chargeBound: (): ParameterBound => chargeOverride.current ?? actual.chargeBound(),
   }
 })
 
@@ -70,6 +78,7 @@ const CATALOGUE = vi.hoisted(() => ({
       note: 'Bohr oscillation',
       slice_resolution_floor: 65,
       streamline_seed_count_max: 40,
+      default_representation: 'isosurface',
     },
     {
       id: 'ring',
@@ -79,6 +88,7 @@ const CATALOGUE = vi.hoisted(() => ({
       note: 'ring current',
       slice_resolution_floor: 65,
       streamline_seed_count_max: 40,
+      default_representation: 'isosurface',
     },
     {
       id: '1s-3dz2',
@@ -88,12 +98,16 @@ const CATALOGUE = vi.hoisted(() => ({
       note: 'quadrupole breathing',
       slice_resolution_floor: 103,
       streamline_seed_count_max: 24,
+      default_representation: 'isosurface',
     },
   ],
 }))
 
 vi.mock('../api/client', () => ({
-  fetchCatalog: () => Promise.resolve(CATALOGUE.presets),
+  fetchCatalog: () =>
+    orbitalCatalogueFailure.current
+      ? Promise.reject(new Error('offline'))
+      : Promise.resolve(CATALOGUE.presets),
   fetchSuperpositionCatalog: () =>
     superpositionCatalogueFailure.current === null
       ? Promise.resolve(
@@ -115,7 +129,6 @@ const EVERY_PARAMETER: ParameterId[] = [
   'resolution',
   'probabilityMass',
   'seedCount',
-  'timeAu',
 ]
 
 /** Every representation the panel offers a button for. */
@@ -137,6 +150,11 @@ beforeEach(() => {
   capabilityOverride.current = null
   superpositionCatalogueFailure.current = null
   superpositionCatalogueFailure.omitSelected = false
+  orbitalCatalogueFailure.current = false
+  chargeOverride.current = null
+  // The loader is page-wide; each mounted panel must see a fresh catalogue
+  // request, which is what the failure and omission cases below arrange.
+  resetCatalogs()
   useSceneStore.setState(PRISTINE, true)
 })
 
@@ -538,21 +556,13 @@ describe('ControlPanel sliders are the capability matrix bounds', () => {
     }
   })
 
-  it('offers a clock only where the matrix declares one', async () => {
-    const stationary = await panel('eigenstate', 'point_cloud')
+  it.each(CELLS)('%s / %s: never renders the clock itself (it lives in the time pill)', async (mode, representation, orbital) => {
+    const tree = await panel(mode, representation, orbital)
     try {
-      expect(parameterInput(stationary, 'timeAu')).toBeNull()
-      expect(stationary.container.querySelector('[data-control="playback"]')).toBeNull()
+      expect(parameterInput(tree, 'timeAu')).toBeNull()
+      expect(tree.container.querySelector('[data-control="playback"]')).toBeNull()
     } finally {
-      await stationary.unmount()
-    }
-
-    const timeDependent = await panel('superposition', 'isosurface')
-    try {
-      expect(parameterInput(timeDependent, 'timeAu')).not.toBeNull()
-      expect(timeDependent.container.querySelector('[data-control="playback"]')).not.toBeNull()
-    } finally {
-      await timeDependent.unmount()
+      await tree.unmount()
     }
   })
 })
@@ -829,34 +839,19 @@ describe('ControlPanel controls write to the store', () => {
   it('applies a catalogue preset and restores the default one', async () => {
     const tree = await panel('eigenstate', 'point_cloud')
     try {
-      const presets = tree.container.querySelectorAll<HTMLButtonElement>('.preset-strip .preset')
+      const presets = tree.container.querySelectorAll<HTMLButtonElement>('button[data-preset]')
       expect(presets).toHaveLength(7)
-      expect(presets[0].className).toContain('active')
+      expect(presets[0].getAttribute('aria-pressed')).toBe('true')
       expect(presets[6].textContent).toContain('3d, m=2')
 
       await press(presets[1], 'the second preset')
       expect(useSceneStore.getState().orbital).toMatchObject({ n: 3, l: 2, m: -2 })
 
-      await press(tree.container.querySelector('.round-button'), 'the reset button')
+      await press(
+        tree.container.querySelector<HTMLButtonElement>('button[data-action="reset-state"]'),
+        'the reset button',
+      )
       expect(useSceneStore.getState().orbital).toMatchObject({ n: 2, l: 1, m: 0, basis: 'real' })
-    } finally {
-      await tree.unmount()
-    }
-  })
-
-  it('does not leave the state reset action in non-state contexts', async () => {
-    const tree = await mount(createElement(ControlPanel, { activeContext: 'representation' }))
-    try {
-      expect(tree.container.querySelector('.reset-state-button')).toBeNull()
-
-      await tree.update(createElement(ControlPanel, { activeContext: 'display' }))
-      expect(tree.container.querySelector('.reset-state-button')).toBeNull()
-
-      await tree.update(createElement(ControlPanel, { activeContext: 'state' }))
-      const reset = tree.container.querySelector<HTMLButtonElement>('.reset-state-button')
-      expect(reset).not.toBeNull()
-      expect(reset?.hasAttribute('hidden')).toBe(false)
-      expect(reset?.tabIndex).toBe(0)
     } finally {
       await tree.unmount()
     }
@@ -865,57 +860,48 @@ describe('ControlPanel controls write to the store', () => {
   it('edits every quantum number and the basis', async () => {
     const tree = await panel('eigenstate', 'point_cloud')
     try {
-      const selects = (): NodeListOf<HTMLSelectElement> =>
-        tree.container.querySelectorAll<HTMLSelectElement>('.quantum-grid select')
-      await setValue(selects()[0], 'n', '4')
+      const select = (quantum: 'n' | 'l' | 'm'): HTMLSelectElement | null =>
+        tree.container.querySelector<HTMLSelectElement>(`select[data-quantum="${quantum}"]`)
+      await setValue(select('n'), 'n', '4')
       expect(useSceneStore.getState().orbital.n).toBe(4)
-      await setValue(selects()[1], 'l', '2')
+      await setValue(select('l'), 'l', '2')
       expect(useSceneStore.getState().orbital.l).toBe(2)
-      await setValue(selects()[2], 'm', '-1')
+      await setValue(select('m'), 'm', '-1')
       expect(useSceneStore.getState().orbital.m).toBe(-1)
 
       await setValue(
-        tree.container.querySelector<HTMLInputElement>('.quantum-grid input[type="number"]'),
+        tree.container.querySelector<HTMLInputElement>('input[data-quantum="z"]'),
         'Z',
         '2.5',
       )
       expect(useSceneStore.getState().orbital.z).toBe(2.5)
 
-      const basis = (): NodeListOf<HTMLButtonElement> =>
-        tree.container.querySelectorAll<HTMLButtonElement>('.segmented button')
-      await press(basis()[1], 'the complex basis button')
+      const basis = (kind: 'real' | 'complex'): HTMLButtonElement | null =>
+        tree.container.querySelector<HTMLButtonElement>(`button[data-basis="${kind}"]`)
+      await press(basis('complex'), 'the complex basis button')
       expect(useSceneStore.getState().orbital.basis).toBe('complex')
-      await press(basis()[0], 'the real basis button')
+      await press(basis('real'), 'the real basis button')
       expect(useSceneStore.getState().orbital.basis).toBe('real')
     } finally {
       await tree.unmount()
     }
   })
 
-  it('switches state kind, picks a mixture and toggles playback', async () => {
+  it('switches state kind and picks a mixture', async () => {
     const tree = await panel('eigenstate', 'point_cloud')
     try {
-      const kind = (): NodeListOf<HTMLButtonElement> =>
-        tree.container.querySelectorAll<HTMLButtonElement>(
-          '.control-section .representation-switch button',
-        )
-      await press(kind()[1], 'the superposition button')
+      const kind = (value: SceneMode): HTMLButtonElement | null =>
+        tree.container.querySelector<HTMLButtonElement>(`button[data-state-kind="${value}"]`)
+      await press(kind('superposition'), 'the superposition button')
       expect(useSceneStore.getState().mode).toBe('superposition')
 
-      const mixtures = tree.container.querySelectorAll<HTMLButtonElement>('.mixture-list .preset')
+      const mixtures = tree.container.querySelectorAll<HTMLButtonElement>('button[data-mixture]')
       expect(mixtures).toHaveLength(3)
-      expect(mixtures[0].className).toContain('active')
+      expect(mixtures[0].getAttribute('aria-pressed')).toBe('true')
       await press(mixtures[1], 'the second mixture')
       expect(useSceneStore.getState().superpositionTerms).toBe(CATALOGUE.mixtures[1].terms)
 
-      const playback = (): HTMLButtonElement | null =>
-        tree.container.querySelector<HTMLButtonElement>('[data-control="playback"]')
-      await press(playback(), 'the playback toggle')
-      expect(useSceneStore.getState().playing).toBe(true)
-      await press(playback(), 'the playback toggle')
-      expect(useSceneStore.getState().playing).toBe(false)
-
-      await press(kind()[0], 'the eigenstate button')
+      await press(kind('eigenstate'), 'the eigenstate button')
       expect(useSceneStore.getState().mode).toBe('eigenstate')
     } finally {
       await tree.unmount()
@@ -931,7 +917,7 @@ describe('ControlPanel controls write to the store', () => {
     })
     const tree = await mount(createElement(ControlPanel))
     try {
-      const mixtures = tree.container.querySelectorAll<HTMLButtonElement>('.mixture-list .preset')
+      const mixtures = tree.container.querySelectorAll<HTMLButtonElement>('button[data-mixture]')
       await press(mixtures[2], 'the 1s + 3d_z2 mixture')
 
       const state = useSceneStore.getState()
@@ -959,7 +945,7 @@ describe('ControlPanel controls write to the store', () => {
     })
     const tree = await mount(createElement(ControlPanel))
     try {
-      const mixtures = tree.container.querySelectorAll<HTMLButtonElement>('.mixture-list .preset')
+      const mixtures = tree.container.querySelectorAll<HTMLButtonElement>('button[data-mixture]')
       await press(mixtures[2], 'the 1s + 3d_z2 mixture')
 
       const state = useSceneStore.getState()
@@ -990,7 +976,10 @@ describe('ControlPanel controls write to the store', () => {
     const tree = await mount(createElement(ControlPanel))
     try {
       const state = useSceneStore.getState()
-      expect(tree.container.querySelectorAll('.mixture-list .preset')).toHaveLength(0)
+      expect(tree.container.querySelectorAll('button[data-mixture]')).toHaveLength(0)
+      expect(
+        tree.container.querySelector('[data-control-section="mixtures"] .qv-empty')?.textContent,
+      ).toBe('叠加态目录不可用。')
       expect(state.superpositionStreamlineSeedCountMax).toBeUndefined()
       expect(state.representation).toBe('isosurface')
       expect(representationButton(tree, 'streamlines').dataset.unavailable).toBe('true')
@@ -1053,7 +1042,7 @@ describe('ControlPanel controls write to the store', () => {
       const plan = planSceneRequest(selectSceneRequestInputs(useSceneStore.getState()))
       expect(useSceneStore.getState().resolution).toBe(81)
       expect(resolution?.value).toBe('81')
-      expect(resolution?.closest('label')?.querySelector('.control-value')?.textContent).toBe('81')
+      expect(tree.container.querySelector('[data-value-of="resolution"]')?.textContent).toBe('81')
       expect(plan).toMatchObject({ status: 'available', params: { resolution: 81 } })
     } finally {
       await tree.unmount()
@@ -1077,14 +1066,6 @@ describe('ControlPanel controls write to the store', () => {
       expect(useSceneStore.getState().resolution).toBe(73)
       await setValue(parameterInput(surface, 'probabilityMass'), 'mass', '0.75')
       expect(useSceneStore.getState().probabilityMass).toBe(0.75)
-      const clock = parameterInput(surface, 'timeAu')
-      expect(clock?.step).toBe('0.2')
-      expect(clock?.value).toBe('0')
-      expect(clock?.validity.stepMismatch).toBe(false)
-      await setValue(clock, 'time', '8.4')
-      expect(clock?.value).toBe('8.4')
-      expect(clock?.validity.stepMismatch).toBe(false)
-      expect(useSceneStore.getState().timeAu).toBe(8.4)
     } finally {
       await surface.unmount()
     }
@@ -1140,7 +1121,7 @@ describe('ControlPanel controls write to the store', () => {
     ['point_cloud', ['pointSize', 'opacity'], ['点尺寸', '透明度']],
     ['isosurface', ['opacity'], ['透明度']],
     ['slice', ['bloom'], ['Bloom']],
-    ['streamlines', ['opacity', 'fog', 'bloom'], ['透明度', '雾强度', 'Bloom']],
+    ['streamlines', ['opacity', 'bloom'], ['透明度', 'Bloom']],
   ])('%s exposes exactly the display controls its renderer consumes', async (
     representation,
     expectedControls,
@@ -1155,7 +1136,7 @@ describe('ControlPanel controls write to the store', () => {
       )
 
       expect(controls.map((control) => control.dataset.display)).toEqual(expectedControls)
-      expect(section.textContent).toContain('显示')
+      expect(tree.container.querySelector('[data-group="display"] .qv-group-title')?.textContent).toBe('显示')
       for (const label of expectedLabels) expect(section.textContent).toContain(label)
 
       // Tone mapping is not yet an audited renderer contract. It therefore
@@ -1184,8 +1165,7 @@ describe('ControlPanel controls write to the store', () => {
     try {
       const knob = (name: string): HTMLInputElement | null =>
         flow.container.querySelector<HTMLInputElement>(`input[data-display="${name}"]`)
-      await setValue(knob('fog'), 'fog', '40')
-      expect(useSceneStore.getState().fogStrength).toBeCloseTo(0.4, 10)
+      expect(knob('fog')).toBeNull()
       await setValue(knob('bloom'), 'bloom', '30')
       expect(useSceneStore.getState().bloom).toBeCloseTo(0.3, 10)
     } finally {
@@ -1199,9 +1179,8 @@ describe('ControlPanel controls write to the store', () => {
       const text = tree.container.textContent ?? ''
 
       for (const label of [
-        '态制备',
-        '轨道与表示设置',
-        '态构成',
+        '量子态',
+        '态类型',
         '本征态',
         '叠加态',
         '表示法',
@@ -1216,12 +1195,14 @@ describe('ControlPanel controls write to the store', () => {
 
       // A superposition is defined by its terms, not by the hidden eigenstate
       // n/l/m controls. Its actual request scales remain visible as readouts.
-      expect(text).not.toContain('量子数')
+      expect(text).not.toContain('更多轨道')
       for (const notation of ['Z', 'aμ']) {
         expect(text).toContain(notation)
       }
       expect(
-        tree.container.querySelector<HTMLButtonElement>('button[title="解析含时 eigenstate 叠加"]'),
+        tree.container.querySelector<HTMLButtonElement>(
+          'button[data-state-kind="superposition"][title="解析含时本征态叠加"]',
+        ),
       ).not.toBeNull()
     } finally {
       await tree.unmount()
@@ -1230,8 +1211,8 @@ describe('ControlPanel controls write to the store', () => {
     const eigenstate = await panel('eigenstate', 'slice')
     try {
       const text = eigenstate.container.textContent ?? ''
-      expect(text).toContain('量子数')
-      for (const notation of ['ℓ', '实基 · chemistry', '复基 · Lz']) {
+      expect(text).toContain('更多轨道')
+      for (const notation of ['ℓ', '实基（化学轨道）', '复基（Lz 本征态）']) {
         expect(text).toContain(notation)
       }
     } finally {
@@ -1268,14 +1249,18 @@ describe('ControlPanel controls write to the store', () => {
     const tree = await panel('eigenstate', 'point_cloud')
     try {
       const toggles = (): NodeListOf<HTMLButtonElement> =>
-        tree.container.querySelectorAll<HTMLButtonElement>('.control-section.compact .toggle-row')
+        tree.container.querySelectorAll<HTMLButtonElement>('button[role="switch"][data-toggle]')
       expect(toggles()).toHaveLength(2)
+      expect(toggles()[0].getAttribute('aria-checked')).toBe('false')
       await press(toggles()[0], 'auto rotate')
       expect(useSceneStore.getState().autoRotate).toBe(true)
+      expect(toggles()[0].getAttribute('aria-checked')).toBe('true')
       await press(toggles()[0], 'auto rotate')
       expect(useSceneStore.getState().autoRotate).toBe(false)
+      expect(toggles()[1].getAttribute('aria-checked')).toBe('true')
       await press(toggles()[1], 'the reference grid')
       expect(useSceneStore.getState().showGrid).toBe(false)
+      expect(toggles()[1].getAttribute('aria-checked')).toBe('false')
       await press(toggles()[1], 'the reference grid')
       expect(useSceneStore.getState().showGrid).toBe(true)
     } finally {
@@ -1283,110 +1268,263 @@ describe('ControlPanel controls write to the store', () => {
     }
   })
 
-  it('advances the clock on its own while playback is on', async () => {
-    vi.useFakeTimers()
-    try {
-      useSceneStore.setState({ mode: 'superposition', representation: 'isosurface', timeAu: 0 })
-      const tree = await mount(createElement(ControlPanel))
-      try {
-        await press(tree.container.querySelector('[data-control="playback"]'), 'playback')
-        expect(useSceneStore.getState().playing).toBe(true)
-        await vi.advanceTimersByTimeAsync(900)
-        // Two ticks of the 0.6 a.u. frame grid, landing exactly on the grid.
-        expect(useSceneStore.getState().timeAu).toBe(1.2)
-      } finally {
-        await tree.unmount()
-      }
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('uses the selected catalogue period for playback', async () => {
-    vi.useFakeTimers()
-    try {
-      useSceneStore.setState({ mode: 'superposition', representation: 'isosurface', timeAu: 0 })
-      const tree = await mount(createElement(ControlPanel))
-      try {
-        const mixtures = tree.container.querySelectorAll<HTMLButtonElement>('.mixture-list .preset')
-        await press(mixtures[1], 'the second mixture')
-        await press(tree.container.querySelector('[data-control="playback"]'), 'playback')
-        await vi.advanceTimersByTimeAsync(5 * 420 + 1)
-
-        let expected = 0
-        let oldFixedPeriod = 0
-        for (let frame = 0; frame < 5; frame += 1) {
-          expected = nextTimeAu(expected, CATALOGUE.mixtures[1].period_au)
-          oldFixedPeriod = nextTimeAu(oldFixedPeriod, 39.6)
-        }
-        expect(expected).toBe(2.8)
-        expect(oldFixedPeriod).toBe(3)
-        expect(useSceneStore.getState().timeAu).toBe(expected)
-        expect(useSceneStore.getState().timeAu).not.toBe(oldFixedPeriod)
-        const clock = parameterInput(tree, 'timeAu')
-        expect(clock?.validity.stepMismatch).toBe(false)
-        expect(clock?.closest('label')?.querySelector('.control-value')?.textContent).toMatch(
-          /^\d+(?:\.\d)? a\.u\.$/,
-        )
-      } finally {
-        await tree.unmount()
-      }
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('does not offer motion for a degenerate catalogue state', async () => {
-    const mixture = CATALOGUE.mixtures[0]
-    const originalPeriod = mixture.period_au
-    mixture.period_au = 0
+  it('opens a mixture on the representation its catalogue entry publishes', async () => {
+    const mixture = CATALOGUE.mixtures[1]
+    const original = mixture.default_representation
+    mixture.default_representation = 'slice'
     useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
     const tree = await mount(createElement(ControlPanel))
     try {
-      const playback = tree.container.querySelector<HTMLButtonElement>('[data-control="playback"]')
-      expect(playback?.disabled).toBe(false)
-      expect(playback?.getAttribute('aria-disabled')).toBe('true')
-      expect(playback?.title).toContain('能量简并')
-      playback?.focus()
-      expect(document.activeElement).toBe(playback)
-      const notice = tree.container.querySelector('[data-playback-notice]')
-      expect(notice?.textContent).toContain('能量简并')
-      expect(playback?.getAttribute('aria-describedby')).toBe(notice?.id)
-      await press(playback, 'the inert degenerate playback control')
-      expect(useSceneStore.getState().playing).toBe(false)
+      await press(
+        tree.container.querySelector<HTMLButtonElement>('button[data-mixture="ring"]'),
+        'the second mixture',
+      )
 
-      // Force a real React rerender: the inert click above intentionally does
-      // not write state, so checking only that moment would not prove the
-      // explanation remains in the DOM across later panel updates.
-      await interact(() => useSceneStore.getState().setBloom(0.31))
-      const rerenderedPlayback = tree.container.querySelector<HTMLButtonElement>(
-        '[data-control="playback"]',
-      )
-      const rerenderedNotice = tree.container.querySelector('[data-playback-notice]')
-      expect(rerenderedNotice?.textContent).toContain('能量简并')
-      expect(rerenderedPlayback?.getAttribute('aria-disabled')).toBe('true')
-      expect(rerenderedPlayback?.getAttribute('aria-describedby')).toBe(
-        rerenderedNotice?.id,
-      )
+      const state = useSceneStore.getState()
+      expect(state.superpositionDefaultRepresentation).toBe('slice')
+      expect(state.representation).toBe('slice')
+      expect(planSceneRequest(selectSceneRequestInputs(state))).toMatchObject({
+        status: 'available',
+        endpoint: '/api/superposition/slice',
+      })
     } finally {
       await tree.unmount()
-      mixture.period_au = originalPeriod
+      mixture.default_representation = original
     }
   })
 
-  it('runs no clock for a cell the matrix gives no time parameter', async () => {
-    vi.useFakeTimers()
+  it('records the selected mixture default from the catalogue without moving the picture', async () => {
+    const mixture = CATALOGUE.mixtures[0]
+    const original = mixture.default_representation
+    mixture.default_representation = 'slice'
+    useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
+    const tree = await mount(createElement(ControlPanel))
     try {
-      useSceneStore.setState({ mode: 'eigenstate', representation: 'point_cloud', playing: true })
-      const tree = await mount(createElement(ControlPanel))
-      try {
-        await vi.advanceTimersByTimeAsync(2000)
-        expect(useSceneStore.getState().timeAu).toBe(0)
-      } finally {
-        await tree.unmount()
-      }
+      const state = useSceneStore.getState()
+      expect(state.superpositionDefaultRepresentation).toBe('slice')
+      expect(state.representation).toBe('isosurface')
     } finally {
-      vi.useRealTimers()
+      await tree.unmount()
+      mixture.default_representation = original
+    }
+  })
+})
+
+describe('ControlPanel shell', () => {
+  it('keeps a 控制上下文 navigation whose buttons reveal their group', async () => {
+    const tree = await mount(createElement(ControlPanel))
+    try {
+      const nav = tree.container.querySelector('nav[aria-label="控制上下文"]')
+      const buttons = Array.from(nav?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+      expect(buttons.map((button) => button.textContent)).toEqual(['量子态', '表示法', '显示'])
+      const display = tree.container.querySelector<HTMLElement>('[data-group="display"] .qv-group-body')
+      expect(display?.hidden).toBe(true)
+
+      await press(buttons[2], 'the 显示 context')
+      expect(display?.hidden).toBe(false)
+      expect(buttons[2].getAttribute('aria-pressed')).toBe('true')
+      expect(buttons[0].getAttribute('aria-pressed')).toBe('false')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('folds and unfolds a group from its header', async () => {
+    const tree = await mount(createElement(ControlPanel))
+    try {
+      const head = tree.container.querySelector<HTMLButtonElement>('[data-group="representation"] .qv-group-head')
+      const body = tree.container.querySelector<HTMLElement>('[data-group="representation"] .qv-group-body')
+      expect(head?.getAttribute('aria-expanded')).toBe('true')
+      expect(head?.getAttribute('aria-controls')).toBe(body?.id)
+      await press(head, 'the 表示法 header')
+      expect(body?.hidden).toBe(true)
+      expect(head?.getAttribute('aria-expanded')).toBe('false')
+      // Folded content stays in the DOM: the refused-button explanations are
+      // still there for the next time the group opens.
+      expect(body?.querySelector('button[data-representation="streamlines"]')).not.toBeNull()
+      await press(head, 'the 表示法 header')
+      expect(body?.hidden).toBe(false)
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('collapses to a single 调节 button and opens again', async () => {
+    const tree = await mount(createElement(ControlPanel))
+    try {
+      await press(tree.container.querySelector('button[data-action="collapse-controls"]'), 'collapse')
+      expect(tree.container.querySelector('aside.qv-controls')).toBeNull()
+      const fab = tree.container.querySelector<HTMLButtonElement>('button[data-action="open-controls"]')
+      expect(fab?.getAttribute('aria-label')).toBe('调节')
+      expect(fab?.hasAttribute('data-chrome')).toBe(true)
+      await press(fab, 'the 调节 button')
+      expect(tree.container.querySelector('aside.qv-controls[data-chrome]')).not.toBeNull()
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('reports open/close to a controlling parent instead of deciding itself', async () => {
+    const onOpenChange = vi.fn()
+    const tree = await mount(createElement(ControlPanel, { open: false, onOpenChange }))
+    try {
+      await press(tree.container.querySelector('button[data-action="open-controls"]'), 'the 调节 button')
+      expect(onOpenChange).toHaveBeenCalledWith(true)
+      // Still closed: the parent owns the state.
+      expect(tree.container.querySelector('aside.qv-controls')).toBeNull()
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('keeps the reset action in the 量子态 group header, reachable while the group is folded', async () => {
+    const tree = await mount(createElement(ControlPanel))
+    try {
+      const header = tree.container.querySelector('[data-group="state"] .qv-group-header')
+      const reset = header?.querySelector<HTMLButtonElement>('button[data-action="reset-state"]')
+      expect(reset?.getAttribute('aria-label')).toBe('恢复 2p_z 默认值')
+      await press(header?.querySelector<HTMLButtonElement>('.qv-group-head') ?? null, 'the 量子态 header')
+      expect(tree.container.querySelector<HTMLElement>('[data-group="state"] .qv-group-body')?.hidden).toBe(true)
+      expect(reset?.isConnected).toBe(true)
+      expect(reset?.tabIndex).toBe(0)
+    } finally {
+      await tree.unmount()
+    }
+  })
+})
+
+describe('ControlPanel in the static textbook build', () => {
+  it('shows a pinned bound as a read-only value, not a slider over one value', async () => {
+    capabilityOverride.current = () => ({
+      status: 'available',
+      endpoint: '/api/orbitals/point-cloud',
+      parameters: { samples: { min: 28000, max: 28000, step: 1000 }, seed: { min: 7, max: 7, step: 1 } },
+      latency: 'fast',
+    })
+    const tree = await mount(createElement(ControlPanel))
+    try {
+      expect(tree.container.querySelector('input[data-parameter]')).toBeNull()
+      expect(tree.container.querySelector('output[data-parameter="samples"]')?.textContent).toBe('28000')
+      expect(tree.container.querySelector('output[data-parameter="seed"]')?.textContent).toBe('7')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('tags a not-precomputed representation and keeps it a focusable explanation', async () => {
+    // The canonical 未预计算 sentence the static overlay opens every such reason with.
+    const reason = NOT_PRECOMPUTED_DETAIL
+    capabilityOverride.current = (inputs) =>
+      inputs.representation === 'isosurface'
+        ? { status: 'not_precomputed', reason }
+        : null
+    const tree = await panel('eigenstate', 'point_cloud')
+    try {
+      const button = representationButton(tree, 'isosurface')
+      expect(button.dataset.unavailable).toBe('true')
+      expect(button.disabled).toBe(false)
+      expect(button.title).toBe(reason)
+      expect(button.querySelector('.qv-tag')?.textContent).toBe('未预计算')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('fixes Z at 1 and says why when the charge bound pins it', async () => {
+    // B8's static overlay: chargeBound() is {min: z, max: z}. The panel reads
+    // that bound -- the one the store clamps with -- and not the runtime mode.
+    chargeOverride.current = { min: 1, max: 1, step: 0.1 }
+    const tree = await panel('eigenstate', 'point_cloud')
+    try {
+      expect(tree.container.querySelector('input[data-quantum="z"]')).toBeNull()
+      const z = tree.container.querySelector('output[data-quantum="z"]')
+      expect(z?.textContent).toBe('1')
+      expect(z?.getAttribute('title')).toBe('静态教材版固定 Z = 1')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('offers a free Z input bounded by the live charge range', async () => {
+    const tree = await panel('eigenstate', 'point_cloud')
+    try {
+      const z = tree.container.querySelector<HTMLInputElement>('input[data-quantum="z"]')
+      expect(tree.container.querySelector('output[data-quantum="z"]')).toBeNull()
+      expect([z?.min, z?.max, z?.step]).toEqual(['0.1', '20', '0.1'])
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('offers only the n values the matrix can draw, plus the current one', async () => {
+    capabilityOverride.current = (inputs) =>
+      inputs.representation === 'point_cloud' && inputs.orbital.n > 4
+        ? { status: 'not_precomputed', reason: 'n > 4 is not in the static catalogue' }
+        : null
+    const tree = await panel('eigenstate', 'point_cloud')
+    try {
+      const options = Array.from(tree.container.querySelectorAll<HTMLOptionElement>('select[data-quantum="n"] option'))
+      expect(options.map((option) => option.value)).toEqual(['1', '2', '3', '4'])
+    } finally {
+      await tree.unmount()
+    }
+  })
+})
+
+describe('ControlPanel state section copy', () => {
+  it('says the orbital catalogue is unavailable instead of showing an empty list', async () => {
+    orbitalCatalogueFailure.current = true
+    const tree = await panel('eigenstate', 'point_cloud')
+    try {
+      expect(tree.container.querySelectorAll('button[data-preset]')).toHaveLength(0)
+      expect(tree.container.textContent).toContain('轨道目录不可用')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('tags each orbital preset with its basis', async () => {
+    const tree = await panel('eigenstate', 'point_cloud')
+    try {
+      const tag = (id: string): string | null | undefined =>
+        tree.container.querySelector(`button[data-preset="${id}"] .qv-tag`)?.textContent
+      expect(tag('p2pz')).toBe('实基')
+      expect(tag('3d-complex')).toBe('复基')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('tags a degenerate mixture 简并 and leaves an oscillating one untagged', async () => {
+    const mixture = CATALOGUE.mixtures[1]
+    const original = mixture.period_au
+    mixture.period_au = 0
+    const tree = await panel('superposition', 'isosurface')
+    try {
+      const tags = (id: string): (string | null)[] =>
+        Array.from(tree.container.querySelectorAll(`button[data-mixture="${id}"] .qv-tag`)).map(
+          (tag) => tag.textContent,
+        )
+      expect(tags('ring')).toEqual(['简并'])
+      expect(tags('bohr')).toEqual([])
+    } finally {
+      await tree.unmount()
+      mixture.period_au = original
+    }
+  })
+
+  it('summarises the current state on the folded 更多轨道 row and unfolds it', async () => {
+    const tree = await panel('eigenstate', 'point_cloud')
+    try {
+      const more = tree.container.querySelector<HTMLButtonElement>('button[data-action="more-orbitals"]')
+      expect(more?.textContent).toContain('ψ(2,1,0) · 实基')
+      const body = tree.container.querySelector<HTMLElement>('[data-control-section="eigenstate-quantum-numbers"]')
+      expect(body?.hidden).toBe(true)
+      await press(more, 'the 更多轨道 expander')
+      expect(body?.hidden).toBe(false)
+      expect(more?.getAttribute('aria-expanded')).toBe('true')
+    } finally {
+      await tree.unmount()
     }
   })
 })

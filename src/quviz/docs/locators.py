@@ -18,6 +18,22 @@ KEY_PATTERN = re.compile(r"^[A-Za-z0-9_:\-]+$")
 GROUP_PATTERN = re.compile(r"(?<!\\)\[@([^\]]+)\]")
 
 
+EN_DASH = "\u2013"  # U+2013 EN DASH
+EM_DASH = "\u2014"  # U+2014 EM DASH
+
+
+def typeset_dashes(text: str) -> str:
+    """BibTeX dashes as a reader sees them: ``---`` an em dash, ``--`` an en dash.
+
+    Ranges are written the BibTeX way (``pp. 131--197``, ``06:06--10:00``); a
+    rendered citation label or index row shows them with an en dash. Only
+    displayed text goes through here: keys, anchors, URLs and the raw
+    ``data-cite-locators`` attribute keep exactly what the source says.
+    """
+
+    return text.replace("---", EM_DASH).replace("--", EN_DASH)
+
+
 class CitationReference(NamedTuple):
     """One ``key`` with an optional ``locator`` such as ``p. 4`` or ``§14.30``."""
 

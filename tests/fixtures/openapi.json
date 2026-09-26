@@ -279,6 +279,17 @@
           "observable": {
             "$ref": "#/components/schemas/ObservableKind"
           },
+          "radial_profile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RadialProfile"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Radial distribution P(r) of this eigenstate, computed from the analytic R_nl with the same Z and a_mu; null only when those scales cannot represent it in float64, in which case a warning says so."
+          },
           "references": {
             "items": {
               "type": "string"
@@ -376,6 +387,67 @@
           "m"
         ],
         "title": "QuantumStateSpec",
+        "type": "object"
+      },
+      "RadialProfile": {
+        "additionalProperties": false,
+        "description": "Radial probability distribution ``P(r) = r^2 |R_nl(r)|^2`` of one eigenstate.\n\nComputed in Python from the analytic hydrogenic radial function with the\nsame ``Z`` and ``a_mu`` as the metadata it is attached to; the browser only\ndraws it. ``radial_density`` integrates to one over ``[0, inf)``; the\nsampled range stops once at least 99.9 % of that mass is inside.",
+        "properties": {
+          "energy_levels_hartree": {
+            "description": "E_k = -(Z^2 / a_mu) / (2 k^2) in hartree for k = 1 .. max(n + 2, 5), the same reduced-mass convention as energy_hartree.",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "title": "Energy Levels Hartree",
+            "type": "array"
+          },
+          "expectation_r_bohr": {
+            "description": "<r> = (a_mu / (2 Z)) [3 n^2 - l (l + 1)] in bohr, analytic.",
+            "exclusiveMinimum": 0.0,
+            "title": "Expectation R Bohr",
+            "type": "number"
+          },
+          "most_probable_r_bohr": {
+            "description": "Radius of the global maximum of P(r) in bohr, grid-refined, 9 significant digits.",
+            "exclusiveMinimum": 0.0,
+            "title": "Most Probable R Bohr",
+            "type": "number"
+          },
+          "nodes_bohr": {
+            "description": "The n - l - 1 radial node radii in bohr (Laguerre roots), ascending.",
+            "items": {
+              "type": "number"
+            },
+            "title": "Nodes Bohr",
+            "type": "array"
+          },
+          "r_bohr": {
+            "description": "Ascending radii in bohr, r_bohr[0] == 0; the last radius encloses at least 99.9% of the radial probability. Denser near the nucleus (quadratic spacing).",
+            "items": {
+              "type": "number"
+            },
+            "title": "R Bohr",
+            "type": "array"
+          },
+          "radial_density": {
+            "description": "P(r) = r^2 |R_nl(r)|^2 in bohr^-1 at each radius, 9 significant digits.",
+            "items": {
+              "type": "number"
+            },
+            "title": "Radial Density",
+            "type": "array"
+          }
+        },
+        "required": [
+          "r_bohr",
+          "radial_density",
+          "nodes_bohr",
+          "expectation_r_bohr",
+          "most_probable_r_bohr",
+          "energy_levels_hartree"
+        ],
+        "title": "RadialProfile",
         "type": "object"
       },
       "RepresentationKind": {
@@ -581,6 +653,15 @@
       "SuperpositionCatalogEntry": {
         "description": "One client-ready preset, including its builder-derived capabilities.",
         "properties": {
+          "default_representation": {
+            "description": "Representation a client opens this preset with: 'isosurface' when the route-default superposition isosurface request (resolution 65, probability_mass 0.90, time 0, Z = 1, a_mu = 1) builds in both bases, otherwise 'slice', which slice_resolution_floor always admits. Derived by running that request through the route's own workload guard and builder, not by a duplicated rule.",
+            "enum": [
+              "isosurface",
+              "slice"
+            ],
+            "title": "Default Representation",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -623,7 +704,8 @@
           "period_au",
           "note",
           "slice_resolution_floor",
-          "streamline_seed_count_max"
+          "streamline_seed_count_max",
+          "default_representation"
         ],
         "title": "SuperpositionCatalogEntry",
         "type": "object"

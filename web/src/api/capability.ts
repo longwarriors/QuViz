@@ -1,9 +1,12 @@
+import { requestsForPlan } from './requests'
 import {
   MAXIMUM_SLICE_RESOLUTION,
   MINIMUM_SLICE_RESOLUTION,
   PRINCIPAL_PLANES,
   SLICE_OBSERVABLES,
 } from './sliceContract'
+import type { StaticManifest, StaticSpec } from './staticCatalog'
+import { requestKey } from './transport'
 import type {
   BasisKind,
   OrbitalParameters,
@@ -31,6 +34,10 @@ import type {
  *   `not_implemented`  nothing says no. We simply never built it, and saying
  *                      "unsupported" there would be a false statement about
  *                      the physics.
+ *
+ * The static overlay near the end of this file adds a third, `not_precomputed`,
+ * on the GitHub Pages build only: the route would answer, but the precomputed
+ * catalogue holds no answer for this exact request.
  *
  * Bounds below are transcribed from routes.py -- the numbers are the route's,
  * not the control panel's, because the route is what answers the request.
@@ -62,6 +69,15 @@ export interface ParameterBound {
   max: number
   /** Slider increment. A UI convenience; the routes accept any value in range. */
   step?: number
+  /**
+   * The only values this cell can answer, ascending, when it cannot answer
+   * the whole interval. Static mode alone sets it: the superposition clock of
+   * a precomputed catalogue holds only the exported playback frames, which are
+   * not evenly spaced (1s + 3d_z2 steps 5.4 -> 5.8). `min`/`max` still bracket
+   * them, so a consumer that ignores `values` stays in range; `clampToBound`
+   * snaps to the nearest one.
+   */
+  values?: readonly number[]
 }
 
 export interface AvailableCapability {
@@ -103,7 +119,17 @@ export interface NotImplementedCapability {
   reason: string
 }
 
-export type Refusal = UnsupportedCapability | NotImplementedCapability
+/**
+ * The physics and the route allow this cell, but the static (GitHub Pages)
+ * catalogue holds no precomputed answer for it. A third promise, distinct from
+ * both others: a live server (`quviz serve`) would answer it.
+ */
+export interface NotPrecomputedCapability {
+  status: 'not_precomputed'
+  reason: string
+}
+
+export type Refusal = UnsupportedCapability | NotImplementedCapability | NotPrecomputedCapability
 export type Capability = AvailableCapability | Refusal
 
 export interface CapabilityInputs {
@@ -114,6 +140,12 @@ export interface CapabilityInputs {
   superpositionSliceResolutionFloor?: number
   /** Workload-safe seed ceiling supplied by the selected catalogue entry. */
   superpositionStreamlineSeedCountMax?: number
+  /**
+   * The selected superposition, read only by the static overlay: the
+   * catalogue's playback frames are indexed by these terms. Optional because
+   * the store's clamping calls do not need the clock.
+   */
+  superpositionTerms?: string
 }
 
 export interface SceneRequestInputs extends CapabilityInputs {
@@ -188,6 +220,49 @@ interface RouteConstraint {
 
 /** Client lattice for the continuous server-side `time` parameter. */
 export const TIME_GRID_STEP_AU = 0.2
+
+/** Target spacing of the playback clock; one physical period is divided into whole frames. */
+export const TARGET_TIME_STEP_AU = 0.6
+
+/**
+ * Frames per period on the playback lattice, or 0 when there is nothing to
+ * play: a degenerate preset (period 0) or a period that is not a positive
+ * finite number. Shared by `nextTimeAu` (src/components/sceneRequest.ts) and
+ * `playbackFrames` (src/api/staticCatalog.ts), so the frames the static
+ * catalogue exports are the frames playback visits.
+ */
+export function playbackFrameCount(periodAu: number): number {
+  if (!Number.isFinite(periodAu) || periodAu <= 0) return 0
+  return Math.max(1, Math.ceil(periodAu / TARGET_TIME_STEP_AU))
+}
+
+/**
+ * Frame `frame` of `frames`, evenly spaced across the exact physical period
+ * and snapped to the same 0.2 a.u. lattice the time slider shows; otherwise a
+ * catalogue period such as 16.755... produces long binary decimals, range-step
+ * mismatches and cache keys the UI cannot reproduce. Rounding each absolute
+ * frame independently distributes the small timing error instead of
+ * accumulating it.
+ */
+export function playbackFrameTime(frame: number, frames: number, periodAu: number): number {
+  const ticks = Math.round((frame * periodAu) / frames / TIME_GRID_STEP_AU)
+  return Number((ticks * TIME_GRID_STEP_AU).toFixed(12))
+}
+
+/**
+ * What the static (GitHub Pages) site says about a combination its precomputed
+ * catalogue does not hold (contracts, "B produces"). It is the ONE user-visible
+ * wording for that case: the static transport answers a miss with it
+ * (staticCatalog.ts), and every `not_precomputed` refusal of the capability
+ * overlay below begins with it verbatim, so the textbook can quote it and the
+ * status line always shows it.
+ *
+ * Defined here rather than in staticCatalog.ts, which re-exports it where the
+ * contract names it: staticCatalog.ts imports this module at runtime, so this
+ * module may import staticCatalog.ts only for types.
+ */
+export const NOT_PRECOMPUTED_DETAIL =
+  '静态教材版未预计算这一组合。本地运行 quviz serve 可实时计算任意参数。'
 
 const A_MU_CONSTRAINT: RouteParameterConstraint = {
   wireName: 'a_mu',
@@ -684,8 +759,199 @@ function superpositionCapability(
   }
 }
 
-/** What this state-kind x representation cell can do, and at what cost. */
-export function capabilityFor({
+/* ------------------------------------------------------------ static overlay */
+
+/**
+ * The static (GitHub Pages) build answers from a precomputed catalogue, and
+ * this overlay is how the matrix says so. It sits on top of the route rows,
+ * never instead of them:
+ *
+ *   1. a refusal the routes or the physics make stays that refusal -- only its
+ *      wording loses the `/api/...` paths, which name nothing on a site with
+ *      no API;
+ *   2. a cell the catalogue specification (spec.json) never covered becomes
+ *      `not_precomputed`, with a reason naming the limit;
+ *   3. every tunable the catalogue fixed is pinned `min = max` at the value the
+ *      live UI would have sent for the specification's default, so the store's
+ *      clamps, the panel and the planner all hold the one exported value; the
+ *      superposition clock offers the exported frames as `values`;
+ *   4. `planSceneRequest` refuses any concrete request whose literal key the
+ *      manifest lacks (`STATIC_MISS_REASON`).
+ *
+ * Every `not_precomputed` reason opens with `NOT_PRECOMPUTED_DETAIL` verbatim,
+ * so what a reader sees for "not in the catalogue" is one sentence wherever it
+ * comes from: this planner, a spec limit, or the static transport's 404.
+ */
+
+/**
+ * Why the planner refuses a request the catalogue has no entry for: the
+ * contract sentence alone. The build exported every request this matrix plans
+ * for the specification, so a miss names no particular limit.
+ */
+export const STATIC_MISS_REASON: string = NOT_PRECOMPUTED_DETAIL
+
+/** A refusal the specification explains: the contract sentence, then the limit. */
+function notPrecomputed(limit: string): string {
+  return `${NOT_PRECOMPUTED_DETAIL}${limit}`
+}
+
+/** The reduced-mass ratio every static request carries: hydrogen. No control changes it. */
+export const STATIC_A_MU = 1
+
+/** Readable names for the routes, used instead of `/api/...` paths on the static site. */
+const STATIC_ROUTE_NAMES: readonly (readonly [string, string])[] = [
+  [POINT_CLOUD_ENDPOINT, '电子云采样'],
+  [ISOSURFACE_ENDPOINT, '等值面计算'],
+  [CURRENT_FIELD_ENDPOINT, '概率流计算'],
+  [SLICE_ENDPOINT, '平面切片计算'],
+  [SUPERPOSITION_ISOSURFACE_ENDPOINT, '叠加态等值面计算'],
+  [SUPERPOSITION_CURRENT_FIELD_ENDPOINT, '叠加态概率流计算'],
+  [SUPERPOSITION_SLICE_ENDPOINT, '叠加态切片计算'],
+]
+
+/** The routes whose requests carry a playback time. */
+const TIMED_ENDPOINTS: ReadonlySet<string> = new Set<string>([
+  SUPERPOSITION_ISOSURFACE_ENDPOINT,
+  SUPERPOSITION_CURRENT_FIELD_ENDPOINT,
+  SUPERPOSITION_SLICE_ENDPOINT,
+])
+
+interface StaticOverlay {
+  spec: StaticSpec
+  keys: ReadonlySet<string>
+  framesByTerms: ReadonlyMap<string, readonly number[]>
+}
+
+let staticOverlay: StaticOverlay | null = null
+
+function withoutRoutePaths(reason: string): string {
+  return STATIC_ROUTE_NAMES.reduce((text, [path, name]) => text.split(path).join(name), reason)
+}
+
+/** The exported playback times of each superposition, read off the manifest keys. */
+function indexFrames(keys: readonly string[]): ReadonlyMap<string, readonly number[]> {
+  const frames = new Map<string, Set<number>>()
+  for (const key of keys) {
+    const mark = key.indexOf('?')
+    if (mark < 0 || !TIMED_ENDPOINTS.has(key.slice(0, mark))) continue
+    const query = new URLSearchParams(key.slice(mark + 1))
+    const terms = query.get('terms')
+    const time = Number(query.get('time') ?? Number.NaN)
+    if (terms === null || !Number.isFinite(time)) continue
+    const times = frames.get(terms) ?? new Set<number>()
+    times.add(time)
+    frames.set(terms, times)
+  }
+  return new Map(
+    [...frames].map(([terms, times]): [string, readonly number[]] => [
+      terms,
+      [...times].sort((a, b) => a - b),
+    ]),
+  )
+}
+
+/** The specification's own limits, checked after the physics has had its say. */
+function staticRefusal(inputs: CapabilityInputs, spec: StaticSpec): string | null {
+  const eigen = spec.eigenstates
+  if (inputs.orbital.z !== eigen.z) {
+    return notPrecomputed(`目录只收录 Z = ${eigen.z} 的类氢态；当前 Z = ${inputs.orbital.z}。`)
+  }
+  if (inputs.mode === 'superposition') {
+    return spec.superpositions.representations.includes(inputs.representation)
+      ? null
+      : notPrecomputed('目录没有为叠加态收录这种表示法。')
+  }
+  if (inputs.orbital.n > eigen.n_max) {
+    return notPrecomputed(`目录只收录 n ≤ ${eigen.n_max} 的本征态；当前态 n = ${inputs.orbital.n}。`)
+  }
+  if (!eigen.bases.includes(inputs.orbital.basis)) {
+    return notPrecomputed(`目录没有收录${inputs.orbital.basis === 'real' ? '实基' : '复基'}本征态。`)
+  }
+  return eigen.representations.includes(inputs.representation)
+    ? null
+    : notPrecomputed('目录没有为本征态收录这种表示法。')
+}
+
+function staticCapability(
+  live: Capability,
+  inputs: CapabilityInputs,
+  spec: StaticSpec,
+  frames: readonly number[] | undefined,
+): Capability {
+  if (live.status !== 'available') return { ...live, reason: withoutRoutePaths(live.reason) }
+  const refusal = staticRefusal(inputs, spec)
+  if (refusal !== null) return { status: 'not_precomputed', reason: refusal }
+  const section = inputs.mode === 'superposition' ? spec.superpositions : spec.eigenstates
+  const exported: Record<Exclude<ParameterId, 'timeAu'>, number> = {
+    samples: spec.eigenstates.samples,
+    seed: spec.eigenstates.seed,
+    resolution: section.resolution,
+    probabilityMass: section.probability_mass,
+    seedCount: section.seed_count,
+    aMu: STATIC_A_MU,
+  }
+  const parameters: Partial<Record<ParameterId, ParameterBound>> = {}
+  for (const [id, bound] of Object.entries(live.parameters) as [ParameterId, ParameterBound][]) {
+    if (id === 'timeAu') {
+      parameters.timeAu =
+        frames === undefined
+          ? bound
+          : { min: frames[0], max: frames[frames.length - 1], step: bound.step, values: frames }
+    } else {
+      // The value the live planner would send for the specification's default:
+      // exactly what the enumerator exported for this state.
+      const value = clampToBound(bound, exported[id])
+      parameters[id] = { min: value, max: value, step: bound.step }
+    }
+  }
+  return {
+    ...live,
+    parameters,
+    ...(live.planes === undefined
+      ? {}
+      : { planes: live.planes.filter((plane) => section.planes.includes(plane)) }),
+    ...(live.observables === undefined
+      ? {}
+      : { observables: live.observables.filter((observable) => section.observables.includes(observable)) }),
+  }
+}
+
+/** Install the static catalogue (src/main.tsx does, before the first render); null = live. */
+export function setStaticCatalog(manifest: StaticManifest | null): void {
+  if (manifest === null) {
+    staticOverlay = null
+    return
+  }
+  const keys = Object.keys(manifest.entries)
+  staticOverlay = { spec: manifest.spec, keys: new Set(keys), framesByTerms: indexFrames(keys) }
+}
+
+/** The installed catalogue's specification, or null in live mode. */
+export function staticCatalogSpec(): StaticSpec | null {
+  return staticOverlay === null ? null : staticOverlay.spec
+}
+
+/** The charge range: the route's, or the one Z the static catalogue was exported at. */
+export function chargeBound(): ParameterBound {
+  if (staticOverlay === null) return Z_CONSTRAINT.uiBound
+  const z = staticOverlay.spec.eigenstates.z
+  return { min: z, max: z, step: Z_CONSTRAINT.uiBound.step }
+}
+
+/** The static answer for a spec, without an installed catalogue: the enumerator's view. */
+export function staticCapabilityFor(inputs: CapabilityInputs, spec: StaticSpec): Capability {
+  return staticCapability(liveCapabilityFor(inputs), inputs, spec, undefined)
+}
+
+/** True when every request this plan makes has a catalogue entry. Live mode: false. */
+export function isPrecomputed(plan: ScenePlan, inputs: SceneRequestInputs): boolean {
+  if (staticOverlay === null) return false
+  const { keys } = staticOverlay
+  return requestsForPlan(plan, inputs).every((request) => keys.has(requestKey(request.route, request.query)))
+}
+
+/** The route matrix alone, before any static-catalogue overlay. */
+function liveCapabilityFor({
   mode,
   orbital,
   representation,
@@ -699,6 +965,17 @@ export function capabilityFor({
         superpositionStreamlineSeedCountMax,
       )
     : eigenstateCapability(orbital, representation)
+}
+
+/** What this state-kind x representation cell can do, and at what cost. */
+export function capabilityFor(inputs: CapabilityInputs): Capability {
+  const live = liveCapabilityFor(inputs)
+  if (staticOverlay === null) return live
+  const frames =
+    inputs.mode === 'superposition' && inputs.superpositionTerms !== undefined
+      ? staticOverlay.framesByTerms.get(inputs.superpositionTerms)
+      : undefined
+  return staticCapability(live, inputs, staticOverlay.spec, frames)
 }
 
 /** Query-parameter name for each tunable, as the routes spell it. */
@@ -727,12 +1004,25 @@ const DEFAULT_SLICE_OBSERVABLE: SliceObservable = 'probability_density'
  * The requested choice if the row declares it, and the route's own default
  * otherwise.
  *
- * The enumerated counterpart of `clampParameter`: a value the capability does
+ * The enumerated counterpart of `clampToBound`: a value the capability does
  * not offer never leaves, so an out-of-range choice becomes the honest default
  * rather than a 422 the matrix promised could not happen.
  */
 function declaredChoice<T>(declared: readonly T[], requested: T | undefined, fallback: T): T {
   return requested !== undefined && declared.includes(requested) ? requested : fallback
+}
+
+/**
+ * The plane a slice cell with these declared planes is cut on for a requested
+ * one. The planner sends exactly this, and the store holds exactly this
+ * (useSceneStore's `reconcilePlane`), so the plane chips, the scene identity and
+ * the shared link name the plane that is drawn.
+ */
+export function declaredPlane(
+  planes: readonly PrincipalPlane[],
+  requested: PrincipalPlane | undefined,
+): PrincipalPlane {
+  return declaredChoice(planes, requested, DEFAULT_PLANE)
 }
 
 function parameterValue(inputs: SceneRequestInputs, id: ParameterId): number {
@@ -753,16 +1043,23 @@ function parameterValue(inputs: SceneRequestInputs, id: ParameterId): number {
  * An integer `step` marks a count the route parses as an int, so a slider that
  * hands us 20000.4 is rounded rather than sent to be rejected. A fractional
  * step (a mass, a clock) is a display increment only and never snaps the value.
+ * A bound that lists `values` admits those alone (the static catalogue's
+ * playback frames): the value moves to the nearest one -- the earlier one on a
+ * tie, the first one for a value that is not a number.
  */
-function clampParameter(bound: ParameterBound, value: number): number {
+export function clampToBound(bound: ParameterBound, value: number): number {
+  if (bound.values !== undefined && bound.values.length > 0) {
+    return bound.values.reduce((best, candidate) =>
+      Math.abs(candidate - value) < Math.abs(best - value) ? candidate : best,
+    )
+  }
   const integral = bound.step !== undefined && Number.isInteger(bound.step)
   const candidate = integral ? Math.round(value) : value
   return Math.min(bound.max, Math.max(bound.min, candidate))
 }
 
 /**
- * The concrete request for these inputs, or the refusal that says why there
- * isn't one.
+ * The concrete request an available cell makes for these inputs.
  *
  * The parameters sent are exactly the ones the capability declares -- there is
  * no second list here that could drift from the matrix -- and every one of them
@@ -776,12 +1073,15 @@ function clampParameter(bound: ParameterBound, value: number): number {
  * the one mechanism that keeps a sent value inside a declared bound, and sent
  * it to two routes at a time when four read it. It is a declared parameter
  * now, on those four rows and nowhere else.
+ *
+ * Exported for the build-time enumerator (src/api/staticEnumeration.ts), which
+ * plans from `staticCapabilityFor` exactly as the static site plans from
+ * `capabilityFor`.
  */
-export function planSceneRequest(inputs: SceneRequestInputs): ScenePlanResult {
-  const capability = capabilityFor(inputs)
-  if (capability.status !== 'available') {
-    return capability
-  }
+export function planForCapability(
+  capability: AvailableCapability,
+  inputs: SceneRequestInputs,
+): ScenePlan {
   const { orbital } = inputs
   const params: Record<string, string | number> =
     inputs.mode === 'superposition'
@@ -796,17 +1096,17 @@ export function planSceneRequest(inputs: SceneRequestInputs): ScenePlanResult {
           basis: orbital.basis,
         }
   // Charge is present on every scene route but is not a generic slider. Its
-  // UI range still comes from the route table and is checked against OpenAPI,
-  // so the number input and planner cannot drift into different contracts.
-  params[Z_CONSTRAINT.wireName] = clampParameter(Z_CONSTRAINT.uiBound, orbital.z)
+  // range comes from the route table -- or, on the static site, from the one Z
+  // the catalogue was exported at -- so the input and the planner agree.
+  params[Z_CONSTRAINT.wireName] = clampToBound(chargeBound(), orbital.z)
   for (const [id, bound] of Object.entries(capability.parameters) as [
     ParameterId,
     ParameterBound,
   ][]) {
-    params[WIRE_NAME[id]] = clampParameter(bound, parameterValue(inputs, id))
+    params[WIRE_NAME[id]] = clampToBound(bound, parameterValue(inputs, id))
   }
   if (capability.planes !== undefined) {
-    params[PLANE_PARAM] = declaredChoice(capability.planes, inputs.plane, DEFAULT_PLANE)
+    params[PLANE_PARAM] = declaredPlane(capability.planes, inputs.plane)
   }
   if (capability.observables !== undefined) {
     params[OBSERVABLE_PARAM] = declaredChoice(
@@ -821,4 +1121,21 @@ export function planSceneRequest(inputs: SceneRequestInputs): ScenePlanResult {
     params,
     latency: capability.latency,
   }
+}
+
+/**
+ * The concrete request for these inputs, or the refusal that says why there
+ * isn't one. On the static site a cell the matrix allows is still refused when
+ * the catalogue has no answer for the exact request it would make.
+ */
+export function planSceneRequest(inputs: SceneRequestInputs): ScenePlanResult {
+  const capability = capabilityFor(inputs)
+  if (capability.status !== 'available') {
+    return capability
+  }
+  const plan = planForCapability(capability, inputs)
+  if (staticOverlay === null || isPrecomputed(plan, inputs)) {
+    return plan
+  }
+  return { status: 'not_precomputed', reason: STATIC_MISS_REASON }
 }

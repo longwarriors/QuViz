@@ -1,7 +1,14 @@
+// Mermaid 的主题只能在 initialize 时设定一次：跟随 Material 写在 body 上的配色方案，
+// 深色（默认）用 dark，浅色备选用 default。
+const quvizMermaidTheme = () =>
+  document.body && document.body.getAttribute("data-md-color-scheme") === "default"
+    ? "default"
+    : "dark";
+
 window.mermaid.initialize({
   startOnLoad: false,
   securityLevel: "strict",
-  theme: "neutral"
+  theme: quvizMermaidTheme()
 });
 
 const renderMermaid = () => {

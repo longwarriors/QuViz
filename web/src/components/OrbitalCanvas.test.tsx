@@ -29,12 +29,15 @@
  */
 import type { BoundsProps, OrbitControlsProps } from '@react-three/drei'
 import { useThree } from '@react-three/fiber'
+import { Bloom, EffectComposer } from '@react-three/postprocessing'
 import ReactThreeTestRenderer, { act } from '@react-three/test-renderer'
 import {
   act as reactAct,
+  Children,
   createElement,
   Fragment,
   type ReactElement,
+  type ReactNode,
   useLayoutEffect,
 } from 'react'
 import * as THREE from 'three'
@@ -59,20 +62,23 @@ import {
   cameraDirectionForPlane,
   cameraUpForPlane,
 } from '../scene/camera'
-import { fogRangeFor } from '../scene/fog'
+import { fogRangeFor, SCENE_BACKGROUND } from '../scene/fog'
 import { SCENE_READY_ATTRIBUTE } from '../scene/SceneReady'
 import { useSceneStore } from '../state/useSceneStore'
 import { mount } from '../test/mount'
+import { AxisGizmo } from './AxisGizmo'
 import {
   aimCamera,
   cameraViewOf,
   OrbitalCanvas,
+  presentationChainActive,
   RendererSettings,
   SceneContent,
   SceneRoot,
   slicePlaneOf,
   usesPresentationEffects,
 } from './OrbitalCanvas'
+import { SCENE_CANVAS_ID } from './sceneCapture'
 import { selectSceneRequestInputs as sceneAssetInputs } from './sceneRequest'
 import type { SceneAsset } from './useSceneAsset'
 
@@ -781,8 +787,8 @@ describe('aimCamera', () => {
       expect(camera.position.x).toBeCloseTo(direction.x, 6)
       expect(camera.position.y).toBeCloseTo(direction.y, 6)
       expect(camera.position.z).toBeCloseTo(direction.z, 6)
-      // `up` is not decoration on a slice view. The xz plane's normal is -y,
-      // so the camera looks straight down the default up vector: lookAt has no
+      // `up` is not decoration on a slice view. The xy plane's normal is +z,
+      // so the camera looks straight down the world up vector: lookAt has no
       // basis to build from there and the picture degenerates. The frame's own
       // v axis is also the only choice that puts screen +Y on v, which is what
       // makes the image the grid the server sampled rather than a rotation of
@@ -791,21 +797,17 @@ describe('aimCamera', () => {
     }
   })
 
-  it('restores the default up when the scene stops being a slice', () => {
+  it('restores the world up (+z) when the scene stops being a slice', () => {
     const camera = new THREE.PerspectiveCamera()
     camera.position.set(0, 0, 20)
-    aimCamera(camera, undefined, 'xz')
-    expect(camera.up.toArray()).toEqual([0, 0, 1])
+    aimCamera(camera, undefined, 'xy')
+    expect(camera.up.toArray()).toEqual([0, 1, 0])
 
-    // The literal transition: an xz slice on screen, then a point cloud. The
-    // second call is handed exactly what the canvas would hand it -- the point
-    // cloud's own view and no plane.
     aimCamera(camera, cameraViewOf({ kind: 'point_cloud', data: pointCloud() }))
 
-    // Leaving the slice's up in place would tilt every subsequent scene: the
-    // camera object outlives the asset, so a `up` set once and never cleared
-    // is a permanent change to how every orbital afterwards is framed.
-    expect(camera.up.toArray()).toEqual([0, 1, 0])
+    // The camera outlives the asset: a slice's up left in place would tilt
+    // every orbital drawn afterwards.
+    expect(camera.up.toArray()).toEqual([0, 0, 1])
   })
 })
 
@@ -820,6 +822,17 @@ describe('RendererSettings', () => {
     ReactThreeTestRenderer.create(
       createElement(RendererSettings, { exposure, fogStrength, extent }),
     )
+
+  it('paints the neutral scene background and fogs towards it', async () => {
+    const renderer = await mountSettings(1, 0.4, 20)
+    const scene = sceneOf(renderer)
+
+    expect((scene.background as THREE.Color).getHexString()).toBe(SCENE_BACKGROUND.slice(1))
+    expect((scene.fog as THREE.Fog).color.getHexString()).toBe(SCENE_BACKGROUND.slice(1))
+
+    await renderer.unmount()
+    expect(scene.background).toBeNull()
+  })
 
   it('takes its fog distances from the shared fog module', async () => {
     const renderer = await mountSettings(1, 0.4, 20)
@@ -856,7 +869,7 @@ describe('RendererSettings', () => {
 
 describe('SceneRoot', () => {
   it('restores and clears the default framebuffer when a post-processed frame leaves', async () => {
-    useSceneStore.setState({ mode: 'eigenstate', representation: 'slice' })
+    useSceneStore.setState({ mode: 'eigenstate', representation: 'slice', bloom: 0.3 })
     vi.stubGlobal('fetch', (input: RequestInfo | URL) => {
       const url = String(input)
       return Promise.resolve(jsonResponse(url.includes('/slice') ? slice() : isosurface()))
@@ -879,6 +892,44 @@ describe('SceneRoot', () => {
 
     await act(async () => {
       useSceneStore.setState({ representation: 'isosurface' })
+    })
+
+    expect((gl as THREE.WebGLRenderer).autoClear).toBe(true)
+    expect(setRenderTarget).toHaveBeenCalledWith(null)
+    expect(clear).toHaveBeenCalledWith(true, true, true)
+    expect(setRenderTarget.mock.invocationCallOrder[0]).toBeLessThan(
+      clear.mock.invocationCallOrder[0],
+    )
+
+    await renderer.unmount()
+  })
+
+  it('restores and clears the default framebuffer when Bloom alone drops to 0 on the same slice frame', async () => {
+    // D3 fix-round finding: `presentationChainActive` depends on bloom, not
+    // just the arrived asset kind, so the composer can unmount while the kind
+    // on screen never changes (a viewer drags Bloom back to 0 on a slice or
+    // streamline frame). The boundary must still fire in that case, or r3f
+    // keeps drawing every auto-rotate pose over the stale buffer.
+    useSceneStore.setState({ mode: 'eigenstate', representation: 'slice', bloom: 0.3 })
+    vi.stubGlobal('fetch', () => Promise.resolve(jsonResponse(slice())))
+    let gl: THREE.WebGLRenderer | undefined
+    const renderer = await mountScene(
+      () => undefined,
+      defaultCamera(),
+      (value) => {
+        gl = value
+      },
+    )
+    expect(gl).toBeDefined()
+
+    // postprocessing's EffectComposer constructor leaves this false. Recreate
+    // that side effect without mounting a second renderer in the test harness.
+    const clear = vi.spyOn(gl as THREE.WebGLRenderer, 'clear')
+    const setRenderTarget = vi.spyOn(gl as THREE.WebGLRenderer, 'setRenderTarget')
+    ;(gl as THREE.WebGLRenderer).autoClear = false
+
+    await act(async () => {
+      useSceneStore.setState({ bloom: 0 })
     })
 
     expect((gl as THREE.WebGLRenderer).autoClear).toBe(true)
@@ -949,7 +1000,7 @@ describe('SceneRoot', () => {
         ((object as THREE.Mesh).geometry as THREE.BufferGeometry | undefined)?.type ===
         'PlaneGeometry',
     )
-    expect(grid?.position.y).toBeCloseTo(-1.05 * extent, 6)
+    expect(grid?.position.z).toBeCloseTo(-1.05 * extent, 6)
 
     await renderer.unmount()
   })
@@ -1030,7 +1081,7 @@ describe('SceneRoot', () => {
     // of the camera as it was BEFORE the aim, and it is landed from a
     // `useFrame`, i.e. one frame later. Measured against this scene before the
     // fix: the settled camera came to rest at (19.2135, 11.5281, 23.0562) --
-    // 1.9214 times the `<Canvas>`'s own opening position (10, 6, 12) -- while
+    // 1.9214 times the `<Canvas>`'s opening position then, (10, 6, 12) -- while
     // `up` stayed (0, 0, 1), because `Bounds` never carries an `up` in its goal.
     // That is a plane seen from the default three-quarter direction with the
     // section's own up: an oblique parallelogram instead of a face-on square,
@@ -1284,6 +1335,25 @@ describe('OrbitalCanvas', () => {
     return (scene.props as { asset: SceneAsset | null }).asset
   }
 
+  /** The post chain, found by element type -- robust to other canvas children. */
+  const composerOf = (props: Record<string, unknown>): ReactElement | undefined =>
+    childrenOf(props).find((child) => child.type === EffectComposer)
+
+  /**
+   * The gizmo's `presentationChain`, checked against the composer of the SAME
+   * commit. drei's Hud renders the scene itself only at priority 1 and draws
+   * nothing but its overlay at 2, so the flag must be true exactly when an
+   * EffectComposer is mounted: true without one leaves the canvas blank,
+   * false with one draws the scene twice.
+   */
+  const gizmoChainOf = (props: Record<string, unknown>): boolean => {
+    const gizmo = childrenOf(props).find((child) => child.type === AxisGizmo)
+    expect(gizmo).toBeDefined()
+    const chain = (gizmo?.props as { presentationChain: boolean }).presentationChain
+    expect(composerOf(props) !== undefined).toBe(chain)
+    return chain
+  }
+
   it('asks for the renderer the scene needs, and says so explicitly', async () => {
     useSceneStore.setState({ representation: 'isosurface' })
     answerWith(isosurface())
@@ -1293,7 +1363,7 @@ describe('OrbitalCanvas', () => {
     // Capped at 2: a 3x display costs nine times the fill for no more
     // information, and this scene is fill-bound.
     expect(props.dpr).toEqual([1, 2])
-    expect(props.camera).toMatchObject({ position: [10, 6, 12], fov: 42, near: 0.01, far: 500 })
+    expect(props.camera).toMatchObject({ position: [11, 11, 6.6], up: [0, 0, 1], fov: 42, near: 0.01, far: 500 })
     expect(props.gl).toMatchObject({
       antialias: true,
       alpha: true,
@@ -1302,6 +1372,8 @@ describe('OrbitalCanvas', () => {
       preserveDrawingBuffer: true,
       powerPreference: 'high-performance',
     })
+    // The save button finds the scene canvas by this id, never "the first canvas".
+    expect(props.id).toBe(SCENE_CANVAS_ID)
 
     await unmount()
   })
@@ -1333,14 +1405,81 @@ describe('OrbitalCanvas', () => {
     answerWith(superpositionCurrent())
     const { props, unmount } = await mountShell()
 
-    const children = childrenOf(props)
-    expect(children).toHaveLength(2)
-    const composer = children[1]
-    expect((composer.props as { ref?: unknown }).ref).toEqual(expect.any(Function))
-    const effects = (composer.props as { children: ReactElement[] }).children
+    const composer = composerOf(props)
+    expect(composer).toBeDefined()
+    expect((composer?.props as { ref?: unknown }).ref).toEqual(expect.any(Function))
+    const effects = Children.toArray(
+      (composer?.props as { children: ReactNode }).children,
+    ) as ReactElement[]
+    // Bloom and nothing else: the Vignette darkened data pixels that the
+    // legend claims are exact (spec §5).
+    expect(effects).toHaveLength(1)
+    expect(effects[0].type).toBe(Bloom)
     expect((effects[0].props as { intensity: number }).intensity).toBe(0.42)
 
     await unmount()
+  })
+
+  it('mounts no post chain at all while Bloom is 0, even for a slice', async () => {
+    useSceneStore.setState({ mode: 'eigenstate', representation: 'slice', bloom: 0 })
+    answerWith(sliceBody('xz', false))
+    const { props, unmount } = await mountShell()
+
+    expect(assetOf(props)?.kind).toBe('slice')
+    expect(composerOf(props)).toBeUndefined()
+
+    await unmount()
+  })
+
+  it.each([
+    ['superposition_streamlines', 0.42, true],
+    ['superposition_streamlines', 0, false],
+    // Bloom is on, but the arrived frame keeps its phase palette out of the
+    // post chain: no composer, so the Hud must render the scene itself. A flag
+    // wired to Bloom alone would hand it priority 2 and leave the canvas blank.
+    ['isosurface', 0.42, false],
+    ['superposition_isosurface', 0.42, false],
+  ] as const)(
+    'draws the axis triad inside the one scene canvas (%s, bloom %s -> post chain %s)',
+    async (kind, bloom, chain) => {
+      if (kind === 'isosurface') {
+        useSceneStore.setState({ mode: 'eigenstate', representation: 'isosurface', bloom })
+        answerWith(isosurface())
+      } else {
+        useSceneStore.setState({
+          mode: 'superposition',
+          bloom,
+          representation: kind === 'superposition_isosurface' ? 'isosurface' : 'streamlines',
+          superpositionStreamlineSeedCountMax: 40,
+        })
+        answerWith(
+          kind === 'superposition_isosurface' ? superpositionIsosurface() : superpositionCurrent(),
+        )
+      }
+      const { props, unmount } = await mountShell()
+
+      // The arrived frame decides, so check each row really reached it.
+      expect(assetOf(props)?.kind).toBe(kind)
+      expect(gizmoChainOf(props)).toBe(chain)
+
+      await unmount()
+    },
+  )
+
+  it.each([
+    [0, 'slice', false],
+    [0.3, 'slice', true],
+    [0.3, 'point_cloud', false],
+    [0.3, 'streamlines', true],
+  ] as const)('bloom %s over %s -> post chain %s', (bloom, kind, expected) => {
+    const asset: SceneAsset =
+      kind === 'slice'
+        ? { kind: 'slice', data: slice() }
+        : kind === 'point_cloud'
+          ? { kind: 'point_cloud', data: pointCloud() }
+          : { kind: 'streamlines', data: currentField() }
+    expect(presentationChainActive(asset, bloom)).toBe(expected)
+    expect(presentationChainActive(null, bloom)).toBe(false)
   })
 
   it.each([
@@ -1361,6 +1500,7 @@ describe('OrbitalCanvas', () => {
     useSceneStore.setState({
       mode: 'superposition',
       representation: 'streamlines',
+      bloom: 0.3,
       superpositionStreamlineSeedCountMax: 40,
     })
     requestedUrls = []
@@ -1377,7 +1517,7 @@ describe('OrbitalCanvas', () => {
 
     const { props: firstFrame, unmount } = await mountShell()
     expect(assetOf(firstFrame)?.kind).toBe('superposition_streamlines')
-    expect(childrenOf(firstFrame)).toHaveLength(2)
+    expect(composerOf(firstFrame)).toBeDefined()
 
     const transitionStart = canvasProps.history.length
     await reactAct(async () => {
@@ -1393,9 +1533,9 @@ describe('OrbitalCanvas', () => {
       (props) => assetOf(props)?.kind === 'superposition_streamlines',
     )
     expect(oldFrameCommit).toBeDefined()
-    expect(childrenOf(oldFrameCommit as Record<string, unknown>)).toHaveLength(2)
+    expect(composerOf(oldFrameCommit as Record<string, unknown>)).toBeDefined()
     expect(assetOf(canvasProps.current as Record<string, unknown>)).toBeNull()
-    expect(childrenOf(canvasProps.current as Record<string, unknown>)).toHaveLength(1)
+    expect(composerOf(canvasProps.current as Record<string, unknown>)).toBeUndefined()
     expect(resolveIsosurface).toBeDefined()
 
     await reactAct(async () => {
@@ -1405,7 +1545,19 @@ describe('OrbitalCanvas', () => {
 
     const scientificFrame = canvasProps.current as Record<string, unknown>
     expect(assetOf(scientificFrame)?.kind).toBe('superposition_isosurface')
-    expect(childrenOf(scientificFrame)).toHaveLength(1)
+    expect(composerOf(scientificFrame)).toBeUndefined()
+
+    // The gizmo follows the same arrived frame in every commit (each call
+    // checks its flag against that commit's composer): the old streamlines
+    // frame after the store already asks for an isosurface (chain on), the
+    // empty viewport while the response is pending (off, Bloom 0.3
+    // notwithstanding), and the isosurface once it lands (off).
+    canvasProps.history.forEach((props) => gizmoChainOf(props))
+    expect(gizmoChainOf(oldFrameCommit as Record<string, unknown>)).toBe(true)
+    expect(gizmoChainOf(scientificFrame)).toBe(false)
+    expect(
+      canvasProps.history.some((props) => assetOf(props) === null && !gizmoChainOf(props)),
+    ).toBe(true)
 
     await unmount()
   })

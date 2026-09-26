@@ -283,6 +283,21 @@ def test_capability_summaries_do_not_regress_to_pre_slice_status() -> None:
         assert "平面切片" in summary
 
 
+def test_home_page_leads_into_the_textbook_and_keeps_the_browser_smoke_targets() -> None:
+    home = (ROOT / "docs/index.md").read_text(encoding="utf-8")
+
+    assert '<span class="quviz-pill">教学预览</span>' in home
+    assert "[开始学习](textbook/index.md){ .md-button .md-button--primary }" in home
+    assert '<a class="md-button" data-quviz-lab="" hidden>打开实验室</a>' in home
+    assert home.index("[教材](textbook/index.md)") < home.index("[Phase 0 交互工作流]")
+    # The MkDocs half of web/fullstack-e2e/app.spec.ts (from `page.goto(DOCS_ORIGIN)`)
+    # typesets display math on the home page, follows an article link to the
+    # model map and clicks a citation.
+    assert "$$" in home
+    assert "(concepts/model-map.md)" in home
+    assert "[@" in home
+
+
 def test_live_installation_instructions_consume_committed_lockfiles() -> None:
     installation = (ROOT / "docs/getting-started/installation.md").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -333,6 +348,45 @@ def test_api_reference_does_not_call_the_high_n_slice_floor_a_validity_proof() -
     assert "上限 1,500,000 term-pixel evaluations" in api
 
 
+def test_status_names_the_checkpoint_the_roadmap_names_and_records_open_follow_ups() -> None:
+    """The status page is the project's source of truth: it must not open by
+    calling Phase 0 the current pause point while the roadmap says the textbook
+    checkpoint is current, and the final review's open items stay recorded."""
+
+    status = (ROOT / "docs/project/status.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/project/roadmap.md").read_text(encoding="utf-8")
+
+    assert "当前 checkpoint：教材站（2026-09-25）" in roadmap  # noqa: RUF001
+    assert "当前开发暂停点已定义为 **Phase 0 checkpoint**" not in status
+    assert "当前 checkpoint 是教材站 checkpoint（2026-09-25）" in status  # noqa: RUF001
+    assert "三个 Playwright 入口" in status
+    assert "`assert-pages-run`" in status
+    remaining = status.split("## 剩余限制", 1)[1].split("\n### ", 1)[0]
+    # PY-2: fused lobes in precomputed default isosurfaces; a builder limit.
+    assert "53 个叠加态等密度面预计算帧中有 8 个" in remaining
+    assert "带符号" in remaining
+    assert "53 个叠加态等密度面预计算帧中有 8 个" in roadmap
+    # BD-1 and the preview server's case-insensitive paths stay open follow-ups.
+    assert "输入指纹" in remaining
+    assert "大小写" in remaining
+
+
+def test_contributing_asks_for_the_smallest_sufficient_static_site_checks() -> None:
+    """A textbook typo does not need a full data re-render or the Docker pixel
+    gate; a change to what the precomputed data answers does need the full build."""
+
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    before_commit = contributing.split("## 提交前", 1)[1].split("\n## ", 1)[0]
+
+    assert "改动前端、教材或构建脚本时，提交前还要在本地运行以下命令" not in before_commit  # noqa: RUF001
+    for trigger in ("导出器", "目录规格", "请求枚举器", "请求构造", "场景构建与路由"):
+        assert trigger in before_commit, trigger
+    assert "npm --prefix web run test:pages" in before_commit
+    assert "--skip-data" in before_commit
+    assert "pwsh scripts/visual-docker.ps1" in before_commit
+    assert "画进画布" in before_commit
+
+
 def test_visual_fixture_docs_do_not_call_the_derived_catalog_a_literal_table() -> None:
     """The superposition period is deterministic, but it is still arithmetic."""
 
@@ -367,6 +421,66 @@ def test_probability_flow_docs_cover_scale_covariance_and_discovery() -> None:
     assert "`aria-disabled`" in frontend
     assert "`aria-describedby`" in frontend
     assert "`slice_resolution_floor`" in frontend
+
+
+def test_isosurface_docs_describe_the_shaded_material() -> None:
+    # D23 replaced the unlit isosurface material with a ShaderMaterial carrying
+    # its own neutral headlight; the current-state tutorials must not still call
+    # it unlit or promise that the colour ignores the normal.
+    frontend = (ROOT / "docs/tutorials/frontend-rendering.md").read_text(encoding="utf-8")
+    real_vs_complex = (ROOT / "docs/tutorials/real-vs-complex.md").read_text(encoding="utf-8")
+
+    for page in (frontend, real_vs_complex):
+        assert "未照明材质" not in page
+        assert "色相就是相位" in page
+        assert "中性白光" in page
+    assert "不随法线" not in frontend
+
+
+def test_ui_docs_follow_the_redesigned_lab_and_the_static_textbook() -> None:
+    frontend = (ROOT / "docs/tutorials/frontend-rendering.md").read_text(encoding="utf-8")
+    first_orbital = (ROOT / "docs/getting-started/first-orbital.md").read_text(encoding="utf-8")
+    walkthrough = (ROOT / "docs/tutorials/phase-0-walkthrough.md").read_text(encoding="utf-8")
+    development = (ROOT / "docs/getting-started/development.md").read_text(encoding="utf-8")
+    installation = (ROOT / "docs/getting-started/installation.md").read_text(encoding="utf-8")
+
+    # The old "no glassmorphism" paragraph would contradict the redesigned lab.
+    assert "不再使用蓝紫玻璃拟态" not in frontend
+    assert "`data-chrome`" in frontend
+    assert "$z$ 轴朝上" in frontend
+    for page in (first_orbital, walkthrough):
+        assert "态制备" not in page
+    assert "**量子态**" in first_orbital
+    assert "检查器" not in walkthrough
+    assert "未预计算" in walkthrough
+    assert "(../adr/0005-static-hosting.md)" in walkthrough
+    # mkdocs serve on 8000 would collide with the lab that textbook figures embed.
+    assert "uv run --locked --no-sync mkdocs serve -a 127.0.0.1:8001" in development
+    assert "extra.quviz.lab_url" in installation
+    # Embed mode (#embed=1) is a redesigned-lab feature: a stale `web/dist` built
+    # before the redesign, or a missing one, will not serve it. Point at the
+    # section that builds a current one, not at "启动开发模式" (--reload, no build).
+    assert "按上一节运行 `quviz serve`" not in installation
+    assert (
+        "按“单服务源码预览”一节依次运行 `npm --prefix web run build` 与 `quviz serve`"
+        in installation
+    )
+    # Part D's shipped labels (its copy deck): the right-hand panel and its
+    # opener read 科学详情, and the point-size knob reads 点尺寸.
+    assert "科学详情" in first_orbital
+    assert "科学详情" in walkthrough
+    assert "点大小" not in first_orbital
+    # No page that tours the lab keeps the spec's working name 详情面板.
+    textbook = sorted((ROOT / "docs/textbook").glob("*.md"))
+    for page in (frontend, first_orbital, walkthrough, *(p.read_text("utf-8") for p in textbook)):
+        assert "详情面板" not in page
+    # The status chip reports asset readiness, not the state; the state's
+    # label is the detail panel's title.
+    assert "顶部状态应显示" not in walkthrough
+    # The static catalogue uses the UI default resolution 65, raised to a
+    # state's legal floor where that is higher -- not every state's floor.
+    assert "各态最低合法分辨率" not in walkthrough
+    assert "网格分辨率取界面默认的 65" in walkthrough
 
 
 # --- red/green cases for the gate itself --------------------------------------

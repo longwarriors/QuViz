@@ -69,13 +69,14 @@ function mix(from: Rgb, to: Rgb, s: number): Rgb {
 /**
  * How far down from full brightness the neutral sits.
  *
- * The scene renders on `#050a13` (OrbitalCanvas's FOG_COLOR), far darker than
- * the reference palette's dark surface, and a sequential map's near-zero end is
- * allowed to recede toward the surface. 0.35 lands the neutral on `#383838`,
- * within a channel step of the reference palette's documented dark diverging
- * midpoint (`#383835`) and about 1.7:1 against this scene's background: enough
- * for the slice plane to read as a surface, not enough for the baseline of a
- * signed slice to compete with the poles.
+ * The scene renders on `#0e0f11` (`SCENE_BACKGROUND`, scene/fog.ts), far darker
+ * than the reference palette's dark surface, and a sequential map's near-zero
+ * end is allowed to recede toward the surface. 0.35 lands the neutral on
+ * `#383838`, within a channel step of the reference palette's documented dark
+ * diverging midpoint (`#383835`) and about 1.6:1 against this scene's
+ * background (1.635, sliceColor.test.ts): enough for the slice plane to read
+ * as a surface, not enough for the baseline of a signed slice to compete with
+ * the poles.
  */
 const NEUTRAL_DEPTH = 0.35
 
@@ -124,8 +125,8 @@ const SEQUENTIAL_TINT = 0.55
  * The bright end: that same blue, tinted toward white.
  *
  * The tint is what gives the ramp its dynamic range on a near-black scene --
- * the fully saturated step alone tops out at 3.3:1 against the background, the
- * tinted one at 9.5:1, so a density peak reads at a glance. Tinting
+ * the fully saturated step alone tops out at 3.2:1 against the background, the
+ * tinted one at 9.2:1, so a density peak reads at a glance. Tinting
  * moves lightness and chroma only; the hue is unchanged, because red and green
  * are shifted by the same expression and stay equal.
  */

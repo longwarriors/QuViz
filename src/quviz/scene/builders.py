@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
 from math import pi
 from typing import Literal
 
@@ -31,6 +32,7 @@ from quviz.physics.hydrogenic import (
     hydrogenic_energy_hartree,
     hydrogenic_wavefunction,
     orbital_label,
+    radial_node_radii,
     radial_wavefunction,
     validate_quantum_numbers,
 )
@@ -49,6 +51,7 @@ from quviz.scene.models import (
     IsosurfacePayload,
     OrbitalMetadata,
     QuantumStateSpec,
+    RadialProfile,
     SliceDetail,
     SuperpositionCurrentPayload,
     SuperpositionIsosurfacePayload,
@@ -221,6 +224,7 @@ def orbital_metadata(
     basis_kind = BasisKind(basis)
     validate_quantum_numbers(n, l, m)
     _validate_slice_detail(representation, slice_detail)
+    state = QuantumStateSpec(n=n, l=l, m=m, z=z, a_mu=a_mu, basis=basis_kind)
     # One branch per representation. A default that silently reuses another
     # asset's wording makes the Scene Contract describe a picture that is not
     # on screen, which is worse than having no description at all.
@@ -249,8 +253,17 @@ def orbital_metadata(
             color_semantics = "wavefunction sign encoded as phase 0 or pi"
         else:
             color_semantics = "principal wavefunction phase in [-pi, pi]"
+    # Every eigenstate asset carries its own P(r), so a detail panel never has
+    # to fetch a second payload to chart the state it is already showing.
+    profile = radial_profile(n, l, z=state.z, a_mu=state.a_mu)
+    notes = list(warnings or [])
+    if profile is None:
+        notes.append(
+            f"radial_profile omitted: the a_mu/Z length scale {state.a_mu / state.z:.6g} bohr "
+            "cannot carry P(r) in float64 without overflow or underflow"
+        )
     return OrbitalMetadata(
-        state=QuantumStateSpec(n=n, l=l, m=m, z=z, a_mu=a_mu, basis=basis_kind),
+        state=state,
         label=orbital_label(n, l, m, basis=basis_kind),
         energy_hartree=hydrogenic_energy_hartree(n, z=z, reduced_mass_ratio=1.0 / a_mu),
         observable=observable,
@@ -265,7 +278,8 @@ def orbital_metadata(
             "scipy-sph-harm-y",
             "solara-hydrogen-derivation",
         ],
-        warnings=warnings or [],
+        warnings=notes,
+        radial_profile=profile,
     )
 
 
@@ -294,6 +308,153 @@ def radial_extent_for_mass(
         r_max *= 1.7
     raise ScientificComputationError(
         f"radial extent search captured only {captured:.8f}; increase expansion budget"
+    )
+
+
+#: Samples in every published radial profile: about 6 kB of JSON, and enough to
+#: resolve the innermost lobe of every n <= 12 state on the quadratic grid.
+RADIAL_PROFILE_POINTS = 256
+_RADIAL_PROFILE_MASS = 0.999
+_RADIAL_PROFILE_REFINEMENT_POINTS = 2_049
+_RADIAL_PROFILE_SIGNIFICANT_DIGITS = 9
+_RADIAL_PROFILE_SCALE_TOLERANCE = 1e-6
+_RADIAL_PROFILE_MINIMUM_LEVELS = 5
+_RADIAL_PROFILE_LEVELS_ABOVE_STATE = 2
+
+
+@dataclass(frozen=True, slots=True)
+class _DimensionlessRadialProfile:
+    radius: tuple[float, ...]
+    density: tuple[float, ...]
+    nodes: tuple[float, ...]
+    most_probable: float
+    integral: float
+
+
+def _radial_probability(n: int, l: int, radius: np.ndarray) -> np.ndarray:
+    radial = radial_wavefunction(n, l, radius)
+    return np.asarray(radius * radius * radial * radial, dtype=np.float64)
+
+
+@lru_cache(maxsize=256)
+def _dimensionless_radial_profile(n: int, l: int) -> _DimensionlessRadialProfile:
+    """``P(r)`` at ``Z = a_mu = 1`` on ``r = r_max s^2``, ``s`` uniform in ``[0, 1]``.
+
+    Quadratic spacing puts the finest samples at the nucleus, where excited s
+    states keep their narrow inner lobes. Radii are rounded to six decimals
+    before ``P`` is evaluated on them, so every published pair is consistent
+    and platform last-digit noise in ``r_max`` cannot reach the payload. The
+    maximum is refined on a 2049-point sub-grid around the coarse argmax, then
+    by the vertex of the parabola through its three best samples.
+    """
+
+    r_max = radial_extent_for_mass(n, l, 1.0, target_mass=_RADIAL_PROFILE_MASS)
+    fraction = np.linspace(0.0, 1.0, RADIAL_PROFILE_POINTS, dtype=np.float64)
+    radius = np.round(r_max * fraction * fraction, _PAYLOAD_DIMENSIONLESS_DECIMALS)
+    density = _radial_probability(n, l, radius)
+    peak = int(np.argmax(density))
+    lower = float(radius[max(peak - 1, 0)])
+    upper = float(radius[min(peak + 1, RADIAL_PROFILE_POINTS - 1)])
+    fine = np.linspace(lower, upper, _RADIAL_PROFILE_REFINEMENT_POINTS, dtype=np.float64)
+    fine_density = _radial_probability(n, l, fine)
+    index = min(max(int(np.argmax(fine_density)), 1), _RADIAL_PROFILE_REFINEMENT_POINTS - 2)
+    left = float(fine_density[index - 1])
+    centre = float(fine_density[index])
+    right = float(fine_density[index + 1])
+    curvature = left - 2.0 * centre + right
+    step = float(fine[1] - fine[0])
+    offset = 0.0 if curvature == 0.0 else 0.5 * step * (left - right) / curvature
+    return _DimensionlessRadialProfile(
+        radius=tuple(float(value) for value in radius),
+        density=tuple(float(value) for value in density),
+        nodes=tuple(float(value) for value in radial_node_radii(n, l)),
+        most_probable=float(fine[index]) + offset,
+        integral=float(np.trapezoid(density, radius)),
+    )
+
+
+def radial_profile(n: int, l: int, *, z: float, a_mu: float = 1.0) -> RadialProfile | None:
+    """Return the radial distribution ``P(r) = r^2 |R_nl(r)|^2`` of one hydrogenic state.
+
+    The profile is computed once per ``(n, l)`` at ``Z = a_mu = 1`` and rescaled
+    exactly: lengths by ``a_mu / Z`` and ``P`` by its reciprocal, so no charge
+    or reduced mass can push the Laguerre evaluation onto its overflow path.
+    ``<r>`` is the analytic ``(a_mu / 2Z)[3n^2 - l(l + 1)]``; the energy ladder
+    uses the same reduced-mass convention as :func:`orbital_metadata`.
+
+    ``radial_density`` and ``most_probable_r_bohr`` are both published at 9
+    significant digits. Both are derived from evaluating ``R_nl`` on a fine
+    grid (``most_probable_r_bohr`` through the parabola fit below), a
+    transcendental chain whose last bit is not guaranteed to agree across libm
+    implementations; rounding both is what keeps a byte-compared golden
+    fixture (``tests/fixtures/slice_golden.json``) stable when it is rebuilt
+    on another platform -- rounding density alone is not enough, because
+    every eigenstate's metadata, including its ``most_probable_r_bohr``,
+    reaches that same fixture. ``r_bohr`` needs no separate rounding here: it
+    is already rounded to six decimals in :func:`_dimensionless_radial_profile`
+    before this function multiplies it by ``scale``. ``expectation_r_bohr``
+    needs none either -- it never evaluates ``R_nl``, only the closed form
+    above. ``nodes_bohr`` is intentionally left at full precision, a project
+    decision rather than a claim that its ``roots_genlaguerre`` lineage is
+    libm-independent.
+
+    ``None`` means the rescaled numbers themselves leave float64 (for example
+    ``Z = 1e-310``): the caller must say so rather than publish a profile whose
+    density underflowed or whose radii overflowed.
+    """
+
+    validate_quantum_numbers(n, l, 0)
+    if z <= 0.0 or not np.isfinite(z):
+        raise ValueError("z must be positive and finite")
+    if a_mu <= 0.0 or not np.isfinite(a_mu):
+        raise ValueError("a_mu must be positive and finite")
+    base = _dimensionless_radial_profile(n, l)
+    scale = a_mu / z
+    reduced_mass_ratio = 1.0 / a_mu
+    with np.errstate(over="ignore", under="ignore", invalid="ignore", divide="ignore"):
+        radius = np.asarray(base.radius, dtype=np.float64) * scale
+        density = np.asarray(base.density, dtype=np.float64) / scale
+        nodes = np.asarray(base.nodes, dtype=np.float64) * scale
+    expectation = scale * 0.5 * (3 * n * n - l * (l + 1))
+    most_probable = scale * base.most_probable
+    if not (
+        bool(np.all(np.isfinite(radius)))
+        and bool(np.all(np.diff(radius) > 0.0))
+        and bool(np.all(np.isfinite(density)))
+        and bool(np.all(np.isfinite(nodes)))
+        and all(np.isfinite(value) and value > 0.0 for value in (expectation, most_probable))
+        # The deepest level is E_1 = -mu Z^2 / 2. A finite mu Z^2 needs a finite
+        # mu = 1 / a_mu and keeps E_1, and so every higher level, finite.
+        and bool(np.isfinite(reduced_mass_ratio * z * z))
+    ):
+        return None
+    published_density = [
+        float(format(float(value), f".{_RADIAL_PROFILE_SIGNIFICANT_DIGITS}g")) for value in density
+    ]
+    # Same rounding as radial_density, and for the same reason: the parabola
+    # fit in _dimensionless_radial_profile evaluates R_nl, so an unrounded
+    # value here could differ from another libm in its last bit and break
+    # byte identity with tests/fixtures/slice_golden.json.
+    published_most_probable = float(
+        format(most_probable, f".{_RADIAL_PROFILE_SIGNIFICANT_DIGITS}g")
+    )
+    # Values close to the float64 maximum can overflow the running sum. The
+    # tolerance check below then fails and yields the documented None.
+    with np.errstate(over="ignore", invalid="ignore"):
+        integral = float(np.trapezoid(published_density, radius))
+    if not abs(integral - base.integral) <= _RADIAL_PROFILE_SCALE_TOLERANCE * base.integral:
+        return None
+    level_count = max(n + _RADIAL_PROFILE_LEVELS_ABOVE_STATE, _RADIAL_PROFILE_MINIMUM_LEVELS)
+    return RadialProfile(
+        r_bohr=radius.tolist(),
+        radial_density=published_density,
+        nodes_bohr=nodes.tolist(),
+        expectation_r_bohr=expectation,
+        most_probable_r_bohr=published_most_probable,
+        energy_levels_hartree=[
+            hydrogenic_energy_hartree(k, z=z, reduced_mass_ratio=reduced_mass_ratio)
+            for k in range(1, level_count + 1)
+        ],
     )
 
 

@@ -73,4 +73,4 @@ Gelessus 特征标表可作为未来数据输入，但不能人工复制后直�
 
 ## 5. Claude 审计 artifact
 
-Claude Fable 的审计指出科学内核相对成熟、等值面与前端存在阻断缺陷、完整工程门禁失败，并给出了测试、lint、类型与构建基线。QuViz 将这些结论拆进[当前状态](../project/status.md)，同时重新运行文档、引用和全量 Python 测试。它的角色是 issue inventory；具体缺陷仍要以代码、可重复命令和视觉/数值测试确认 [@claude-fable-audit]。
+Claude Fable 的审计指出科学内核相对成熟、等值面与前端存在阻断缺陷、完整工程门禁失败，并给出了测试、lint、类型与构建基线。QuViz 将这些结论拆进[当前状态](../project/status.md)，同时重新运行文档、引用和全量 Python 测试。它的角色是 issue inventory；具体缺陷仍要以代码、可重复命令和视觉/数值测试确认（私有链接，公开读者无法打开）[@claude-fable-audit]。

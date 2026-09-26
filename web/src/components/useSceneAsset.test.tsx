@@ -19,7 +19,8 @@ import { resolve } from 'node:path'
 import { act, createElement, useEffect, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { planSceneRequest } from '../api/capability'
+import { planSceneRequest, setStaticCatalog } from '../api/capability'
+import { NOT_PRECOMPUTED_DETAIL, parseStaticSpec } from '../api/staticCatalog'
 import type {
   CurrentFieldPayload,
   IsosurfacePayload,
@@ -38,6 +39,11 @@ import {
   type SceneAsset,
   type SceneAssetInputs,
 } from './useSceneAsset'
+import { requestsForPlan } from '../api/requests'
+import { requestKey } from '../api/transport'
+
+/** A valid catalogue period for the playback host: 66 frames of 0.6 a.u. */
+const PLAYBACK_PERIOD_AU = 39.6
 
 /* ------------------------------------------------------------------ fetch */
 
@@ -316,7 +322,7 @@ function PlaybackHost({
   const [timeAu, setTimeAu] = useState(0)
   useEffect(() => {
     const id = setInterval(() => {
-      setTimeAu((previous) => nextTimeAu(previous))
+      setTimeAu((previous) => nextTimeAu(previous, PLAYBACK_PERIOD_AU))
     }, tickMs)
     return () => {
       clearInterval(id)
@@ -466,7 +472,30 @@ describe('useSceneAsset', () => {
     expect(status.loading).toBe(false)
     expect(status.unavailable?.kind).toBe('point_cloud')
     expect(status.unavailable?.reason).toContain('尚未实现')
+    expect(status.unavailable?.refusal).toBe('not_implemented')
     await tree.unmount()
+  })
+
+  it('refuses a scene the static catalogue does not hold, without a request, and says so', async () => {
+    const spec = parseStaticSpec(
+      JSON.parse(readFileSync(resolve(process.cwd(), 'tools', 'fixtures', 'spec.json'), 'utf-8')),
+    )
+    setStaticCatalog({ format: 'quviz-static/1', version: '0000000000000000', spec, entries: {} })
+    try {
+      const inputs: SceneAssetInputs = { ...baseInputs, representation: 'point_cloud' }
+      const { capture, statuses, element } = host(inputs)
+      const tree = await mount(element(inputs))
+
+      expect(calls).toHaveLength(0)
+      expect(capture.current?.asset).toBeNull()
+      expect(latest(statuses).unavailable).toMatchObject({ kind: 'point_cloud', refusal: 'not_precomputed' })
+      // End to end, the status carries the contract sentence verbatim: what the
+      // status chip prints, what chapter 0 quotes, what the pages e2e matches.
+      expect(latest(statuses).unavailable?.reason).toBe(NOT_PRECOMPUTED_DETAIL)
+      await tree.unmount()
+    } finally {
+      setStaticCatalog(null)
+    }
   })
 
   it('keeps the rendered frame and marks the status refreshing while a later time loads', async () => {
@@ -490,6 +519,42 @@ describe('useSceneAsset', () => {
     // status says which time that is rather than the time we asked for.
     expect(status.renderedTimeAu).toBe(0)
     expect(status.densityLevel).toBe(0.002)
+    await tree.unmount()
+  })
+
+  it('keeps describing the frame it keeps on screen when a later time fails', async () => {
+    const { capture, statuses, element } = host(superpositionInputs)
+    const tree = await mount(element(superpositionInputs))
+    await act(async () => {
+      calls[0].settle(jsonOk(superpositionIsosurface(0)))
+    })
+    const rendered = capture.current?.asset
+    await tree.update(element({ ...superpositionInputs, timeAu: 0.6 }))
+    await act(async () => {
+      calls[1].fail(new Error('boom'))
+    })
+
+    // The legend and the inspector read these fields: an error status that
+    // dropped them would describe no picture while the old frame is still up.
+    expect(capture.current?.asset).toBe(rendered)
+    const status = latest(statuses)
+    expect(status.error).toBe('boom')
+    expect(status.loading).toBe(false)
+    expect(status.refreshing).toBeUndefined()
+    expect(status.renderedTimeAu).toBe(0)
+    expect(status.superposition?.representation).toBe('isosurface')
+    expect(status.densityLevel).toBe(0.002)
+    await tree.unmount()
+  })
+
+  it('reports an error with nothing else when no frame was ever drawn', async () => {
+    const { capture, statuses, element } = host(superpositionInputs)
+    const tree = await mount(element(superpositionInputs))
+    await act(async () => {
+      calls[0].fail(new Error('boom'))
+    })
+    expect(capture.current?.asset).toBeNull()
+    expect(latest(statuses)).toEqual({ loading: false, error: 'boom', renderedTimeAu: undefined })
     await tree.unmount()
   })
 
@@ -740,7 +805,7 @@ describe('useSceneAsset', () => {
     let time = 0
     for (let frame = 0; frame < 66; frame += 1) {
       canonical.push(String(time))
-      time = nextTimeAu(time)
+      time = nextTimeAu(time, PLAYBACK_PERIOD_AU)
     }
     expect(new Set(canonical).size).toBe(66)
     expect(time).toBe(0)
@@ -780,6 +845,30 @@ describe('executeSceneRequest', () => {
       if (plan.status !== 'available') throw new Error(`expected a plan for ${inputs.representation}`)
       void executeSceneRequest(plan, inputs, new AbortController().signal).catch(() => undefined)
       expect(calls.some((call) => call.url.startsWith(plan.endpoint))).toBe(true)
+    }
+  })
+
+  it('fetches exactly the requests requestsForPlan enumerates, for every cell', () => {
+    // The static catalogue is built from requestsForPlan; this is what keeps the
+    // catalogue and the requests the app really makes the same list.
+    const cells: SceneAssetInputs[] = [
+      { ...baseInputs, representation: 'point_cloud' },
+      { ...baseInputs, representation: 'isosurface' },
+      { ...baseInputs, representation: 'streamlines' },
+      { ...baseInputs, representation: 'slice', plane: 'yz', sliceObservable: 'phase' },
+      { ...superpositionInputs, representation: 'isosurface' },
+      { ...superpositionInputs, representation: 'streamlines' },
+      { ...superpositionInputs, representation: 'slice', plane: 'xz', sliceObservable: 'wavefunction_imag' },
+    ]
+    for (const inputs of cells) {
+      calls = []
+      const plan = planSceneRequest(inputs)
+      if (plan.status !== 'available') throw new Error(`expected a plan for ${inputs.representation}`)
+      void executeSceneRequest(plan, inputs, new AbortController().signal).catch(() => undefined)
+      expect(
+        calls.map((call) => call.url),
+        `${inputs.mode} x ${inputs.representation}`,
+      ).toEqual(requestsForPlan(plan, inputs).map((request) => requestKey(request.route, request.query)))
     }
   })
 

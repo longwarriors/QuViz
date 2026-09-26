@@ -1,11 +1,26 @@
 import { parsePointCloud } from './qvpc'
 import {
+  currentFieldRequest,
+  isosurfaceRequest,
+  metadataRequest,
+  ORBITAL_CATALOG_REQUEST,
+  pointCloudRequest,
+  sliceRequest,
+  SUPERPOSITION_CATALOG_REQUEST,
+  superpositionCurrentFieldRequest,
+  superpositionIsosurfaceRequest,
+  superpositionSliceRequest,
+  type ApiRequest,
+  type OrbitalRequestState,
+} from './requests'
+import {
   MAXIMUM_SLICE_RESOLUTION,
   MINIMUM_SLICE_RESOLUTION,
   parseSlicePayload,
   SliceContractError,
   type AnySlicePayload,
 } from './sliceContract'
+import { getTransport } from './transport'
 import type {
   BasisKind,
   CurrentFieldPayload,
@@ -18,6 +33,7 @@ import type {
   SliceObservable,
   SlicePayload,
   SuperpositionCurrentPayload,
+  SuperpositionDefaultRepresentation,
   SuperpositionIsosurfacePayload,
   SuperpositionPreset,
   SuperpositionSlicePayload,
@@ -29,10 +45,15 @@ export { parsePointCloud } from './qvpc'
 const MINIMUM_SUPERPOSITION_STREAMLINE_SEEDS = 1
 const MAXIMUM_SUPERPOSITION_STREAMLINE_SEEDS = 40
 
-function queryString(params: object): string {
-  const search = new URLSearchParams()
-  Object.entries(params).forEach(([key, value]) => search.set(key, String(value)))
-  return search.toString()
+/**
+ * Every request leaves through the installed transport (src/api/transport.ts):
+ * the live one issues the same `fetch('/api/...?...', { signal })` the ten
+ * call sites used to, the static one answers from the precomputed catalogue.
+ * The request itself is formed in src/api/requests.ts, which the static overlay
+ * and the build-time enumerator call as well.
+ */
+function send(request: ApiRequest, signal?: AbortSignal): Promise<Response> {
+  return getTransport().request(request.route, request.query, signal)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -107,6 +128,13 @@ function parseOrbitalPreset(value: unknown, index: number): OrbitalPreset {
   return z === undefined ? preset : { ...preset, z }
 }
 
+/** The generated enum of SuperpositionCatalogEntry.default_representation. */
+function isSuperpositionDefaultRepresentation(
+  value: unknown,
+): value is SuperpositionDefaultRepresentation {
+  return value === 'isosurface' || value === 'slice'
+}
+
 function parseSuperpositionPreset(value: unknown, index: number): SuperpositionPreset {
   const location = `superposition catalog[${index}]`
   if (!isRecord(value)) throw new Error(`${location} must be an object`)
@@ -119,6 +147,7 @@ function parseSuperpositionPreset(value: unknown, index: number): SuperpositionP
     note,
     slice_resolution_floor,
     streamline_seed_count_max,
+    default_representation,
   } = value
   if (typeof id !== 'string' || !id.trim()) throw new Error(`${location}.id must be a string`)
   if (typeof label !== 'string' || !label.trim()) {
@@ -154,6 +183,9 @@ function parseSuperpositionPreset(value: unknown, index: number): SuperpositionP
         `${MINIMUM_SUPERPOSITION_STREAMLINE_SEEDS}..${MAXIMUM_SUPERPOSITION_STREAMLINE_SEEDS}`,
     )
   }
+  if (!isSuperpositionDefaultRepresentation(default_representation)) {
+    throw new Error(`${location}.default_representation must be "isosurface" or "slice"`)
+  }
 
   return {
     id,
@@ -163,6 +195,7 @@ function parseSuperpositionPreset(value: unknown, index: number): SuperpositionP
     note,
     slice_resolution_floor,
     streamline_seed_count_max,
+    default_representation,
   }
 }
 
@@ -172,10 +205,9 @@ export async function fetchPointCloud(
   seed: number,
   signal?: AbortSignal,
 ): Promise<PointCloudData> {
-  const query = queryString({ ...params, samples, seed })
   const [response, metadata] = await Promise.all([
-    fetch(`/api/orbitals/point-cloud?${query}`, { signal }),
-    fetchMetadata(params, signal),
+    send(pointCloudRequest(params, samples, seed), signal),
+    fetchOrbitalMetadata(params, signal),
   ])
   if (!response.ok) {
     throw await responseError(response)
@@ -190,8 +222,7 @@ export async function fetchIsosurface(
   probabilityMass: number,
   signal?: AbortSignal,
 ): Promise<IsosurfacePayload> {
-  const query = queryString({ ...params, resolution, probability_mass: probabilityMass })
-  const response = await fetch(`/api/orbitals/isosurface?${query}`, { signal })
+  const response = await send(isosurfaceRequest(params, resolution, probabilityMass), signal)
   if (!response.ok) {
     throw await responseError(response)
   }
@@ -203,45 +234,79 @@ export async function fetchCurrentField(
   seedCount: number,
   signal?: AbortSignal,
 ): Promise<CurrentFieldPayload> {
-  const query = queryString({ ...params, seed_count: seedCount })
-  const response = await fetch(`/api/orbitals/current-field?${query}`, { signal })
+  const response = await send(currentFieldRequest(params, seedCount), signal)
   if (!response.ok) {
     throw await responseError(response)
   }
   return (await response.json()) as CurrentFieldPayload
 }
 
-export async function fetchMetadata(
-  params: OrbitalParameters,
+/** The orbital's diagnostics and, for eigenstates, its radial profile. */
+export async function fetchOrbitalMetadata(
+  orbital: OrbitalRequestState,
   signal?: AbortSignal,
 ): Promise<OrbitalMetadata> {
-  const response = await fetch(`/api/orbitals/metadata?${queryString(params)}`, { signal })
+  const response = await send(metadataRequest(orbital), signal)
   if (!response.ok) {
     throw await responseError(response)
   }
   return (await response.json()) as OrbitalMetadata
 }
 
+/** The name the point-cloud path and the existing specs use; the same function. */
+export const fetchMetadata = fetchOrbitalMetadata
+
+/** Validate an orbital catalogue at the wire boundary. The enumerator reuses it. */
+export function parseOrbitalCatalog(payload: unknown): OrbitalPreset[] {
+  if (!Array.isArray(payload)) throw new Error('orbital catalog must be an array')
+  return payload.map(parseOrbitalPreset)
+}
+
 export async function fetchCatalog(signal?: AbortSignal): Promise<OrbitalPreset[]> {
-  const response = await fetch('/api/orbitals/catalog', { signal })
+  const response = await send(ORBITAL_CATALOG_REQUEST, signal)
   if (!response.ok) {
     throw await responseError(response)
   }
-  const payload: unknown = await response.json()
-  if (!Array.isArray(payload)) throw new Error('orbital catalog must be an array')
-  return payload.map(parseOrbitalPreset)
+  return parseOrbitalCatalog(await response.json())
+}
+
+/** The last superposition catalogue this page parsed successfully, or null before the first. */
+let knownSuperpositionCatalog: readonly SuperpositionPreset[] | null = null
+
+/**
+ * The superposition catalogue already on hand, without a request.
+ *
+ * The URL-state binding needs it to spell a preset id into the hash. Fetching
+ * the catalogue again for that would put a second /api/superposition/catalog
+ * request on every page load, which the visual gate's exact request ledger
+ * (the `served` list `expectProvenance` asserts in web/e2e/slice.spec.ts)
+ * would rightly reject.
+ */
+export function lastSuperpositionCatalog(): readonly SuperpositionPreset[] | null {
+  return knownSuperpositionCatalog
+}
+
+/** Replace the remembered catalogue: the fetcher does after every successful parse; specs reset it. */
+export function rememberSuperpositionCatalog(catalog: readonly SuperpositionPreset[] | null): void {
+  knownSuperpositionCatalog = catalog
+}
+
+/** Validate a superposition catalogue at the wire boundary. The enumerator reuses it. */
+export function parseSuperpositionCatalog(payload: unknown): SuperpositionPreset[] {
+  if (!Array.isArray(payload)) throw new Error('superposition catalog must be an array')
+  return payload.map(parseSuperpositionPreset)
 }
 
 export async function fetchSuperpositionCatalog(
   signal?: AbortSignal,
 ): Promise<SuperpositionPreset[]> {
-  const response = await fetch('/api/superposition/catalog', { signal })
+  const response = await send(SUPERPOSITION_CATALOG_REQUEST, signal)
   if (!response.ok) {
     throw await responseError(response)
   }
-  const payload: unknown = await response.json()
-  if (!Array.isArray(payload)) throw new Error('superposition catalog must be an array')
-  return payload.map(parseSuperpositionPreset)
+  const presets = parseSuperpositionCatalog(await response.json())
+  rememberSuperpositionCatalog(presets)
+  return presets
 }
 
 /**
@@ -263,16 +328,10 @@ export async function fetchSuperpositionIsosurface(
   probabilityMass: number,
   signal?: AbortSignal,
 ): Promise<SuperpositionIsosurfacePayload> {
-  const query = queryString({
-    terms,
-    time,
-    resolution,
-    basis,
-    z,
-    a_mu: aMu,
-    probability_mass: probabilityMass,
-  })
-  const response = await fetch(`/api/superposition/isosurface?${query}`, { signal })
+  const response = await send(
+    superpositionIsosurfaceRequest(terms, basis, z, aMu, time, resolution, probabilityMass),
+    signal,
+  )
   if (!response.ok) {
     throw await responseError(response)
   }
@@ -299,8 +358,10 @@ export async function fetchSuperpositionCurrentField(
   aMu: number,
   signal?: AbortSignal,
 ): Promise<SuperpositionCurrentPayload> {
-  const query = queryString({ terms, time, seed_count: seedCount, basis, z, a_mu: aMu })
-  const response = await fetch(`/api/superposition/current-field?${query}`, { signal })
+  const response = await send(
+    superpositionCurrentFieldRequest(terms, basis, z, aMu, time, seedCount),
+    signal,
+  )
   if (!response.ok) {
     throw await responseError(response)
   }
@@ -377,8 +438,7 @@ export async function fetchSlice(
   observable: SliceObservable,
   signal?: AbortSignal,
 ): Promise<SlicePayload> {
-  const query = queryString({ ...params, resolution, a_mu: aMu, plane, observable })
-  const response = await fetch(`/api/orbitals/slice?${query}`, { signal })
+  const response = await send(sliceRequest(params, resolution, aMu, plane, observable), signal)
   return decodeSlice(response, isEigenstateSlice, 'an eigenstate (a "state" field)')
 }
 
@@ -398,16 +458,9 @@ export async function fetchSuperpositionSlice(
   observable: SliceObservable,
   signal?: AbortSignal,
 ): Promise<SuperpositionSlicePayload> {
-  const query = queryString({
-    terms,
-    time,
-    resolution,
-    basis,
-    z,
-    a_mu: aMu,
-    plane,
-    observable,
-  })
-  const response = await fetch(`/api/superposition/slice?${query}`, { signal })
+  const response = await send(
+    superpositionSliceRequest(terms, basis, z, aMu, time, resolution, plane, observable),
+    signal,
+  )
   return decodeSlice(response, isSuperpositionSlice, 'a superposition (a "terms" field)')
 }

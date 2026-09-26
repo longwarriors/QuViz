@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { phaseToRgb } from './color'
+import { SCENE_BACKGROUND } from './fog'
 import { SLICE_NEUTRAL_RGB, divergingRgb, phaseRgb, sequentialRgb } from './sliceColor'
 
 /**
@@ -109,7 +110,7 @@ describe('divergingRgb', () => {
     expect(centre[0]).toBe(centre[1])
     expect(centre[1]).toBe(centre[2])
     expect(chromaMagnitude(centre)).toBe(0)
-    // Dark: the scene renders on #050a13, and a bright midpoint would make the
+    // Dark: the scene renders on #0e0f11, and a bright midpoint would make the
     // baseline of a signed slice the loudest thing on screen.
     expect(centre[0]).toBeGreaterThan(0)
     expect(centre[0]).toBeLessThan(0.3)
@@ -227,5 +228,29 @@ describe('non-finite input', () => {
       expect(divergingRgb(bad)).toEqual([...SLICE_NEUTRAL_RGB])
       expect(sequentialRgb(bad)).toEqual([...SLICE_NEUTRAL_RGB])
     }
+  })
+})
+
+describe('slice colours against the scene background', () => {
+  const background = [1, 3, 5].map(
+    (offset) => parseInt(SCENE_BACKGROUND.slice(offset, offset + 2), 16) / 255,
+  ) as [number, number, number]
+  const contrast = (colour: readonly [number, number, number]): number => {
+    const [high, low] = [relativeLuminance(colour), relativeLuminance(background)].sort(
+      (x, y) => y - x,
+    )
+    return (high + 0.05) / (low + 0.05)
+  }
+
+  it('keeps the neutral a surface: visible, but quieter than the poles', () => {
+    // 1.635:1 measured on #0e0f11 (1.691 on the retired #050a13).
+    expect(contrast(SLICE_NEUTRAL_RGB)).toBeGreaterThan(1.6)
+    expect(contrast(SLICE_NEUTRAL_RGB)).toBeLessThan(2)
+  })
+
+  it('keeps the density peak readable at a glance', () => {
+    // 9.199:1 measured for the tinted top; the saturated knee alone is 3.212:1.
+    expect(contrast(sequentialRgb(1))).toBeGreaterThan(9)
+    expect(contrast(sequentialRgb(0.5))).toBeGreaterThan(3)
   })
 })

@@ -85,6 +85,9 @@ fail_under = 85
 target-version = "py312"
 line-length = 100
 src = ["src", "tests", "scripts"]
+# Plans and specs under design/ are documents; ruff >= 0.16 would otherwise
+# lint and format the Python snippets inside their Markdown.
+extend-exclude = ["design"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "RUF"]

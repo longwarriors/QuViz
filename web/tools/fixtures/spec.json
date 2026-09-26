@@ -1,0 +1,59 @@
+{
+  "format": "quviz-static-spec/1",
+  "eigenstates": {
+    "n_max": 4,
+    "bases": [
+      "real",
+      "complex"
+    ],
+    "z": 1,
+    "representations": [
+      "point_cloud",
+      "isosurface",
+      "slice",
+      "streamlines"
+    ],
+    "samples": 28000,
+    "seed": 7,
+    "resolution": 65,
+    "probability_mass": 0.9,
+    "seed_count": 48,
+    "planes": [
+      "xy",
+      "xz",
+      "yz"
+    ],
+    "observables": [
+      "probability_density",
+      "wavefunction_real",
+      "wavefunction_imag",
+      "phase"
+    ]
+  },
+  "superpositions": {
+    "presets": [
+      "1s-2pz",
+      "2s-2pz",
+      "1s-3dz2",
+      "2pplus-2pminus"
+    ],
+    "representations": [
+      "isosurface",
+      "slice",
+      "streamlines"
+    ],
+    "resolution": 65,
+    "probability_mass": 0.9,
+    "seed_count": 48,
+    "planes": [
+      "xz"
+    ],
+    "observables": [
+      "probability_density",
+      "wavefunction_real",
+      "wavefunction_imag",
+      "phase"
+    ],
+    "frames": "playback-lattice"
+  }
+}

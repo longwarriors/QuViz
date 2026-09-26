@@ -1,4 +1,5 @@
-import { createElement } from 'react'
+/** @vitest-environment jsdom */
+import { act, createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 
@@ -8,6 +9,7 @@ import type {
   SliceObservable,
   SuperpositionMetadata,
 } from '../api/types'
+import { mount } from '../test/mount'
 import { Legend } from './Legend'
 
 function eigenstateMetadata(representation: string, basis: 'real' | 'complex'): OrbitalMetadata {
@@ -65,7 +67,7 @@ describe('Legend names what is actually on screen', () => {
     expect(markup).not.toContain('<strong>point_cloud</strong>')
     // A phase wheel over an empty viewport names a colour nothing is painted in.
     expect(markup).not.toContain('phase-wheel')
-    expect(markup).not.toContain('等待 asset metadata')
+    expect(markup).not.toContain('等待资产元数据')
   })
 
   it('describes streamline colour as speed, not phase', () => {
@@ -78,6 +80,8 @@ describe('Legend names what is actually on screen', () => {
     expect(markup).toContain('概率流速率 |j|/ρ')
     expect(markup).toContain('0.0421 a.u.')
     expect(markup).not.toContain('phase-wheel')
+    // The ramp is laid out in √(|j|/ρ ÷ max), matching the renderer's sqrt map.
+    expect(markup).toContain('色带横轴为 √(|j|/ρ ÷ max)')
   })
 
   it('says max rather than inventing a number when no speed was reported', () => {
@@ -168,8 +172,56 @@ describe('Legend names what is actually on screen', () => {
     expect(markup).toContain('level set')
   })
 
+  it.each([
+    ['an eigenstate', { loading: false, metadata: eigenstateMetadata('isosurface', 'real') }],
+    ['a complex eigenstate', { loading: false, metadata: eigenstateMetadata('isosurface', 'complex') }],
+    ['a superposition', { loading: false, superposition: superpositionMetadata('isosurface') }],
+  ] as const)('says an isosurface of %s is shaded: hue is phase, lightness only orientation', (_kind, status) => {
+    const markup = render(status)
+    expect(markup).toContain(
+      '几何是 |ψ|² level set；色相承载 phase，明暗只表示曲面朝向（光照），不表示数值。',
+    )
+    // The old sentence let a reader take every shade for a different value.
+    expect(markup).not.toContain('颜色承载 phase。')
+  })
+
+  it('keeps the point-cloud key free of any lighting sentence: its markers are unlit', () => {
+    const markup = render({ loading: false, metadata: eigenstateMetadata('point_cloud', 'complex') })
+    expect(markup).not.toContain('明暗')
+  })
+
   it('waits for metadata rather than naming a representation it has not been told', () => {
-    expect(render({ loading: true })).toContain('等待 asset metadata')
+    const markup = render({ loading: true })
+    expect(markup).toContain('等待资产元数据。')
+    // No asset has described itself yet, so there is no colour to name.
+    expect(markup).not.toContain('phase-wheel')
+    expect(markup).not.toContain('phase-dot')
+    expect(markup).not.toContain('波函数 phase')
+  })
+
+  it('says a failed request left nothing to draw instead of keying colours for no picture', () => {
+    const error = 'the general superposition isosurface topology did not converge'
+    const markup = render({ loading: false, error })
+    expect(markup).toContain('无可绘制资产')
+    expect(markup).toContain(error)
+    expect(markup).not.toContain('phase-wheel')
+    expect(markup).not.toContain('phase-dot')
+    expect(markup).not.toContain('波函数 phase')
+    // Metadata is not on its way: the request that would have carried it failed.
+    expect(markup).not.toContain('等待资产元数据')
+  })
+
+  it('keeps describing a frame that stays on screen after a later request failed', () => {
+    const markup = render({
+      loading: false,
+      error: 'network down',
+      metadata: eigenstateMetadata('streamlines', 'complex'),
+      maxSpeed: 0.5,
+      lineCount: 12,
+    })
+    expect(markup).toContain('概率流速率 |j|/ρ')
+    expect(markup).toContain('speed-ramp')
+    expect(markup).not.toContain('无可绘制资产')
   })
 })
 
@@ -291,5 +343,59 @@ describe('Legend names a slice by the field the plane actually carries', () => {
     expect(unitless).not.toContain('undefined')
     expect(masked).toContain('该平面有 — 被 mask')
     expect(masked).not.toContain('NaN')
+  })
+})
+
+describe('Legend as a pill', () => {
+  it('floats as chrome and starts open unless the shell asks for a compact pill', () => {
+    const open = render({ loading: false, metadata: eigenstateMetadata('point_cloud', 'real') })
+    expect(open).toContain('data-chrome=""')
+    expect(open).toContain('data-expanded="true"')
+
+    const compact = renderToStaticMarkup(
+      createElement(Legend, {
+        status: { loading: false, metadata: eigenstateMetadata('point_cloud', 'real') },
+        defaultExpanded: false,
+      }),
+    )
+    expect(compact).toContain('data-expanded="false"')
+    // Collapsed hides the sentences, never removes them.
+    expect(compact).toMatch(/class="legend-details"[^>]*hidden=""/)
+    expect(compact).toContain('|ψ|²d³r')
+  })
+
+  it('toggles its explanation and says which way', async () => {
+    const tree = await mount(
+      createElement(Legend, { status: { loading: false, metadata: eigenstateMetadata('isosurface', 'complex') } }),
+    )
+    try {
+      const toggle = tree.container.querySelector<HTMLButtonElement>('.legend-toggle')
+      const details = tree.container.querySelector<HTMLElement>('.legend-details')
+      expect(toggle?.getAttribute('aria-expanded')).toBe('true')
+      expect(toggle?.getAttribute('aria-controls')).toBe(details?.id)
+      const scope = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      scope.IS_REACT_ACT_ENVIRONMENT = true
+      try {
+        await act(async () => toggle?.click())
+      } finally {
+        delete scope.IS_REACT_ACT_ENVIRONMENT
+      }
+      expect(toggle?.getAttribute('aria-expanded')).toBe('false')
+      expect(toggle?.getAttribute('aria-label')).toBe('展开图例说明')
+      expect(details?.hidden).toBe(true)
+      // The colour key itself stays visible when the pill is compact.
+      expect(tree.container.querySelector('.phase-wheel')).not.toBeNull()
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('warns that Bloom breaks the byte-exact key, only where Bloom is applied', () => {
+    const slice = { ...sliceStatus('probability_density') }
+    const withBloom = renderToStaticMarkup(createElement(Legend, { status: slice, bloom: 0.3 }))
+    expect(withBloom).toContain('Bloom 已开启：屏幕颜色含光晕，不再与色带逐字一致。')
+    expect(renderToStaticMarkup(createElement(Legend, { status: slice, bloom: 0 }))).not.toContain('Bloom 已开启')
+    const cloud = { loading: false, metadata: eigenstateMetadata('point_cloud', 'complex') }
+    expect(renderToStaticMarkup(createElement(Legend, { status: cloud, bloom: 0.3 }))).not.toContain('Bloom 已开启')
   })
 })

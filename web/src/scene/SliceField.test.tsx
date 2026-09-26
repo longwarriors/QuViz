@@ -326,8 +326,8 @@ describe('SliceField', () => {
     // What settles WHICH side is right is sliceColor.ts's own arithmetic:
     // sliceColor.test.ts feeds its output through the WCAG transfer function --
     // which is defined on sRGB-encoded channels -- and NEUTRAL_DEPTH is chosen
-    // so the neutral lands "on #383838 ... about 1.7:1 against this scene's
-    // background", a contrast ratio that only comes out at 1.69 if #383838 is
+    // so the neutral lands "on #383838 ... about 1.6:1 against this scene's
+    // background", a contrast ratio that only comes out at 1.64 if #383838 is
     // what a viewer actually sees. These are sRGB values by construction, so
     // the texture that carries them has to say so.
     expect(onScreenHex(SLICE_NEUTRAL_RGB, space)).toBe(rampStops('density-ramp')[0])
