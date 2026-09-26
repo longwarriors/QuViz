@@ -348,6 +348,29 @@ def test_api_reference_does_not_call_the_high_n_slice_floor_a_validity_proof() -
     assert "上限 1,500,000 term-pixel evaluations" in api
 
 
+def test_status_names_the_checkpoint_the_roadmap_names_and_records_open_follow_ups() -> None:
+    """The status page is the project's source of truth: it must not open by
+    calling Phase 0 the current pause point while the roadmap says the textbook
+    checkpoint is current, and the final review's open items stay recorded."""
+
+    status = (ROOT / "docs/project/status.md").read_text(encoding="utf-8")
+    roadmap = (ROOT / "docs/project/roadmap.md").read_text(encoding="utf-8")
+
+    assert "当前 checkpoint：教材站（2026-09-25）" in roadmap  # noqa: RUF001
+    assert "当前开发暂停点已定义为 **Phase 0 checkpoint**" not in status
+    assert "当前 checkpoint 是教材站 checkpoint（2026-09-25）" in status  # noqa: RUF001
+    assert "三个 Playwright 入口" in status
+    assert "`assert-pages-run`" in status
+    remaining = status.split("## 剩余限制", 1)[1].split("\n### ", 1)[0]
+    # PY-2: fused lobes in precomputed default isosurfaces; a builder limit.
+    assert "53 个叠加态等密度面预计算帧中有 8 个" in remaining
+    assert "带符号" in remaining
+    assert "53 个叠加态等密度面预计算帧中有 8 个" in roadmap
+    # BD-1 and the preview server's case-insensitive paths stay open follow-ups.
+    assert "输入指纹" in remaining
+    assert "大小写" in remaining
+
+
 def test_visual_fixture_docs_do_not_call_the_derived_catalog_a_literal_table() -> None:
     """The superposition period is deterministic, but it is still arithmetic."""
 

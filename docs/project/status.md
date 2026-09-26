@@ -6,13 +6,14 @@
 
 !!! success "Phase 0 文档 checkpoint 收口（2026-08-30）"
 
-    当前开发暂停点已定义为 **Phase 0 checkpoint**。本轮重新从干净源码路径复现安装和启动，
+    2026-08-30 的开发暂停点定义为 **Phase 0 checkpoint**；当前 checkpoint 是教材站 checkpoint（2026-09-25），
+    建在它之上，见下一节与[开发路线图](roadmap.md)。当时这一轮重新从干净源码路径复现安装和启动，
     把首选入口改为“构建前端后由 FastAPI 单服务托管”，开发模式统一为从仓库根执行的双终端命令；
     Node 的真实依赖范围、uv 默认依赖组、Swagger UI / OpenAPI JSON、源码 checkout 与 wheel 的边界均已写清。
     科学文档纠正了 measurement model 层次、概率流中的 $\hbar$、复波函数等值面维数、Stark
     实验映射适用范围及未实现的 benchmark / 点群门禁。MkDocs 现在对漏页与坏锚点 fail-closed，
     MathJax 和 Mermaid 在 `navigation.instant` 后由真实 Chromium 验证，行内引用可跳到完整的类型化
-    参考文献记录；HTTP 参数页由 live OpenAPI 生成。M2–M6 保持暂停和待开发，不得从本页推断为已交付。
+    参考文献记录；HTTP 参数页由 live OpenAPI 生成。M2–M6 当时保持暂停；现在 M2 是下一步，M2–M6 均未交付，不得从本页推断为已交付。
 
 ## 教材站 checkpoint（2026-09-25）
 
@@ -81,7 +82,7 @@
 | $sp^3$ 系数与四面体方向 | 正交性与方向测试通过 | 尚不是完整点群/SALC 系统，未接入 UI |
 | 1D 网格契约 | 坐标、间距和边界测试通过 | 还没有 TISE/TDSE 求解器 |
 | HTTP API 与 QVPC/1 | API、二进制与 OpenAPI schema 测试通过；QVPC float32 边界、科学数值失败统一 422 与意外编程错误仍为 500 均有负控 | 点云 binary 与 metadata 使用同参数 sidecar 请求；极端正尺度仍受各 representation 的可表示域约束 |
-| React/Three.js 场景 | 生产构建通过；QVPC/1 parser（含 body 逐样本校验）、HTTP client、能力矩阵、zustand store、React/three 组件与测试套件自检的 vitest 单测（数量见教材站 checkpoint 的实测表）带强制覆盖率门槛，运行结果经 `assert-no-skips` 核对为零 skip、经 `assert-coverage-scope` 核对本次运行**解析后**的覆盖率配置、本次运行写出的报告所列的文件集与 `coverage-scope.json` 完全一致、且各模块重算出的覆盖率均达标；`web/e2e/` 在本地锁定 Linux/SwiftShader 容器中实测 8/8，`web/fullstack-e2e/` 另以真实 `quviz serve`、FastAPI `web/dist` 挂载和未拦截 `/api` 走通点云→等值面→切片→3d complex 概率流→叠加态，完整 query、2xx、科学语义与浏览器零错误均受检；两个 Playwright 入口都有 JSON 运行后审计，两个 CI job 均由 `tests/test_check_script.py` 钉住 | 视觉门禁改在按 digest 固定的 Linux 镜像中本地运行（`scripts/visual-docker.ps1`），本地结果即判据，CI job 只作复核；全栈 smoke 只证明源码 checkout 的生产挂载，不证明 wheel 静态资产打包；截图仍只覆盖切片与固定 Linux/Chromium/SwiftShader，不代表真实 GPU、多浏览器或移动视口；主 bundle 尚待拆分（体积见实测表） |
+| React/Three.js 场景 | 生产构建通过；QVPC/1 parser（含 body 逐样本校验）、HTTP client、能力矩阵、zustand store、React/three 组件与测试套件自检的 vitest 单测（数量见教材站 checkpoint 的实测表）带强制覆盖率门槛，运行结果经 `assert-no-skips` 核对为零 skip、经 `assert-coverage-scope` 核对本次运行**解析后**的覆盖率配置、本次运行写出的报告所列的文件集与 `coverage-scope.json` 完全一致、且各模块重算出的覆盖率均达标；`web/e2e/` 在本地锁定 Linux/SwiftShader 容器中实测 8/8，`web/fullstack-e2e/` 另以真实 `quviz serve`、FastAPI `web/dist` 挂载和未拦截 `/api` 走通点云→等值面→切片→3d complex 概率流→叠加态，完整 query、2xx、科学语义与浏览器零错误均受检；三个 Playwright 入口（`web/e2e/`、`web/fullstack-e2e/`、`web/pages-e2e/`）都有 JSON 运行后审计（`assert-visual-run`、`assert-fullstack-run`、`assert-pages-run`），两个 CI job 均由 `tests/test_check_script.py` 钉住 | 视觉门禁改在按 digest 固定的 Linux 镜像中本地运行（`scripts/visual-docker.ps1`），本地结果即判据，CI job 只作复核；全栈 smoke 只证明源码 checkout 的生产挂载，不证明 wheel 静态资产打包；截图仍只覆盖切片与固定 Linux/Chromium/SwiftShader，不代表真实 GPU、多浏览器或移动视口；主 bundle 尚待拆分（体积见实测表） |
 | 静态实验室（GitHub Pages） | 导出器单测（ASGI 回放与 TestClient 逐字节相同、422 照录、文件名哈希、manifest 结构）；前端静态传输、静态目录、能力覆盖层与 URL 状态单测；`npm run test:pages` 的 9 项浏览器测试：零 `/api`、零离站请求、只在仓库子路径下访问 | 只包含 `StaticCatalogSpec` 列出的组合：$n\le4$、$Z=1$，采样数、种子、分辨率、包围概率、种子线数固定，叠加态只有四个预设及其播放帧；任意参数仍需本地 `quviz serve`；预计算数据在构建时生成，不入库 |
 | 教材（`learn/`） | MkDocs strict、全页入 nav 与引用门禁；`test:pages` 验证公式排版，以及嵌入图 iframe 到达 `data-scene-ready` | 章节的物理审校是人工门禁；MathJax 与 Mermaid 仍来自 jsDelivr；本地预览（非 80 端口）中 instant navigation 退化为整页跳转 |
 | 构建与发布 | `tests/test_build_pages.py`、`tests/test_pages_workflow.py`；Node 版本由 `tests/test_declared_versions.py` 对所有 workflow 统一钉住；`scripts/visual-docker.ps1` 由 `tests/test_visual_docker.py` 以桩 `docker` 验证 | Pages 尚未启用；发布 workflow 是发布器而不是门禁；`build` 使用 `pages: read` 调用 `actions/configure-pages`，首次部署时才能实测 |
@@ -185,7 +186,10 @@ P0 解析门禁、概率流 representation、M1 解析叠加态、引用系统�
 2. 拆分 Three.js/后处理 bundle，并测量帧时、显存与大资产传输；
 3. 将等值面验证扩展到更高 $n$ 前，先设计随节点数增长的收敛策略；
 4. 原计划在进入解析含时叠加前先实现切片和节点面 representation，实际顺序没有遵守：概率流先交付，M1 叠加态先于切片完成，$\psi$/相位切片与相位遮罩到 PR-8B 才落地；真正的**节面 representation**（节点几何本身）仍未实现——切片报告的是低振幅 / 相位未定义遮罩，不是节面；
-5. 清理 FastAPI/TestClient 与 scikit-image 上游弃用警告。
+5. 清理 FastAPI/TestClient 与 scikit-image 上游弃用警告；
+6. 叠加态预设 $1s+2p_z$ 与 $1s+3d_{z^2}$ 的默认视图是等密度面，教材站只在网格 65 上预计算。终审（2026-09-26）实测：教材站的 53 个叠加态等密度面预计算帧中有 8 个拓扑是错的，全部来自这两个预设（它们分别有 28 帧和 24 帧），其中包括两者 $t=0$ 的首帧（$1s+2p_z$ 为 $t=0$、8.4、16.2；$1s+3d_{z^2}$ 为 $t=0$、0.6、7.0、7.6、13.6）。$1s+2p_z$ 的两瓣被连成一团；$1s+3d_{z^2}$ 在 $t=0$ 本应是一个球加一个环，却画成了一个亏格 28 的曲面。原因在构建器：不含激发 s 分量的多项态没有拓扑门禁，$|\Psi|^2$ 上的 marching cubes 会跨过窄于网格间距的间隙（与 $2s+2p_z$ 被拒是同一机制），payload 只带求积警告，没有拓扑警告，第 6 章也只有一句泛化的提醒。补救方向：对至多差一个整体相位的实值态改用带符号的 $\Psi$ 取等值面（它在网格 65 上已给出正确的分量结构），或改用更细的网格。这是构建器的后续项，见[开发路线图](roadmap.md)；
+7. `build_pages.py --skip-data`（因而 `npm run test:pages`）接受任何一次早先构建留下的 `build/pages/data`，只检查 `manifest.json` 存在、格式与版本合法；manifest 与构建记录都不记录数据由哪些输入渲染。改了导出器、目录规格、请求枚举器或前端请求构造却只跑 `--skip-data`，浏览器门禁会在旧数据上变绿。后续：完整构建把输入指纹写入 `build/pages-build.json`，`--skip-data` 发现指纹不符即拒绝。在此之前，改这几处时须先做一次完整构建；
+8. 预览服务器在 Windows 上对子路径之后的各段不区分大小写（NTFS 本身不区分），也接受 `index.html.`、`index.html/` 这类写法，而 GitHub Pages 对它们返回 404；`/` 跳转到子路径也不是 Pages 的行为。所以大小写写错的链接可能在 `test:pages` 中通过、部署后 404。后续：让预览逐段按大小写精确匹配，并拒绝尾随的点、空格与指向文件的尾斜杠。
 
 ### PR-7 科学正确性：八项 P1 已实现
 
