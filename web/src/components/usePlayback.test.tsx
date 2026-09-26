@@ -14,6 +14,7 @@ import {
   prefetchRequests,
   useFramePrefetch,
   usePlaybackModel,
+  type PlaybackModel,
 } from './usePlayback'
 
 const runtime = vi.hoisted(() => ({ current: 'live' as 'live' | 'static' }))
@@ -170,5 +171,56 @@ describe('useFramePrefetch', () => {
     const { calls, unmount } = await mountPlaying()
     expect(calls).toHaveLength(0)
     await unmount()
+  })
+})
+
+describe('usePlaybackModel: setTime', () => {
+  async function write(body: () => void): Promise<void> {
+    const scope = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    scope.IS_REACT_ACT_ENVIRONMENT = true
+    try {
+      await act(async () => body())
+    } finally {
+      delete scope.IS_REACT_ACT_ENVIRONMENT
+    }
+  }
+
+  async function model(): Promise<{ current: () => PlaybackModel; unmount: () => Promise<void> }> {
+    let latest: PlaybackModel | null = null
+    function Harness() {
+      latest = usePlaybackModel()
+      return null
+    }
+    const tree = await mount(createElement(Harness))
+    return {
+      current: () => {
+        if (latest === null) throw new Error('the harness never rendered')
+        return latest
+      },
+      unmount: () => tree.unmount(),
+    }
+  }
+
+  it('writes only finite times inside the clock bound, and nothing where there is no clock', async () => {
+    useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
+    const clocked = await model()
+    try {
+      await write(() => clocked.current().setTime(5000))
+      expect(useSceneStore.getState().timeAu).toBe(1000)
+      await write(() => clocked.current().setTime(Number.NaN))
+      expect(useSceneStore.getState().timeAu).toBe(1000)
+    } finally {
+      await clocked.unmount()
+    }
+
+    useSceneStore.setState({ mode: 'eigenstate', representation: 'point_cloud', timeAu: 0 })
+    const stationary = await model()
+    try {
+      expect(stationary.current().bound).toBeUndefined()
+      await write(() => stationary.current().setTime(8.4))
+      expect(useSceneStore.getState().timeAu).toBe(0)
+    } finally {
+      await stationary.unmount()
+    }
   })
 })

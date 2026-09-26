@@ -2,13 +2,13 @@
 import { act, createElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Capability, CapabilityInputs } from '../api/capability'
+import { planSceneRequest, type Capability, type CapabilityInputs } from '../api/capability'
 import { playbackFrames } from '../api/staticCatalog'
 import type { SceneStatus, SuperpositionPreset } from '../api/types'
 import { resetCatalogs } from '../state/catalogs'
 import { useSceneStore } from '../state/useSceneStore'
 import { mount, type MountedTree } from '../test/mount'
-import { nextTimeAu } from './sceneRequest'
+import { nextTimeAu, selectSceneRequestInputs } from './sceneRequest'
 import { STATIONARY_HEADLINE, TimePill } from './TimePill'
 import { DEGENERATE_REASON, WAITING_REASON } from './usePlayback'
 
@@ -156,6 +156,25 @@ describe('TimePill: where a clock exists', () => {
       expect(useSceneStore.getState().timeAu).toBe(8.4)
       await setValue(input, 'time', '')
       expect(useSceneStore.getState().timeAu).toBe(8.4)
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('keeps a typed time inside the bound, so the pill names the time actually requested', async () => {
+    // The planner clamps what it sends; a store that kept 5000 would have the
+    // pill and the status chip name a time the server never computed.
+    useSceneStore.setState({ mode: 'superposition', representation: 'isosurface' })
+    const tree = await pill()
+    try {
+      const input = clock(tree)
+      await setValue(input, 'time', '5000')
+      expect(useSceneStore.getState().timeAu).toBe(1000)
+      expect(input?.value).toBe('1000')
+      const plan = planSceneRequest(selectSceneRequestInputs(useSceneStore.getState()))
+      expect(plan.status === 'available' ? plan.params.time : undefined).toBe(1000)
+      await setValue(input, 'time', '-5000')
+      expect(useSceneStore.getState().timeAu).toBe(-1000)
     } finally {
       await tree.unmount()
     }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react'
 
-import { capabilityFor, planSceneRequest, type ParameterBound } from '../api/capability'
+import { capabilityFor, clampToBound, planSceneRequest, type ParameterBound } from '../api/capability'
 import { requestsForPlan, type ApiRequest } from '../api/requests'
 import { runtimeMode } from '../api/runtimeMode'
 import { playbackFrames } from '../api/staticCatalog'
@@ -138,7 +138,10 @@ export function usePlaybackModel(): PlaybackModel {
       if (time !== undefined) setTimeAu(time)
     },
     setTime: (value) => {
-      if (Number.isFinite(value)) setTimeAu(value)
+      // Clamped here, not left to the planner: the planner clamps what it
+      // sends, so a store holding 5000 would label the frame with a time the
+      // server never computed.
+      if (Number.isFinite(value) && bound !== undefined) setTimeAu(clampToBound(bound, value))
     },
   }
 }

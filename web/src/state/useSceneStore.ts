@@ -184,8 +184,10 @@ function clampSeedCount(
 /**
  * The time the store may hold.
  *
- * Live, any time passes through: the slider owns its 0.2 a.u. lattice and the
- * planner clamps into the route range. The static catalogue holds only its
+ * Live, any time passes through here: the time pill's entry clamps into the
+ * cell's bound before it writes (usePlayback's `setTime`), a deep link's `t`
+ * is parsed only inside the route range, and the planner clamps again what it
+ * sends. The static catalogue holds only its
  * exported playback frames (the cell's `timeAu.values`), so a requested time
  * moves to the nearest one here -- otherwise the status would label the frame
  * on screen with a time it does not show.
