@@ -1,8 +1,9 @@
 /** @vitest-environment jsdom */
 import { act, createElement } from 'react'
 import { Atom } from 'lucide-react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { RuntimeMode } from '../../api/runtimeMode'
 import { mount } from '../../test/mount'
 import {
   ChoiceRow,
@@ -13,6 +14,13 @@ import {
   stepDigits,
   SwitchRow,
 } from './rows'
+
+const runtime = vi.hoisted(() => ({ current: 'live' as RuntimeMode }))
+vi.mock('../../api/runtimeMode', () => ({ runtimeMode: () => runtime.current }))
+
+beforeEach(() => {
+  runtime.current = 'live'
+})
 
 async function interact(body: () => void): Promise<void> {
   const scope = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
@@ -73,6 +81,7 @@ describe('ParameterRow', () => {
   })
 
   it('shows a pinned bound (min === max) as a read-only value, not a slider over one value', async () => {
+    runtime.current = 'static'
     const tree = await mount(
       createElement(ParameterRow, {
         parameter: 'samples',
@@ -90,6 +99,28 @@ describe('ParameterRow', () => {
       expect(output?.textContent).toBe('28000 pts')
       expect(output?.getAttribute('data-readonly-parameter')).toBe('true')
       expect(output?.getAttribute('title')).toBe('静态教材版固定此参数')
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('does not blame the static textbook for a bound the live route itself pins', async () => {
+    // Live `quviz serve`: every n = 4 isosurface has resolution {min: 81, max: 81},
+    // because the state's floor 16n + 17 already equals the grid cap. Nothing
+    // static fixed it, so the title must not say so.
+    const tree = await mount(
+      createElement(ParameterRow, {
+        parameter: 'resolution',
+        label: '网格',
+        bound: { min: 81, max: 81, step: 2 },
+        value: 81,
+        onChange: () => undefined,
+      }),
+    )
+    try {
+      const output = tree.container.querySelector('output[data-parameter="resolution"]')
+      expect(output?.textContent).toBe('81')
+      expect(output?.getAttribute('title')).toBe('此态的合法取值只有这一个')
     } finally {
       await tree.unmount()
     }

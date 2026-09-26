@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useId } from 'react'
 
 import type { ParameterBound, ParameterId } from '../../api/capability'
+import { runtimeMode } from '../../api/runtimeMode'
 
 /** Decimals a value is shown with: as many as the step has, never more than 12. */
 export function stepDigits(step: number | undefined): number | null {
@@ -19,7 +20,9 @@ export function formatForStep(value: number, step: number | undefined): string {
  * from the capability's ParameterBound, so a slider cannot offer a value the
  * route rejects. A bound with min === max is how the static catalogue pins a
  * value; a slider over one value is a control over nothing, so it is shown as
- * the read-only value the request actually carries.
+ * the read-only value the request actually carries. Live routes pin values
+ * too -- every n = 4 isosurface's grid floor 16n + 17 already equals the cap
+ * 81 -- so the title names the static textbook only in the static build.
  */
 export function ParameterRow({
   parameter,
@@ -40,7 +43,11 @@ export function ParameterRow({
     return (
       <div className="qv-param-row" data-parameter-row={parameter}>
         <span className="qv-param-label">{label}</span>
-        <output data-parameter={parameter} data-readonly-parameter="true" title="静态教材版固定此参数">
+        <output
+          data-parameter={parameter}
+          data-readonly-parameter="true"
+          title={runtimeMode() === 'static' ? '静态教材版固定此参数' : '此态的合法取值只有这一个'}
+        >
           {`${formatForStep(bound.min, bound.step)}${suffix}`}
         </output>
       </div>
