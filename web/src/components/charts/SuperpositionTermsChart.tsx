@@ -31,7 +31,8 @@ export function beatText(periodAu: number | null, deltaE?: number): string {
 /**
  * One bar per term: |c_k|² on a 0..1 scale, the term's level energy beside it,
  * and the beat period below. Energies come from the server's level list for
- * the superposition's own (Z, basis) -- null when a_μ ≠ 1, rather than a guess.
+ * the superposition's own (Z, basis) -- null, drawn as a dash rather than a
+ * guess, when they are not known; ChartsPanel says why.
  */
 export function SuperpositionTermsChart({
   terms,
@@ -94,10 +95,7 @@ export function SuperpositionTermsChart({
       <p className="qv-chart-note" data-beat="">
         {beatText(periodAu, deltaE)}
       </p>
-      <p className="qv-chart-note">
-        Σ|c_k|² = {formatFinite(total, FIXED3)}
-        {levels === null ? '；能级需 a_μ = 1 的元数据，当前未显示。' : ''}
-      </p>
+      <p className="qv-chart-note">Σ|c_k|² = {formatFinite(total, FIXED3)}</p>
     </figure>
   )
 }

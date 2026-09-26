@@ -1,5 +1,5 @@
 import type { OrbitalParameters, SceneStatus, SuperpositionTermSpec } from '../../api/types'
-import { useOrbitalMetadata } from '../useOrbitalMetadata'
+import { useOrbitalMetadata, type OrbitalMetadataState } from '../useOrbitalMetadata'
 import { usePlaybackModel } from '../usePlayback'
 import { EnergyLadderChart } from './EnergyLadderChart'
 import { RadialDistributionChart } from './RadialDistributionChart'
@@ -12,6 +12,33 @@ export function highestTerm(
   return terms.reduce<SuperpositionTermSpec | undefined>(
     (best, term) => (best === undefined || term.n > best.n ? term : best),
     undefined,
+  )
+}
+
+/**
+ * Why a superposition's energies are not drawn, and only the true reason.
+ *
+ * The a_μ sentence is for a reduced mass the level list does not describe.
+ * For hydrogen (a_μ = 1) the levels are merely not here yet -- the term
+ * metadata loads on every first open of the tab -- or they failed to load, or
+ * the server sent none; saying "needs a_μ = 1" then gives a false reason.
+ */
+function MissingLevels({ aMu, metadata }: { aMu: number; metadata: OrbitalMetadataState }) {
+  if (aMu !== 1) return <p className="qv-chart-note">能级需 a_μ = 1 的元数据，当前未显示。</p>
+  // No term to ask about (the chart says the mixture reported none): nothing is loading.
+  if (metadata.status === 'idle') return null
+  if (metadata.status === 'error') {
+    return (
+      <p className="qv-chart-note" role="alert">
+        能级载入失败：{metadata.error}
+      </p>
+    )
+  }
+  if (metadata.status === 'ready') return <p className="qv-chart-note">服务端未提供能级。</p>
+  return (
+    <p className="qv-chart-note" role="status">
+      正在载入能级…
+    </p>
   )
 }
 
@@ -77,7 +104,9 @@ export function ChartsPanel({ status }: { status: SceneStatus }) {
     return (
       <div className="qv-charts" data-charts="superposition">
         <SuperpositionTermsChart terms={mixture.terms} levels={levels} periodAu={periodAu} />
-        {levels === null ? null : (
+        {levels === null ? (
+          <MissingLevels aMu={mixture.a_mu} metadata={termMeta} />
+        ) : (
           <EnergyLadderChart
             levels={levels}
             highlight={[...new Set(mixture.terms.map((term) => term.n))]}

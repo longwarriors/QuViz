@@ -159,6 +159,39 @@ describe('ChartsPanel', () => {
     }
   })
 
+  it('says the levels are loading, failed or missing -- not that a_μ ≠ 1 -- for a hydrogen mixture', async () => {
+    // a_μ = 1 here, so the a_μ sentence would give a false reason: while the
+    // term metadata loads (every first open of 图表 on Pages) and when it fails.
+    fetchMetadata.mockImplementation(() => new Promise(() => undefined))
+    const loading = await panel({ loading: false, superposition: mixture() })
+    expect(loading.container.querySelector('[role="status"]')?.textContent).toBe('正在载入能级…')
+    expect(loading.container.textContent).not.toContain('a_μ = 1')
+    await loading.unmount()
+
+    fetchMetadata.mockReset()
+    fetchMetadata.mockRejectedValue(new Error('HTTP 404'))
+    const failed = await panel({ loading: false, superposition: mixture() })
+    expect(failed.container.querySelector('[role="alert"]')?.textContent).toBe('能级载入失败：HTTP 404')
+    expect(failed.container.textContent).not.toContain('a_μ = 1')
+    await failed.unmount()
+
+    fetchMetadata.mockReset()
+    fetchMetadata.mockResolvedValue(eigen(false))
+    const missing = await panel({ loading: false, superposition: mixture() })
+    expect(missing.container.textContent).toContain('服务端未提供能级。')
+    expect(missing.container.textContent).not.toContain('a_μ = 1')
+    expect(missing.container.querySelector('[data-chart="levels"]')).toBeNull()
+    await missing.unmount()
+
+    // A mixture that reported no terms asks for no levels, so none are "loading".
+    fetchMetadata.mockReset()
+    const empty = await panel({ loading: false, superposition: { ...mixture(), terms: [] } })
+    expect(empty.container.textContent).toContain('叠加态没有报告任何项。')
+    expect(empty.container.textContent).not.toContain('能级')
+    expect(fetchMetadata).not.toHaveBeenCalled()
+    await empty.unmount()
+  })
+
   it('invites the reader to load a state when nothing has arrived', async () => {
     const tree = await panel({ loading: true })
     try {

@@ -44,11 +44,13 @@ describe('SuperpositionTermsChart', () => {
     expect(markup).toContain('data-chart="terms"')
   })
 
-  it('says why energies are missing instead of guessing them', () => {
+  it('draws a dash for an energy it was not given instead of guessing it', () => {
+    // Why the energies are missing is ChartsPanel's to say: the chart cannot
+    // tell a reduced mass from a level list that is still loading.
     const markup = render(BOHR, null, 16.76)
     expect(markup).toContain('0.500 · —')
-    expect(markup).toContain('能级需 a_μ = 1 的元数据，当前未显示。')
     expect(markup).not.toContain('ΔE =')
+    expect(markup).not.toContain('a_μ')
   })
 
   it('draws a non-finite coefficient as an empty bar and a dash', () => {
