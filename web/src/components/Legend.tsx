@@ -194,6 +194,24 @@ export function Legend({ status, bloom = 0, defaultExpanded = true }: LegendProp
     )
   }
 
+  if (representation === undefined) {
+    // No asset has described itself -- the first frame is still loading, or
+    // the request for it failed -- so nothing is drawn and there is no colour
+    // to name. A phase key here would describe a picture that does not exist,
+    // and after a failure "waiting for metadata" would promise one that is not
+    // coming. (A frame kept on screen after a later failure still carries its
+    // metadata, and is described by the branches below.)
+    return status.error !== undefined ? (
+      <LegendFrame title="无可绘制资产" defaultExpanded={defaultExpanded}>
+        <p>场景请求失败，画面上没有资产。{status.error}</p>
+      </LegendFrame>
+    ) : (
+      <LegendFrame title="等待资产" defaultExpanded={defaultExpanded}>
+        <p>等待资产元数据。</p>
+      </LegendFrame>
+    )
+  }
+
   // BEFORE the streamlines chain, and therefore before the trailing branch it
   // falls through to: that branch is the isosurface/point-cloud legend, and a
   // slice reaching it is shown a phase wheel over whatever field the plane

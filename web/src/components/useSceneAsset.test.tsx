@@ -522,6 +522,42 @@ describe('useSceneAsset', () => {
     await tree.unmount()
   })
 
+  it('keeps describing the frame it keeps on screen when a later time fails', async () => {
+    const { capture, statuses, element } = host(superpositionInputs)
+    const tree = await mount(element(superpositionInputs))
+    await act(async () => {
+      calls[0].settle(jsonOk(superpositionIsosurface(0)))
+    })
+    const rendered = capture.current?.asset
+    await tree.update(element({ ...superpositionInputs, timeAu: 0.6 }))
+    await act(async () => {
+      calls[1].fail(new Error('boom'))
+    })
+
+    // The legend and the inspector read these fields: an error status that
+    // dropped them would describe no picture while the old frame is still up.
+    expect(capture.current?.asset).toBe(rendered)
+    const status = latest(statuses)
+    expect(status.error).toBe('boom')
+    expect(status.loading).toBe(false)
+    expect(status.refreshing).toBeUndefined()
+    expect(status.renderedTimeAu).toBe(0)
+    expect(status.superposition?.representation).toBe('isosurface')
+    expect(status.densityLevel).toBe(0.002)
+    await tree.unmount()
+  })
+
+  it('reports an error with nothing else when no frame was ever drawn', async () => {
+    const { capture, statuses, element } = host(superpositionInputs)
+    const tree = await mount(element(superpositionInputs))
+    await act(async () => {
+      calls[0].fail(new Error('boom'))
+    })
+    expect(capture.current?.asset).toBeNull()
+    expect(latest(statuses)).toEqual({ loading: false, error: 'boom', renderedTimeAu: undefined })
+    await tree.unmount()
+  })
+
   it('leaves a stationary eigenstate alone when the clock moves', async () => {
     const { element } = host(baseInputs)
     const tree = await mount(element(baseInputs))

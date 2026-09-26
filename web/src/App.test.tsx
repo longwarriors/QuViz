@@ -3,7 +3,7 @@ import { act, createElement, useEffect, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
-import type { SceneStatus, SuperpositionPreset } from './api/types'
+import type { SceneStatus, SuperpositionMetadata, SuperpositionPreset } from './api/types'
 import { GUIDE_SEEN_KEY } from './components/GuideDialog'
 import { mount, type MountedTree } from './test/mount'
 
@@ -249,6 +249,27 @@ describe('App: canvas and chrome', () => {
       expect(q(tree, '.legend')?.textContent).toContain(reason)
     } finally {
       await tree.unmount()
+    }
+  })
+
+  it('keys no colours for a failed first request, and keeps describing a frame kept after one', async () => {
+    const bare = await shell({ loading: false, error: 'topology did not converge' })
+    try {
+      expect(q(bare, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(bare, '.legend-title')?.textContent).toBe('无可绘制资产')
+      expect(q(bare, '.legend')?.textContent).toContain('topology did not converge')
+      expect(q(bare, '.legend .phase-dot, .legend .phase-wheel')).toBeNull()
+    } finally {
+      await bare.unmount()
+    }
+
+    const superposition = { basis: 'complex', representation: 'streamlines' } as unknown as SuperpositionMetadata
+    const kept = await shell({ loading: false, error: 'network down', superposition, maxSpeed: 0.5, lineCount: 3 })
+    try {
+      expect(q(kept, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(kept, '.legend-title')?.textContent).toBe('概率流速率 |j|/ρ')
+    } finally {
+      await kept.unmount()
     }
   })
 

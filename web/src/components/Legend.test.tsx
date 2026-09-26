@@ -191,7 +191,37 @@ describe('Legend names what is actually on screen', () => {
   })
 
   it('waits for metadata rather than naming a representation it has not been told', () => {
-    expect(render({ loading: true })).toContain('等待资产元数据。')
+    const markup = render({ loading: true })
+    expect(markup).toContain('等待资产元数据。')
+    // No asset has described itself yet, so there is no colour to name.
+    expect(markup).not.toContain('phase-wheel')
+    expect(markup).not.toContain('phase-dot')
+    expect(markup).not.toContain('波函数 phase')
+  })
+
+  it('says a failed request left nothing to draw instead of keying colours for no picture', () => {
+    const error = 'the general superposition isosurface topology did not converge'
+    const markup = render({ loading: false, error })
+    expect(markup).toContain('无可绘制资产')
+    expect(markup).toContain(error)
+    expect(markup).not.toContain('phase-wheel')
+    expect(markup).not.toContain('phase-dot')
+    expect(markup).not.toContain('波函数 phase')
+    // Metadata is not on its way: the request that would have carried it failed.
+    expect(markup).not.toContain('等待资产元数据')
+  })
+
+  it('keeps describing a frame that stays on screen after a later request failed', () => {
+    const markup = render({
+      loading: false,
+      error: 'network down',
+      metadata: eigenstateMetadata('streamlines', 'complex'),
+      maxSpeed: 0.5,
+      lineCount: 12,
+    })
+    expect(markup).toContain('概率流速率 |j|/ρ')
+    expect(markup).toContain('speed-ramp')
+    expect(markup).not.toContain('无可绘制资产')
   })
 })
 

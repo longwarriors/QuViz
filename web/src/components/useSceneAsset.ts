@@ -368,12 +368,20 @@ export function useSceneAsset(
         (error: unknown) => {
           if (!current()) return
           // The frame on screen is kept: a failed request does not make the
-          // last successful one untrue, it just means it is now old.
-          emit({
-            loading: false,
-            error: errorText(error),
-            renderedTimeAu: renderedTimeRef.current ?? undefined,
-          })
+          // last successful one untrue, it just means it is now old. Its
+          // status rides along, so the legend and the inspector keep
+          // describing the picture that is actually up; with no frame there
+          // is nothing to describe, and the error stands alone.
+          const kept = frameStatusRef.current
+          emit(
+            kept === null
+              ? {
+                  loading: false,
+                  error: errorText(error),
+                  renderedTimeAu: renderedTimeRef.current ?? undefined,
+                }
+              : { ...kept, loading: false, error: errorText(error) },
+          )
           continueWith(coordinator.onError(time))
         },
       )
