@@ -249,7 +249,14 @@ test('serves the built product and completes every core scene path against FastA
     a_mu: '1',
     probability_mass: '0.9',
   })
-  await expectSettled(page, 'superposition', 'isosurface', '2 项叠加')
+  // The server's ket is on screen whether or not the catalogue has matched the
+  // state yet (title for a custom mixture, subtitle for a catalogue one), so it
+  // is the race-free proof that this superposition arrived. The catalogue
+  // title is then awaited on its own: before D23 this line waited for
+  // '2 项叠加', which only exists until the catalogue loads and so passed or
+  // failed depending on which request won.
+  await expectSettled(page, 'superposition', 'isosurface', '0.707|1,0,0> + 0.707|2,1,0>')
+  await expect(page.locator('#science-inspector h2')).toHaveText('1s + 2p_z · Bohr 振荡')
   await expect(page.locator('button[data-mixture="1s-2pz"]')).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.energy-pill')).toHaveText('-0.312500 Ha')
 
