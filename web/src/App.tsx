@@ -15,7 +15,7 @@ import { SearchPill } from './components/SearchPill'
 import { StatusChip } from './components/StatusChip'
 import { TimePill } from './components/TimePill'
 import { COMPACT_WORKSPACE_QUERY, MOBILE_QUERY, useMediaQuery } from './components/useMediaQuery'
-import { WebGLGate } from './components/WebGLGate'
+import { WEBGL_UNAVAILABLE, WebGLGate } from './components/WebGLGate'
 import { useCatalogs } from './state/catalogs'
 import { isEmbedMode } from './state/urlState'
 import { useSceneStore } from './state/useSceneStore'
@@ -35,12 +35,24 @@ function LabShell() {
   const [guideOpen, setGuideOpen] = useState(
     () => !embed && shouldAutoOpenGuide(window.location.hash),
   )
+  // Why no scene is mounted at all (no WebGL, or the scene crashed), or null.
+  // The canvas is the only source of status, so without this the shell would
+  // wait for its first frame forever: a loading card over the notice, and a
+  // time pill and colour key for a picture that does not exist.
+  const [sceneFailure, setSceneFailure] = useState<string | null>(null)
   const bloom = useSceneStore((state) => state.bloom)
   const detailOpenerRef = useRef<HTMLButtonElement | null>(null)
   const restoreDetailFocus = useRef(false)
   const previousCompact = useRef(compact)
   const previousMobile = useRef(mobile)
   const handleStatus = useCallback((value: SceneStatus) => setStatus(value), [])
+  const handleWebGLUnavailable = useCallback(() => setSceneFailure(WEBGL_UNAVAILABLE), [])
+  const handleSceneCrash = useCallback(
+    (error: Error) => setSceneFailure(`三维场景无法显示：${error.message}`),
+    [],
+  )
+  const shownStatus: SceneStatus =
+    sceneFailure === null ? status : { loading: false, error: sceneFailure }
 
   // One catalogue load per page, even for an embed that renders no controls:
   // the time pill needs the selected mixture's period and the planner its floors.
@@ -112,18 +124,27 @@ function LabShell() {
     >
       <div className="qv-stage">
         <ErrorBoundary
+          onError={handleSceneCrash}
           fallback={(error, reset) => (
-            <LabFailure title="三维场景无法显示" error={error} onRetry={reset} />
+            <LabFailure
+              title="三维场景无法显示"
+              error={error}
+              onRetry={() => {
+                setSceneFailure(null)
+                setStatus({ loading: true })
+                reset()
+              }}
+            />
           )}
         >
-          <WebGLGate>
+          <WebGLGate embed={embed} onUnavailable={handleWebGLUnavailable}>
             <OrbitalCanvas onStatus={handleStatus} />
           </WebGLGate>
         </ErrorBoundary>
       </div>
       <div className="qv-overlay">
         {embed ? null : <Header onOpenGuide={() => setGuideOpen(true)} />}
-        <StatusChip status={status} />
+        <StatusChip status={shownStatus} />
         {embed ? null : <ControlPanel open={controlsOpen} onOpenChange={changeControls} />}
         {embed ? null : <SearchPill />}
         {embed || detailOpen ? null : (
@@ -143,17 +164,19 @@ function LabShell() {
           </button>
         )}
         {embed ? null : (
-          <Inspector status={status} open={detailOpen} onClose={closeDetail} mixtures={superpositions} />
+          <Inspector status={shownStatus} open={detailOpen} onClose={closeDetail} mixtures={superpositions} />
         )}
-        <TimePill status={status} />
-        <Legend status={status} bloom={bloom} defaultExpanded={!embed && !mobile} />
+        {sceneFailure === null ? <TimePill status={status} /> : null}
+        {sceneFailure === null ? (
+          <Legend status={status} bloom={bloom} defaultExpanded={!embed && !mobile} />
+        ) : null}
         {embed ? <EmbedBar /> : null}
         {/*
           Keyed to `loading` alone, deliberately: `refreshing` means a frame is
           still on screen and still true, and the status chip already says a
           newer one is on its way.
         */}
-        <LoadingOverlay visible={status.loading} />
+        <LoadingOverlay visible={sceneFailure === null && status.loading} />
         {embed ? null : <GuideDialog open={guideOpen} onClose={() => setGuideOpen(false)} />}
       </div>
     </div>

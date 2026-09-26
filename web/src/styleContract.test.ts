@@ -75,6 +75,18 @@ describe('lab.css design tokens', () => {
     )
   })
 
+  it('lets clicks through the loading card, over the rule that makes chrome clickable', () => {
+    // `.qv-overlay [data-chrome]` (0,2,0) outranks a bare `.loading-overlay`
+    // (0,1,0), so without an equally specific, later rule the card swallowed
+    // clicks -- including on the WebGL notice's only way out.
+    const css = labCss()
+    const chrome = css.indexOf('.qv-overlay [data-chrome] { pointer-events: auto; }')
+    const card = /\.qv-overlay \.loading-overlay\s*\{\s*pointer-events:\s*none;\s*\}/.exec(css)
+    expect(chrome).toBeGreaterThanOrEqual(0)
+    expect(card).not.toBeNull()
+    expect(card!.index).toBeGreaterThan(chrome)
+  })
+
   it('never re-shows a descendant of hidden chrome', () => {
     // e2e/slice.spec.ts hides [data-chrome] with inline visibility:hidden;
     // an explicit visibility:visible below it would leak into a screenshot.

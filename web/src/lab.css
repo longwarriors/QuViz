@@ -105,6 +105,9 @@ h1, h2, h3, p, dl, dd, figure { margin: 0; }
 .qv-stage { position: fixed; inset: 0; z-index: 0; background: var(--qv-bg); }
 .qv-overlay { position: fixed; inset: 0; z-index: 1; pointer-events: none; }
 .qv-overlay [data-chrome] { pointer-events: auto; }
+/* The loading card only reports progress: clicks go through it, as they must
+   onto a notice it may overlap. Needs this specificity to beat the rule above. */
+.qv-overlay .loading-overlay { pointer-events: none; }
 
 .qv-fallback {
   position: fixed;

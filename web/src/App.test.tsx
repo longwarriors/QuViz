@@ -70,11 +70,18 @@ vi.mock('./components/Inspector', async () => {
   }
 })
 
-vi.mock('./components/WebGLGate', async () => {
-  const { createElement: element } = await import('react')
+vi.mock('./components/WebGLGate', async (importOriginal) => {
+  const { createElement: element, useLayoutEffect } = await import('react')
   return {
-    WebGLGate: ({ children }: { children: ReactNode }) =>
-      webgl.current ? children : element('div', { 'data-webgl-unavailable': '', 'data-chrome': '' }, 'no WebGL'),
+    ...(await importOriginal<typeof import('./components/WebGLGate')>()),
+    // The real gate's contract: the scene, or its notice plus one onUnavailable report.
+    WebGLGate: ({ children, onUnavailable }: { children: ReactNode; onUnavailable?: () => void }) => {
+      const supported = webgl.current
+      useLayoutEffect(() => {
+        if (!supported) onUnavailable?.()
+      }, [supported, onUnavailable])
+      return supported ? children : element('div', { 'data-webgl-unavailable': '', 'data-chrome': '' }, 'no WebGL')
+    },
   }
 })
 
@@ -279,8 +286,27 @@ describe('App: canvas and chrome', () => {
     try {
       expect(q(tree, '.qv-stage [data-webgl-unavailable]')).not.toBeNull()
       expect(q(tree, 'header.qv-header')).not.toBeNull()
+      // No canvas will ever report: the shell must stop waiting for one rather
+      // than cover the notice with a loading card and describe a picture that
+      // does not exist.
+      expect(q(tree, '.loading-overlay')).toBeNull()
+      expect(q(tree, '.qv-time-pill')).toBeNull()
+      expect(q(tree, '.legend')).toBeNull()
+      expect(q(tree, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(tree, '[data-status]')?.textContent).toContain('此设备无法创建 WebGL 画布')
     } finally {
       await tree.unmount()
+    }
+
+    embed.current = true
+    const embedded = await shell()
+    try {
+      expect(q(embedded, '.qv-stage [data-webgl-unavailable]')).not.toBeNull()
+      expect(q(embedded, '.loading-overlay')).toBeNull()
+      expect(q(embedded, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(embedded, 'a.qv-embed-open')).not.toBeNull()
+    } finally {
+      await embedded.unmount()
     }
   })
 
@@ -291,9 +317,19 @@ describe('App: canvas and chrome', () => {
     try {
       expect(q(scene, '.qv-stage [role="alert"]')?.textContent).toContain('三维场景无法显示')
       expect(q(scene, 'header.qv-header')).not.toBeNull()
+      // The crashed canvas reports nothing more: the shell says so itself.
+      expect(q(scene, '.loading-overlay')).toBeNull()
+      expect(q(scene, '.qv-time-pill')).toBeNull()
+      expect(q(scene, '.legend')).toBeNull()
+      expect(q(scene, '[data-status]')?.getAttribute('data-status')).toBe('error')
+      expect(q(scene, '[data-status]')?.textContent).toContain('WebGL context lost')
       crash.scene = false
       await interact(() => q<HTMLButtonElement>(scene, '.qv-stage [role="alert"] button')?.click())
       expect(q(scene, '.qv-stage [role="alert"]')).toBeNull()
+      // The remounted canvas reports again, and the scene chrome comes back.
+      expect(q(scene, '[data-status]')?.getAttribute('data-status')).toBe('ready')
+      expect(q(scene, '.qv-time-pill')).not.toBeNull()
+      expect(q(scene, '.legend')).not.toBeNull()
     } finally {
       await scene.unmount()
     }

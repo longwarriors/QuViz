@@ -92,4 +92,35 @@ describe('WebGLGate', () => {
       await tree.unmount()
     }
   })
+
+  it('offers no textbook link inside an embed: the page around the figure is the textbook', async () => {
+    // Followed from inside the figure's frame, the link would load a second
+    // textbook into the figure; the sandbox forbids navigating the page itself.
+    runtime.current = 'static'
+    const tree = await mount(createElement(WebGLGate, { probe: () => false, embed: true, children: null }))
+    try {
+      expect(tree.container.querySelector('[data-webgl-unavailable]')).not.toBeNull()
+      expect(tree.container.querySelector('a')).toBeNull()
+    } finally {
+      await tree.unmount()
+    }
+  })
+
+  it('tells the shell once that no scene is coming, and never when one is', async () => {
+    const refused = vi.fn()
+    const off = await mount(createElement(WebGLGate, { probe: () => false, onUnavailable: refused, children: null }))
+    try {
+      expect(refused).toHaveBeenCalledOnce()
+    } finally {
+      await off.unmount()
+    }
+
+    const drawn = vi.fn()
+    const on = await mount(createElement(WebGLGate, { probe: () => true, onUnavailable: drawn, children: null }))
+    try {
+      expect(drawn).not.toHaveBeenCalled()
+    } finally {
+      await on.unmount()
+    }
+  })
 })
