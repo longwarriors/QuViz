@@ -379,6 +379,22 @@ describe('Inspector reports every measured diagnostic', () => {
     expect(busy).toContain('<h2>计算中…</h2>')
   })
 
+  it('does not promise metadata that a failed or refused request will never bring', () => {
+    // No frame on screen: the request failed (e.g. the stored 422 of the
+    // 2s + 2p_z isosurface) or was refused. "Waiting" would be a false promise.
+    const failed = render({ loading: false, error: 'HTTP 422' })
+    const refused = render({
+      loading: false,
+      unavailable: { kind: 'isosurface', reason: '静态教材版未预计算这一组合。', refusal: 'not_precomputed' },
+    })
+
+    expect(failed).toContain('<h2>暂无资产</h2>')
+    expect(failed).toContain('<p class="qv-detail-sub">请求失败，没有元数据可显示</p>')
+    expect(failed).not.toContain('等待已验证的元数据')
+    expect(refused).toContain('<p class="qv-detail-sub">当前组合不可用，没有元数据可显示</p>')
+    expect(refused).not.toContain('等待已验证的元数据')
+  })
+
   it('keeps the sign of a leading negative term and of a negative imaginary part', () => {
     const markup = render(
       superpositionStatus([

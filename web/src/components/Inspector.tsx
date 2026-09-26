@@ -89,13 +89,20 @@ export function Inspector({
   const preset = mixture === undefined ? undefined : catalogueMixtureFor(mixture.terms, mixtures)
   const title = preset === undefined ? label : mixtureLabel(preset)
   const ket = preset === undefined ? undefined : mixture?.label
+  // With nothing on screen, "waiting" is true only while a request can still
+  // answer: a failed or a refused one never brings metadata.
+  const noMetadata = status.error
+    ? '请求失败，没有元数据可显示'
+    : status.unavailable !== undefined
+      ? '当前组合不可用，没有元数据可显示'
+      : '等待已验证的元数据'
   const subtitle = state
     ? `ψ(${state.n}, ${state.l}, ${state.m}) · ${state.basis} basis`
     : mixture
       ? preset === undefined
         ? `${mixture.terms.length} 项叠加 · ${mixture.basis} basis`
         : `${mixture.basis} basis`
-      : '等待已验证的元数据'
+      : noMetadata
 
   const tabId = (tab: InspectorTab): string => `${instanceId}-${tab}-tab`
   const panelId = (tab: InspectorTab): string => `${instanceId}-${tab}-panel`
