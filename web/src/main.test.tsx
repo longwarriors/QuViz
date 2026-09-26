@@ -2,6 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createElement } from 'react'
+import type { Root } from 'react-dom/client'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { setStaticCatalog, staticCatalogSpec } from './api/capability'
@@ -42,16 +43,33 @@ vi.mock('./state/urlState', () => ({
   },
 }))
 
-/** Let React's scheduler flush the root it queued; `render` is not synchronous. */
-const flush = (): Promise<void> => new Promise((done) => setTimeout(done, 0))
+/**
+ * Wait until React has committed what `root.render` queued.
+ *
+ * `render` is not synchronous, and no single timer is ordered after it: in
+ * Node React's scheduler posts its work through `setImmediate`, whose order
+ * against a `setTimeout(0)` is not guaranteed, so under a loaded parallel run
+ * the timer fired first and the assertion read an empty container (the flake
+ * three reviews recorded). Poll for the committed DOM instead of guessing.
+ */
+const committed = (check: () => void): Promise<void> =>
+  vi.waitFor(check, { timeout: 4_000, interval: 5 })
 
 const SPEC: unknown = JSON.parse(readFileSync(resolve(process.cwd(), 'tools', 'fixtures', 'spec.json'), 'utf-8'))
 const MANIFEST = { format: 'quviz-static/1', version: '0123456789abcdef', spec: SPEC, entries: {} }
 
+/** What each test mounted, released after it so no root outlives its test. */
+const mounted: { roots: Root[]; containers: HTMLElement[] } = { roots: [], containers: [] }
+
 function container(): HTMLElement {
   const element = document.createElement('div')
   document.body.appendChild(element)
+  mounted.containers.push(element)
   return element
+}
+
+async function boot(target: HTMLElement): Promise<void> {
+  mounted.roots.push(await bootstrap(target, 'static'))
 }
 
 let bootstrap: (typeof import('./main'))['bootstrap']
@@ -61,10 +79,11 @@ beforeAll(async () => {
   root.id = 'root'
   document.body.appendChild(root)
   ;({ bootstrap } = await import('./main'))
-  await flush()
 })
 
 afterEach(() => {
+  for (const root of mounted.roots.splice(0)) root.unmount()
+  for (const element of mounted.containers.splice(0)) element.remove()
   vi.unstubAllGlobals()
   resetTransport()
   setStaticCatalog(null)
@@ -73,8 +92,10 @@ afterEach(() => {
 })
 
 describe('main entry point', () => {
-  it('mounts the app into #root in live mode after binding the URL state', () => {
-    expect(document.getElementById('root')?.querySelector('[data-app-mounted="true"]')).not.toBeNull()
+  it('mounts the app into #root in live mode after binding the URL state', async () => {
+    await committed(() =>
+      expect(document.getElementById('root')?.querySelector('[data-app-mounted="true"]')).not.toBeNull(),
+    )
     expect(urlState.bind).toHaveBeenCalledTimes(1)
     expect(getTransport()).toBe(liveTransport)
     expect(staticCatalogSpec()).toBeNull()
@@ -95,15 +116,14 @@ describe('main entry point', () => {
     vi.stubGlobal('fetch', fetchMock)
     const target = container()
 
-    await bootstrap(target, 'static')
-    await flush()
+    await boot(target)
+    await committed(() => expect(target.querySelector('[data-app-mounted="true"]')).not.toBeNull())
 
     expect(String(fetchMock.mock.calls[0][0])).toBe(new URL('data/manifest.json', document.baseURI).href)
     expect(fetchMock.mock.calls[0][1]).toMatchObject({ cache: 'no-cache' })
     expect(getTransport()).not.toBe(liveTransport)
     expect(staticCatalogSpec()).toEqual(SPEC)
     expect(urlState.bind).toHaveBeenCalledTimes(1)
-    expect(target.querySelector('[data-app-mounted="true"]')).not.toBeNull()
 
     // Order pin (this task's main requirement): the static transport and
     // catalogue are installed before bindUrlState() and before the first
@@ -126,8 +146,8 @@ describe('main entry point', () => {
     )
     const target = container()
 
-    await bootstrap(target, 'static')
-    await flush()
+    await boot(target)
+    await committed(() => expect(target.querySelector('[role="alert"]')).not.toBeNull())
 
     const alert = target.querySelector('[role="alert"]')
     expect(alert?.textContent).toContain('静态教材版无法启动')
@@ -143,8 +163,8 @@ describe('main entry point', () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject('offline')))
     const target = container()
 
-    await bootstrap(target, 'static')
-    await flush()
+    await boot(target)
+    await committed(() => expect(target.querySelector('[role="alert"]')).not.toBeNull())
 
     expect(target.querySelector('[role="alert"]')?.textContent).toContain('offline')
     expect(log.order).toEqual([])
