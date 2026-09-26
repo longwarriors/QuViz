@@ -52,7 +52,7 @@
 - 引用组可以换行，手机宽度下教材页不再横向滚动；
 - `main.test.tsx` 等待 React 实际提交，不再依赖单个 `setTimeout(0)` 的时序。
 
-**尚未执行的对外动作**（需维护者确认）：推送分支；在仓库设置中启用 GitHub Pages，构建来源设为 GitHub Actions；合并到 master 以触发首次部署。另有两项待维护者决定：是否在首次发布前改正仓库名里的 `Atmoic`（站点地址会随之改变）；是否在公开站点保留指向私有 claude.ai artifact 的 `claude-fable-audit` 引用。
+**对外动作**（2026-09-26 经维护者确认执行）：仓库更名为 `QuViz`；启用 GitHub Pages，构建来源为 GitHub Actions；合并到 master 触发首次部署，站点地址为 <https://longwarriors.github.io/QuViz/>。仍待维护者决定：是否在公开站点保留指向私有 claude.ai artifact 的 `claude-fable-audit` 引用。
 
 本树最终实测（2026-09-26 终审修复后，Windows 11、CPython 3.12、同一工作树）：
 

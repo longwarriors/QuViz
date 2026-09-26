@@ -24,12 +24,12 @@ Quantum state → Observable → Representation → Scene contract → GPU rende
 
 ## 在线教材站
 
-教材站发布在 <https://longwarriors.github.io/Atmoic-quantum-visualization/>，由 `.github/workflows/pages.yml` 在 master 更新后部署。在仓库启用 GitHub Pages、并把构建来源设为 GitHub Actions 之前，该地址不可访问。
+教材站发布在 <https://longwarriors.github.io/QuViz/>，由 `.github/workflows/pages.yml` 在 master 更新后部署（仓库的 GitHub Pages 构建来源为 GitHub Actions）。
 
 - 根路径是全屏 3D 实验室的**静态教学版**：只读取构建时预计算的场景数据，没有 Python 后端。预计算目录之外的组合会如实显示“未预计算”及原因；任意参数的实时计算仍需本地 `quviz serve`。
 - `learn/` 是教材：按学习顺序排列的章节、公式、引用、思考题。每章的交互图都可以一键在实验室中打开。
 
-仓库名里的 `Atmoic` 是历史拼写，会原样出现在这个地址里。站点内部全部使用相对路径；`site_url` 在构建时由 `git remote get-url origin` 推导，发布 workflow 中则取自 `actions/configure-pages`。所以在 GitHub 上重命名仓库之后，只需更新本段地址，构建脚本与配置都不用改。
+仓库已于 2026-09-26 从 `Atmoic-quantum-visualization` 更名为 `QuViz`（GitHub 会把旧仓库地址重定向过来，但 Pages 站点只在新地址上）。站点内部全部使用相对路径；`site_url` 在构建时由 `git remote get-url origin` 推导，发布 workflow 中则取自 `actions/configure-pages`，所以更名不需要改动构建脚本或配置。
 
 在本地构建并按与线上相同的子路径预览。首次完整构建要预计算全部场景数据，耗时从数分钟到数十分钟不等：
 
@@ -38,7 +38,7 @@ uv run --locked --no-sync python scripts/build_pages.py
 uv run --locked --no-sync python scripts/build_pages.py --skip-data --serve 4180
 ```
 
-然后打开 `http://127.0.0.1:4180/Atmoic-quantum-visualization/`。
+然后打开 `http://127.0.0.1:4180/QuViz/`。
 
 ## 项目结构
 

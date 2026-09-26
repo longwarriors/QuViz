@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { runtimeMode } from '../api/runtimeMode'
 import { captureSceneCanvas } from './sceneCapture'
 
-export const REPOSITORY_URL = 'https://github.com/longwarriors/Atmoic-quantum-visualization'
+export const REPOSITORY_URL = 'https://github.com/longwarriors/QuViz'
 /** How long a confirmation toast stays up. */
 export const TOAST_MS = 2400
 
